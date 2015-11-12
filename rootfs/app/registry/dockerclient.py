@@ -19,7 +19,7 @@ class DockerClient(object):
     FLOCKFILE = '/tmp/controller-pull'
 
     def __init__(self):
-        self.client = docker.Client(version='auto')
+        self.client = docker.Client(base_url=settings.DOCKER_URL, version='auto')
         self.registry = settings.REGISTRY_HOST + ':' + str(settings.REGISTRY_PORT)
 
     def publish_release(self, source, config, target, deis_registry):

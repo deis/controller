@@ -3,31 +3,16 @@ FROM alpine:3.2
 # install common packages
 RUN apk add --update-cache curl bash openssl sudo && rm -rf /var/cache/apk/*
 
-# install etcdctl and confd
-RUN apk add --update-cache curl tar \
-    && curl -sSL https://github.com/coreos/etcd/releases/download/v2.2.1/etcd-v2.2.1-linux-amd64.tar.gz \
-    | tar -vxz -C /usr/local/bin --strip=1 etcd-v2.2.1-linux-amd64/etcdctl \
-    && chown root:root /usr/local/bin/etcdctl \
-    && curl -sSL -o /usr/local/bin/confd https://github.com/kelseyhightower/confd/releases/download/v0.10.0/confd-0.10.0-linux-amd64 \
-    && chmod +x /usr/local/bin/confd \
-    && apk del --purge curl tar \
-    && rm -rf /var/cache/apk/*
-
 # define execution environment
-CMD ["/app/bin/boot"]
+CMD ["/bin/boot"]
 EXPOSE 8000
 
-# define work environment
+COPY . /
+
 WORKDIR /app
 
-ADD build.sh /app/tmp/build.sh
+RUN build
 
-ADD requirements.txt /app/requirements.txt
-
-RUN DOCKER_BUILD=true /app/tmp/build.sh && rm -rf /app/*
-
-ADD . /app
-
-RUN ./manage.py collectstatic --settings=deis.settings --noinput  # create static resources
+RUN python manage.py collectstatic --settings=deis.settings --noinput
 
 ENV DEIS_RELEASE 1.13.0-dev

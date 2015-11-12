@@ -9,9 +9,6 @@ import semantic_version as semver
 import string
 import sys
 import tempfile
-import ldap
-
-from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
 
 
 PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
@@ -87,9 +84,6 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
 
-# Make this unique, and don't share it with anybody.
-SECRET_KEY = None  # @UnusedVariable
-
 # List of callables that know how to import templates from various sources.
 TEMPLATE_LOADERS = (
     'django.template.loaders.filesystem.Loader',
@@ -125,14 +119,6 @@ ROOT_URLCONF = 'deis.urls'
 # Python dotted path to the WSGI application used by Django's runserver.
 WSGI_APPLICATION = 'deis.wsgi.application'
 
-TEMPLATE_DIRS = (
-    # Put strings here, like "/home/html/django_templates"
-    # or "C:/www/django/templates".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
-    PROJECT_ROOT + '/web/templates',
-)
-
 INSTALLED_APPS = (
     'django.contrib.admin',
     'django.contrib.auth',
@@ -143,7 +129,6 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.staticfiles',
     # Third-party apps
-    'django_auth_ldap',
     'guardian',
     'json_field',
     'gunicorn',
@@ -154,11 +139,9 @@ INSTALLED_APPS = (
     # Deis apps
     'api',
     'registry',
-    'web',
 )
 
 AUTHENTICATION_BACKENDS = (
-    "django_auth_ldap.backend.LDAPBackend",
     "django.contrib.auth.backends.ModelBackend",
     "guardian.backends.ObjectPermissionBackend",
 )
@@ -298,40 +281,40 @@ DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S%Z'
 # names which apps cannot reserve for routing
 DEIS_RESERVED_NAMES = ['deis']
 
-# default scheduler settings
-SCHEDULER_MODULE = 'scheduler.mock'
-SCHEDULER_TARGET = ''  # path to scheduler endpoint (e.g. /var/run/fleet.sock)
-SCHEDULER_AUTH = ''
-SCHEDULER_OPTIONS = {}
+SCHEDULER_MODULE = 'scheduler.k8s'
+SCHEDULER_HOST = os.environ.get('KUBERNETES_SERVICE_HOST', 'localhost')
+SCHEDULER_PORT = os.environ.get('KUBERNETES_SERVICE_PORT', 443)
+SCHEDULER_URL = "{}:{}".format(SCHEDULER_HOST, SCHEDULER_PORT)
 
 # security keys and auth tokens
-SSH_PRIVATE_KEY = ''  # used for SSH connections to facilitate "deis run"
 SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi')
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi')
 
+# docker client settings
+DOCKER_URL = os.environ.get('DOCKER_SERVICE_HOST', 'unix://var/run/docker.sock')
+
 # registry settings
-REGISTRY_URL = 'http://localhost:5000'
-REGISTRY_HOST = 'localhost'
-REGISTRY_PORT = 5000
+REGISTRY_HOST = os.environ.get('REGISTRY_SERVICE_HOST', 'localhost')
+REGISTRY_PORT = os.environ.get('REGISTRY_SERVICE_PORT', 5000)
 
 # logger settings
-LOGGER_HOST = 'localhost'
-LOGGER_PORT = 8088
+LOGGER_HOST = os.environ.get('LOGGER_SERVICE_HOST', 'localhost')
+LOGGER_PORT = os.environ.get('LOGGER_SERVICE_PORT', 8088)
 
 # check if we can register users with `deis register`
 REGISTRATION_ENABLED = True
 
-# check if we should enable the web UI module
-WEB_ENABLED = False
+# if True, enable the /admin web views
+ADMIN_ENABLED = False
 
-# default to sqlite3, but allow postgresql config through envvars
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.' + os.environ.get('DATABASE_ENGINE', 'postgresql_psycopg2'),
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': os.environ.get('DATABASE_NAME', 'deis'),
-        # randomize test database name so we can run multiple unit tests simultaneously
-        'TEST_NAME': "unittest-{}".format(''.join(
-            random.choice(string.ascii_letters + string.digits) for _ in range(8)))
+        'USER': os.environ.get('DATABASE_USER', 'deis'),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+        'HOST': os.environ.get('DATABASE_SERVICE_HOST', 'localhost'),
+        'PORT': os.environ.get('DATABASE_SERVICE_PORT', 5432),
     }
 }
 
@@ -340,80 +323,3 @@ APP_URL_REGEX = '[a-z0-9-]+'
 # Honor HTTPS from a trusted proxy
 # see https://docs.djangoproject.com/en/1.6/ref/settings/#secure-proxy-ssl-header
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-# Unit Hostname handling.
-# Supports:
-#  default      - Docker generated hostname
-#  application  - Hostname based on application unit name (i.e. my-application.v2.web.1)
-#  server       - Hostname based on CoreOS server hostname
-UNIT_HOSTNAME = 'default'
-
-# LDAP DEFAULT SETTINGS (Overrided by confd later)
-LDAP_ENDPOINT = ""
-BIND_DN = ""
-BIND_PASSWORD = ""
-USER_BASEDN = ""
-USER_FILTER = ""
-GROUP_BASEDN = ""
-GROUP_FILTER = ""
-GROUP_TYPE = ""
-
-# Create a file named "local_settings.py" to contain sensitive settings data
-# such as database configuration, admin email, or passwords and keys. It
-# should also be used for any settings which differ between development
-# and production.
-# The local_settings.py file should *not* be checked in to version control.
-try:
-    from .local_settings import *  # noqa
-except ImportError:
-    pass
-
-# have confd_settings within container execution override all others
-# including local_settings (which may end up in the container)
-if os.path.exists('/templates/confd_settings.py'):
-    sys.path.append('/templates')
-    from confd_settings import *  # noqa
-
-# Disable swap when mem limits are set, unless Docker is too old
-DISABLE_SWAP = '--memory-swap=-1'
-try:
-    version = 'unknown'
-    from registry.dockerclient import DockerClient
-    version = DockerClient().client.version().get('Version')
-    if not semver.validate(version) or semver.Version(version) < semver.Version('1.5.0'):
-        DISABLE_SWAP = ''
-except:
-    print("Not disabling --memory-swap for Docker version {}".format(version))
-
-# LDAP Backend Configuration
-# Should be always after the confd_settings import.
-LDAP_USER_SEARCH = LDAPSearch(
-    base_dn=USER_BASEDN,
-    scope=ldap.SCOPE_SUBTREE,
-    filterstr="(%s=%%(user)s)" % USER_FILTER
-)
-LDAP_GROUP_SEARCH = LDAPSearch(
-    base_dn=GROUP_BASEDN,
-    scope=ldap.SCOPE_SUBTREE,
-    filterstr="(%s=%s)" % (GROUP_FILTER, GROUP_TYPE)
-)
-AUTH_LDAP_SERVER_URI = LDAP_ENDPOINT
-AUTH_LDAP_BIND_DN = BIND_DN
-AUTH_LDAP_BIND_PASSWORD = BIND_PASSWORD
-AUTH_LDAP_USER_SEARCH = LDAP_USER_SEARCH
-AUTH_LDAP_GROUP_SEARCH = LDAP_GROUP_SEARCH
-AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
-AUTH_LDAP_USER_ATTR_MAP = {
-    "first_name": "givenName",
-    "last_name": "sn",
-    "email": "mail",
-    "username": USER_FILTER,
-}
-AUTH_LDAP_GLOBAL_OPTIONS = {
-    ldap.OPT_X_TLS_REQUIRE_CERT: False,
-    ldap.OPT_REFERRALS: False
-}
-AUTH_LDAP_ALWAYS_UPDATE_USER = True
-AUTH_LDAP_MIRROR_GROUPS = True
-AUTH_LDAP_FIND_GROUP_PERMS = True
-AUTH_LDAP_CACHE_GROUPS = False

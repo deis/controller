@@ -1,14 +1,5 @@
 bind = '0.0.0.0'
-try:
-    workers = int({{ if exists "/deis/controller/workers" }}{{ getv "/deis/controller/workers" }}{{ else }}"not set"{{end}})
-    if workers < 1:
-        raise ValueError()
-except (NameError, ValueError):
-    import multiprocessing
-    try:
-        workers = multiprocessing.cpu_count() * 2 + 1
-    except NotImplementedError:
-        workers = 8
+workers = 8
 timeout = 1200
 pidfile = '/tmp/gunicorn.pid'
 loglevel = 'info'

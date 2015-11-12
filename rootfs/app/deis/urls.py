@@ -20,9 +20,8 @@ urlpatterns = patterns(
     url(r'^v1/', include('api.urls')),
 )
 
-if settings.WEB_ENABLED:
+if settings.ADMIN_ENABLED:
     urlpatterns += patterns(
         '',
-        url(r'^', include('web.urls')),
         url(r'^admin/', include(admin.site.urls)),
     )

@@ -27,12 +27,12 @@ func List(c *client.Client, results int) ([]api.App, int, error) {
 }
 
 // New creates a new app.
-func New(c *client.Client, id string) (api.App, error) {
+func New(c *client.Client, apptype, id string) (api.App, error) {
 	body := []byte{}
 
 	var err error
 	if id != "" {
-		req := api.AppCreateRequest{ID: id}
+		req := api.AppCreateRequest{ID: id, Apptype: apptype}
 		body, err = json.Marshal(req)
 
 		if err != nil {

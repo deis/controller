@@ -5,6 +5,7 @@ type App struct {
 	Created string `json:"created"`
 	ID      string `json:"id"`
 	Owner   string `json:"owner"`
+	Apptype string `json:"apptype"`
 	Updated string `json:"updated"`
 	URL     string `json:"url"`
 	UUID    string `json:"uuid"`
@@ -12,7 +13,8 @@ type App struct {
 
 // AppCreateRequest is the definition of POST /v1/apps/.
 type AppCreateRequest struct {
-	ID string `json:"id,omitempty"`
+	ID      string `json:"id,omitempty"`
+	Apptype string `json:"apptype,omitempty"`
 }
 
 // AppUpdateRequest is the definition of POST /v1/apps/<app id>/.

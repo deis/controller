@@ -18,15 +18,13 @@ import (
 )
 
 // AppCreate creates an app.
+
 func AppCreate(id string, buildpack string, remote string, noRemote bool) error {
+	apptype := "buildpack"
 	c, err := client.New()
-	if err != nil {
-		return err
-	}
 
 	fmt.Print("Creating Application... ")
 	quit := progress()
-	app, err := apps.New(c, id)
 
 	quit <- true
 	<-quit
@@ -35,8 +33,17 @@ func AppCreate(id string, buildpack string, remote string, noRemote bool) error 
 		return err
 	}
 
-	fmt.Printf("done, created %s\n", app.ID)
+	if _, err := os.Stat("Dockerfile"); err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("Dockerfile not present creating a heroku app")
+		}
 
+	} else {
+		apptype = "dockerfile"
+		fmt.Println("Dockerfile detected, creating a docker app")
+	}
+	app, err := apps.New(c, apptype, id)
+	fmt.Printf("done, created %s\n", app.ID)
 	if buildpack != "" {
 		configValues := api.Config{
 			Values: map[string]interface{}{
@@ -47,9 +54,8 @@ func AppCreate(id string, buildpack string, remote string, noRemote bool) error 
 			return err
 		}
 	}
-
 	if !noRemote {
-		if err = git.CreateRemote(c.ControllerURL.Host, remote, app.ID); err != nil {
+		if err := git.CreateRemote(c.ControllerURL.Host, remote, app.ID); err != nil {
 			if err.Error() == "exit status 128" {
 				fmt.Println("To replace the existing git remote entry, run:")
 				fmt.Printf("  git remote rename deis deis.old && deis git:remote -a %s\n", app.ID)

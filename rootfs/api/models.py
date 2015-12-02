@@ -326,7 +326,10 @@ class App(UuidAuditedModel):
     def _scale_containers(self, scale_types, to_remove):
         release = self.release_set.latest()
         for scale_type in scale_types:
-            image = release.image
+            if release.build.dockerfile or not release.build.sha:
+                image = release.image
+            else:
+                image = release.image.split(":")[0]+":git-"+release.build.sha
             version = "v{}".format(release.version)
             kwargs = {'memory': release.config.memory,
                       'cpu': release.config.cpu,
@@ -476,7 +479,10 @@ class App(UuidAuditedModel):
 
     def _deploy_app(self, scale_types, release, existing):
         for scale_type in scale_types:
-            image = release.image
+            if release.build.dockerfile or not release.build.sha:
+                image = self.release.image
+            else:
+                image = self.release.image.split(":")[0]+":git-"+self.release.build.sha
             version = "v{}".format(release.version)
             kwargs = {'memory': release.config.memory,
                       'cpu': release.config.cpu,
@@ -632,7 +638,11 @@ class Container(UuidAuditedModel):
 
     @close_db_connections
     def create(self):
-        image = self.release.image
+
+        if self.release.build.dockerfile or not self.release.build.sha:
+            image = self.release.image
+        else:
+            image = self.release.image.split(":")[0]+":git-"+self.release.build.sha
         kwargs = {'memory': self.release.config.memory,
                   'cpu': self.release.config.cpu,
                   'tags': self.release.config.tags}
@@ -881,7 +891,8 @@ class Release(UuidAuditedModel):
             source_image = "{}:{}".format(source_image, source_tag)
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         deis_registry = bool(self.build.sha)
-        publish_release(source_image, self.config.values, self.image, deis_registry)
+        if self.build.dockerfile or not self.build.sha:
+            publish_release(source_image, self.config.values, self.image, deis_registry)
 
     def previous(self):
         """

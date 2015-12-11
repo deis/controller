@@ -4,6 +4,7 @@ import re
 import string
 import time
 import urlparse
+import os
 
 from django.conf import settings
 from docker import Client
@@ -33,7 +34,7 @@ POD_TEMPLATE = """\
 }
 """
 
-RC_TEMPLATE = """\
+RCD_TEMPLATE = """\
 {
   "kind": "ReplicationController",
   "apiVersion": "$version",
@@ -66,6 +67,58 @@ RC_TEMPLATE = """\
           {
             "name": "$containername",
             "image": "$image"
+          }
+        ]
+      }
+    }
+  }
+}
+"""
+
+RCB_TEMPLATE = """\
+{
+  "kind": "ReplicationController",
+  "apiVersion": "$version",
+  "metadata": {
+    "name": "$name",
+    "labels": {
+      "name": "$id"
+    }
+  },
+  "spec": {
+    "replicas": $num,
+    "selector": {
+      "name": "$id",
+      "version": "$appversion",
+      "type": "$type"
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "name": "$id",
+          "version": "$appversion",
+          "type": "$type"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "$containername",
+            "image": "smothiki/slugrunner:4",
+            "env": [
+            {
+                "name":"PORT",
+                "value":"5000"
+            },
+            {
+                "name":"SLUG_URL",
+                "value":"$image"
+            },
+            {
+                "name":"DEBUG",
+                "value":"1"
+            }
+            ]
           }
         ]
       }
@@ -326,18 +379,23 @@ class KubeHTTPClient(AbstractSchedulerClient):
             error(resp, "locate Namespace {}".format(app_name))
 
         num = kwargs.get('num', {})
+        imgurl = self.registry + "/" + image
+        TEMPLATE = RCD_TEMPLATE
+        if image[image.index(":")+1:image.index(":")+4] == "git" and len(image[image.index(":")+5:]) == 8 :
+            imgurl = "http://"+settings.S3EP+"/git/home/"+image+"/slug"
+            TEMPLATE = RCB_TEMPLATE
+        logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, imgurl, kwargs, command))
         l = {
             "name": name,
             "id": app_name,
             "appversion": kwargs.get("version", {}),
             "version": self.apiversion,
-            "image": self.registry + "/" + image,
+            "image": imgurl,
             "num": kwargs.get("num", {}),
             "containername": container_name,
             "type": app_type,
         }
-
-        template = string.Template(RC_TEMPLATE).substitute(l)
+        template = string.Template(TEMPLATE).substitute(l)
         js_template = json.loads(template)
         containers = js_template["spec"]["template"]["spec"]["containers"]
         containers[0]['args'] = args

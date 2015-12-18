@@ -36,7 +36,7 @@ POD_TEMPLATE = """\
 }
 """
 
-RCD_TEMPLATE = """\
+RC_TEMPLATE = """\
 {
   "kind": "ReplicationController",
   "apiVersion": "$version",
@@ -70,69 +70,6 @@ RCD_TEMPLATE = """\
             "name": "$containername",
             "image": "$image",
             "env": [
-            {
-                "name":"DEIS_APP",
-                "value":"$id"
-            },
-            {
-                "name":"DEIS_RELEASE",
-                "value":"$appversion"
-            }
-            ]
-          }
-        ]
-      }
-    }
-  }
-}
-"""
-
-RCB_TEMPLATE = """\
-{
-  "kind": "ReplicationController",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$name",
-    "labels": {
-      "app": "$id",
-      "heritage": "deis"
-    }
-  },
-  "spec": {
-    "replicas": $num,
-    "selector": {
-      "app": "$id",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    },
-    "template": {
-      "metadata": {
-        "labels": {
-          "app": "$id",
-          "version": "$appversion",
-          "type": "$type",
-          "heritage": "deis"
-        }
-      },
-      "spec": {
-        "containers": [
-          {
-            "name": "$containername",
-            "image": "quay.io/deisci/slugrunner:v2-alpha",
-            "env": [
-            {
-                "name":"PORT",
-                "value":"5000"
-            },
-            {
-                "name":"SLUG_URL",
-                "value":"$image"
-            },
-            {
-                "name":"DEBUG",
-                "value":"1"
-            },
             {
                 "name":"DEIS_APP",
                 "value":"$id"
@@ -410,35 +347,52 @@ class KubeHTTPClient(AbstractSchedulerClient):
         url = self._api("/namespaces/{}", app_name)
         resp = self.session.get(url)
         self._check_status(resp, app_name)
-        num = kwargs.get('num', {})
         imgurl = self.registry + "/" + image
-        TEMPLATE = RCD_TEMPLATE
+
+        data = {}
+        # Extend the original template
         shalen = len(image[image.index(":")+5:])
         if image[image.index(":")+1:image.index(":")+4] == "git" and shalen == 8:
-            imgurl = "http://"+settings.S3EP+"/git/home/"+image+"/slug"
-            TEMPLATE = RCB_TEMPLATE
-        l = {
+            imgurl = "quay.io/deisci/slugrunner:v2-alpha"
+            data = {'spec': {'template': {'spec': {'env': [
+                {
+                    "name": "PORT",
+                    "value": "5000"
+                }, {
+                    "name": "SLUG_URL",
+                    "value": "http://"+settings.S3EP+"/git/home/"+image+"/slug"
+                }, {
+                    "name": "DEBUG",
+                    "value": "1"
+                }
+            ]}}}}
+
+        num = kwargs.get('num', {})
+        js_template = json.loads(string.Template(RC_TEMPLATE).substitute({
             "name": name,
             "id": app_name,
             "appversion": kwargs.get("version", {}),
             "version": self.apiversion,
             "image": imgurl,
-            "num": kwargs.get("num", {}),
+            "num": num,
             "containername": container_name,
             "type": app_type,
-        }
-        template = string.Template(TEMPLATE).substitute(l)
-        js_template = json.loads(template)
+        }))
+        js_template = dict_merge(js_template, data)
+
         containers = js_template["spec"]["template"]["spec"]["containers"]
         containers[0]['args'] = args
         loc = locals().copy()
         loc.update(re.match(MATCH, container_fullname).groupdict())
+
+        # Figure out envs, cpu and memory information
         mem = kwargs.get('memory', {}).get(loc['c_type'])
         cpu = kwargs.get('cpu', {}).get(loc['c_type'])
         env = kwargs.get('envs', {})
         if env:
             for k, v in env.iteritems():
                 containers[0]["env"].append({"name": k, "value": v})
+
         if mem or cpu:
             containers[0]["resources"] = {"limits": {}}
 
@@ -452,11 +406,15 @@ class KubeHTTPClient(AbstractSchedulerClient):
         if cpu:
             cpu = float(cpu)/1024
             containers[0]["resources"]["limits"]["cpu"] = cpu
+
+        # Create RC
         url = self._api("/namespaces/{}/replicationcontrollers", app_name)
         resp = self.session.post(url, json=js_template)
         if unhealthy(resp.status_code):
             error(resp, 'create ReplicationController "{}" in Namespace "{}"',
                   name, app_name)
+
+        # Wait until RC is ready
         create = False
         for _ in xrange(30):
             if not create and self._get_rc_status(name, app_name) == 404:

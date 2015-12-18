@@ -497,7 +497,6 @@ class App(UuidAuditedModel):
             logger.error("Error accessing deis-logger: GET {} returned a {} status code"
                          .format(url, r.status_code))
             raise EnvironmentError('Error accessing deis-logger')
-
         # cast content to string since it comes as bytes via the requests object
         return str(r.content)
 

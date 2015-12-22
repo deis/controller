@@ -5,7 +5,6 @@ import re
 import string
 import time
 import urlparse
-import base64
 
 from django.conf import settings
 from docker import Client
@@ -546,18 +545,22 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
+    def _get_secret(self, namespace, secretname):
+        url = self._api("/namespaces/{}/secrets/{}", namespace, secretname)
+        resp = self.session.get(url)
+        if unhealthy(resp.status_code):
+            error(resp, 'get secret "{}" in Namespace "{}"', secretname, namespace)
+
+        return resp.json()
+
     def _create_secret(self, namespace):
-        secretId, secretKey = '', ''
-        with open("/var/run/secrets/deis/minio/user/access-key-id") as the_file:
-            secretId = the_file.read()
-        with open("/var/run/secrets/deis/minio/user/access-secret-key") as the_file:
-            secretKey = the_file.read()
-        Key, Id = base64.b64encode(secretKey), base64.b64encode(secretId)
+        secret = self._get_secret("deis", "minio-user")
+        secretId, secretKey = secret["data"]["access-key-id"], secret["data"]["access-secret-key"]
         l = {
             "version": self.apiversion,
             "id": namespace,
-            "secretId": Id,
-            "secretKey": Key,
+            "secretId": secretId,
+            "secretKey": secretKey,
             }
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute(l))
         url = self._api("/namespaces/{}/secrets", namespace)

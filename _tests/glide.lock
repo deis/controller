@@ -1,0 +1,10 @@
+hash: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+updated: 2015-12-22T16:20:42.781138-08:00
+imports:
+- name: github.com/golang/protobuf
+  version: 68415e7123da32b07eab49c96d2c4d6158360e9b
+- name: github.com/onsi/ginkgo
+  version: e43390e35a4a88f3f95d5ddf9055efb7a1170469
+- name: github.com/onsi/gomega
+  version: 0fe204460da2c8fa1babcaac196e694de8f1aaa1
+devImports: []

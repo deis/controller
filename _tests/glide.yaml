@@ -1,0 +1,4 @@
+package: github.com/deis/workflow/_tests
+import:
+  - package: github.com/onsi/ginkgo
+  - package: github.com/onsi/gomega

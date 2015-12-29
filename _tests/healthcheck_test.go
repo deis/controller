@@ -31,6 +31,9 @@ var _ = Describe("Healthcheck", func() {
 		})
 
 		It("can stay running during a scale event", func() {
+			router, err := getRawRouter()
+			Expect(err).To(BeNil())
+			appURLStr := fmt.Sprintf("%s://%s.%s", router.Scheme, appName, router.Host)
 			stopCh := make(chan struct{})
 			doneCh := make(chan struct{})
 

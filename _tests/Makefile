@@ -25,7 +25,7 @@ test-integration:
 build:
 	${DEV_CMD} ginkgo build -race -r
 
-docker-build:
+docker-build: build
 	docker build -t ${IMAGE} ${CURDIR}
 
 docker-test-integration:

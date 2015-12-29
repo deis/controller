@@ -13,6 +13,7 @@ import (
 var _ = Describe("Healthcheck", func() {
 	appName := getRandAppName()
 	Context("with a deployed app", func() {
+		// create and deploy an app
 		BeforeEach(func() {
 			login(url, testUser, testPassword)
 			sess, err := start("deis apps:create %s", appName)
@@ -25,6 +26,7 @@ var _ = Describe("Healthcheck", func() {
 			Eventually(sess).Should(gbytes.Say("Creating build... done"))
 		})
 
+		// destroy the app
 		AfterEach(func() {
 			sess, err := start("deis apps:destroy --confirm=%s", appName)
 			Expect(err).To(BeNil())

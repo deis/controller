@@ -28,7 +28,8 @@ func init() {
 }
 
 func getRandAppName() string {
-	return fmt.Sprintf("apps-test-%d", rand.Int())
+	// limit app names to 24 characters
+	return fmt.Sprintf("apps-test-%d", rand.Intn(99999999999999))
 }
 
 func TestTests(t *testing.T) {

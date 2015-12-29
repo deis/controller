@@ -47,8 +47,7 @@ var _ = Describe("Healthcheck", func() {
 			for i := 0; i < 10; i++ {
 				// start the scale operation. waits until the last scale op has finished
 				stopCh <- struct{}{}
-				// TODO: this is the wrong URL. It points to $APP_NAME.$CONTROLLER. We need the URL to the router so we can point to $APP_NAME.$ROUTER instead.
-				resp, err := http.Get(fmt.Sprintf("%s.%s", appName, url))
+				resp, err := http.Get(appURLStr)
 				Expect(err).To(BeNil())
 				Expect(resp.StatusCode).To(BeEquivalentTo(http.StatusOK))
 			}

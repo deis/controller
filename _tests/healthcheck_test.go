@@ -19,6 +19,10 @@ var _ = Describe("Healthcheck", func() {
 			Expect(err).To(BeNil())
 			Eventually(sess).Should(gexec.Exit(0))
 			Eventually(sess).Should(gbytes.Say("Creating Application... done, created %s", appName))
+			sess, err = start("deis pull deis/example-go -a %s", appName)
+			Expect(err).To(BeNil())
+			Eventually(sess).Should(gexec.Exit(0))
+			Eventually(sess).Should(gbytes.Say("Creating build... done"))
 		})
 
 		AfterEach(func() {

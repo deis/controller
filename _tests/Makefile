@@ -28,5 +28,8 @@ build:
 docker-build: build
 	docker build -t ${IMAGE} ${CURDIR}
 
+docker-push:
+	docker push ${IMAGE}
+
 docker-test-integration:
 	docker run -e DEIS_WORKFLOW_SERVICE_HOST=${DEIS_WORKFLOW_SERVICE_HOST} ${IMAGE}

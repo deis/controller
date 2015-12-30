@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -20,6 +21,12 @@ import (
 const (
 	deisWorkflowServiceHost = "DEIS_WORKFLOW_SERVICE_HOST"
 	deisWorkflowServicePort = "DEIS_WORKFLOW_SERVICE_PORT"
+	deisRouterServiceHost   = "DEIS_ROUTER_SERVICE_HOST"
+	deisRouterServicePort   = "DEIS_ROUTER_SERVICE_PORT"
+)
+
+var (
+	errMissingRouterHostEnvVar = fmt.Errorf("missing %s", deisRouterServiceHost)
 )
 
 func init() {
@@ -183,5 +190,24 @@ $ %s=deis.10.245.1.3.xip.io make test-integration`, deisWorkflowServiceHost, dei
 		return "http://" + host
 	default:
 		return fmt.Sprintf("http://%s:%s", host, port)
+	}
+}
+
+// getRawRouter returns the URL to the deis router according to env vars.
+//
+// Returns an error if the minimal env vars are missing, or there was an error creating a URL from them.
+func getRawRouter() (*url.URL, error) {
+	host := os.Getenv(deisRouterServiceHost)
+	if host == "" {
+		return nil, errMissingRouterHostEnvVar
+	}
+	portStr := os.Getenv(deisRouterServicePort)
+	switch portStr {
+	case "443":
+		return url.Parse(fmt.Sprintf("https://%s", host))
+	case "80", "":
+		return url.Parse(fmt.Sprintf("http://%s", host))
+	default:
+		return url.Parse(fmt.Sprintf("http://%s:%s", host, portStr))
 	}
 }

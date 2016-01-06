@@ -1,7 +1,6 @@
 import os
 
 # security keys and auth tokens
-SECRET_KEY = '{{ getv "/deis/controller/secretKey" }}'
 BUILDER_KEY = '{{ getv "/deis/controller/builderKey" }}'
 
 # scheduler settings

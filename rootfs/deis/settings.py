@@ -288,7 +288,6 @@ SCHEDULER_AUTH = None
 SCHEDULER_OPTIONS = None
 
 # security keys and auth tokens
-SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi')
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi')
 
 # registry settings

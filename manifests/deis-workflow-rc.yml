@@ -65,4 +65,3 @@ spec:
         - name: builder-key-auth
           secret:
             secretName: builder-key-auth
-

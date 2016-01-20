@@ -12,4 +12,5 @@ from api.views import HealthCheckView
 urlpatterns = [
     url(r'^health-check$', HealthCheckView.as_view()),
     url(r'^v2/', include('api.urls')),
+    url(r'^docs/?', include('rest_framework_swagger.urls')),
 ]

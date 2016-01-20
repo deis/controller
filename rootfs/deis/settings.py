@@ -139,7 +139,9 @@ INSTALLED_APPS = (
     'rest_framework.authtoken',
     'corsheaders',
     # Deis apps
-    'api'
+    'api',
+    # Docs
+    'rest_framework_swagger',
 )
 
 AUTHENTICATION_BACKENDS = (

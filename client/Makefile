@@ -12,7 +12,7 @@ DIST_DIR := _dist
 GO_FILES = $(wildcard *.go)
 GO_PACKAGES = cmd controller/api controller/client $(wildcard controller/models/*) parser $(wildcard pkg/*)
 GO_PACKAGES_REPO_PATH = $(addprefix $(repo_path)/,$(GO_PACKAGES))
-GOFMT = gofmt -e -l -s
+GOFMT = gofmt -e -l -s -d
 GOTEST = go test --cover --race -v
 
 VERSION ?= $(shell git rev-parse --short HEAD)

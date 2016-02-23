@@ -1,0 +1,52 @@
+# Summary of Changes
+
+Please explain what this PR changes, and include what unit tests you've written (we hope you wrote tests!)
+
+# Issue(s) that this PR Closes
+
+Please list the issue(s) that this PR closes, similar to the below:
+
+closes #1234
+closes #5678
+
+# Associated [End To End Test](https://github.com/deis/workflow-e2e) PR(s)
+
+If your change requires any additions or changes to the [end to end tests](https://github.com/deis/workflow-e2e), please submit them as 1 or more pull requests against that repo and refer to them here.
+
+refs deis/workflow-e2e#1234
+refs deis/workflow-e2e#5678
+
+# Associated [Documentation](https://github.com/deis/workflow) PR(s)
+
+If your change requires any additions or changes to the [official documentation](https://github.com/deis/workflow), please submit them as 1 or more pull requests against that repo and refer to them here.
+
+refs deis/workflow#1234
+refs deis/workflow#5678
+
+# Associated [Design Document](http://docs.deis.io/en/latest/contributing/design-documents)(s)
+
+If your change was inspired by 1 or more design document(s), please provide a list of links to them here.
+
+# Testing Instructions
+
+Please provide a detailed list for how to test the changes in this PR.
+
+1. Create a Deis Cluster
+2. Register an app
+3. Your steps here
+
+Also, please provide a description of the desired result after the tester completes the above steps.
+
+1. The app called "abcd" should be deployed
+2. `kubectl get pod --namespace=abcd` should show 2 pods running
+3. etc.
+
+# Pull Request Hygiene TODOs
+
+Please make sure the below checklist is complete.
+
+- [ ] Your pull request is concise and to the point (make another PR for refactoring nearby code)
+- [ ] Your commits are squashed into logical units of work
+- [ ] Your commits follow the [commit style guidelines](http://docs.deis.io/en/latest/contributing/standards/#commit-style-guide)
+
+:cherry_blossom: Thank you! :cherry_blossom:

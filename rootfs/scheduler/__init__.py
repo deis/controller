@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import string
 import time
@@ -320,14 +321,21 @@ class KubeHTTPClient(AbstractSchedulerClient):
             count = 1
             while desired >= count:
                 logger.debug('scaling release {} to {} out of final {}'.format(
-                    new_rc["metadata"]["name"], count, desired)
-                )
+                    new_rc["metadata"]["name"], count, desired
+                ))
                 self._scale_rc(new_rc["metadata"]["name"], app_name, count)
+                logger.debug('scaled up pod number {} for {}'.format(
+                    count, new_rc["metadata"]["name"]
+                ))
+
                 if old_rc:
                     logger.debug('scaling old release {} from {} to {}'.format(
                         old_rc["metadata"]["name"], desired, (desired-count))
                     )
                     self._scale_rc(old_rc["metadata"]["name"], app_name, (desired-count))
+                    logger.debug('scaled down pod number {} for {}'.format(
+                        count, old_rc["metadata"]["name"]
+                    ))
 
                 count += 1
         except Exception as e:
@@ -359,6 +367,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         try:
             self._scale_rc(name, app_name, num)
         except Exception as e:
+            logger.debug("Scaling failed because of: {}".format(str(e)))
             self._scale_rc(name, app_name, old_replicas)
             raise RuntimeError('{} (Scale): {}'.format(name, e))
 
@@ -524,17 +533,42 @@ class KubeHTTPClient(AbstractSchedulerClient):
         url = "/api/{}".format(self.apiversion) + tmpl.format(*args)
         return urljoin(self.url, url)
 
-    # EVENTS #
+    def _selectors(self, **kwargs):
+        query = {}
 
-    def _get_events(self, namespace):
-        url = self._api("/namespaces/{}/events", namespace)
-        resp = self.session.get(url)
-        if unhealthy(resp.status_code):
-            error(resp, "get Events in Namespace {}", namespace)
+        # labels and fields are encoded slightly differently than python-requests can do
+        labels = kwargs.get('labels', {})
+        if labels:
+            # http://kubernetes.io/v1.1/docs/user-guide/labels.html#list-and-watch-filtering
+            labels = ['{}={}'.format(key, value) for key, value in labels.items()]
+            query['labelSelector'] = ','.join(labels)
 
-        return resp.status_code, resp.text, resp.reason
+        fields = kwargs.get('fields', {})
+        if fields:
+            fields = ['{}={}'.format(key, value) for key, value in fields.items()]
+            query['fieldSelector'] = ','.join(fields)
+
+        # Which resource version to start from. Otherwise starts from the beginning
+        resource_version = kwargs.get('resourceVersion', None)
+        if resource_version:
+            query['resourceVersion'] = resource_version
+
+        # If output should pretty print, only True / False allowed
+        pretty = bool(kwargs.get('pretty', False))
+        if pretty:
+            query['pretty'] = pretty
+
+        return query
 
     # NAMESPACE #
+
+    def _get_namespace_events(self, namespace, **kwargs):
+        url = self._api("/namespaces/{}/events", namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            error(response, "get Events in Namespace {}", namespace)
+
+        return response
 
     def _create_namespace(self, app_name):
         url = self._api("/namespaces")
@@ -589,59 +623,72 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return resp.json()
 
-    def _get_schedule_status(self, name, num, namespace):
+    def _get_schedule_status(self, namespace, name, current, desired, resource_version):  # noqa
+        if int(desired) > int(current):
+            # new pods are going to be scheduled
+            component = 'scheduler'
+            reason = 'Scheduled'
+            # events endpoints will return *all* scheduled pods
+            state_count = desired
+        else:
+            # pods will be deleted
+            component = 'kubelet'
+            reason = 'Killing'
+            # only the delta should be found in a particular state
+            state_count = current - desired
+
+        # always get the highest value so all pods are processed
+        ready_desired = desired if int(desired) > int(current) else current
+        logger.debug("waiting for {} pods to be processed in {} namespace to be known by the k8s api (120s timeout)".format(ready_desired, namespace))  # noqa
         pods = []
-        for _ in range(120):
+        for waited in range(120):
             count = 0
-            pods = self._get_pods(namespace)
-            parsed_json = pods.json()
             pods = []
+            parsed_json = self._get_pods(namespace).json()
             for pod in parsed_json['items']:
                 if pod['metadata']['generateName'] == name+'-':
                     count += 1
                     pods.append(pod['metadata']['name'])
 
-            if count == num:
+            if count == ready_desired:
                 break
+
+            if waited > 0 and (waited % 10) == 0:
+                logger.debug("waited {}s and {} pods are found ".format(waited, count))
 
             time.sleep(1)
 
-        for _ in range(120):
-            count = 0
-            status, data, reason = self._get_events(namespace)
-            parsed_json = json.loads(data)
-            for event in parsed_json['items']:
-                if(event['involvedObject']['name'] in pods and
-                   event['source']['component'] == 'scheduler'):
-                    if event['reason'] == 'Scheduled':
-                        count += 1
-                    else:
-                        raise RuntimeError(event['message'])
+        logger.debug("{} out of {} pods to be processed in namespace {} were found".format(count, ready_desired, namespace))  # noqa
 
-            if count == num:
+        logger.debug("waiting for {} pods to get to state {} in {} namespace (120s timeout)".format(state_count, reason, namespace))  # noqa
+        for waited in range(120):
+            waiting_pods = []
+            # TODO Too many objects returned for this... look for alternative
+            events = self._get_namespace_events(namespace, resourceVersion=resource_version).json()
+            for event in events['items']:
+                if (
+                    event['involvedObject']['name'] in pods and
+                    event['source']['component'] == component and
+                    event['reason'] == reason and
+                    event['involvedObject']['name'] not in waiting_pods
+                ):
+                    # certain reasons, like Killing, can happen many times per pod
+                    waiting_pods.append(event['involvedObject']['name'])
+
+            if len(waiting_pods) == state_count:
                 break
+
+            if waited > 0 and (waited % 10) == 0:
+                logger.debug("waited {}s and {} pods are in state {}".format(waited, len(waiting_pods), reason))  # noqa
 
             time.sleep(1)
 
-    def _scale_rc(self, name, namespace, num):
-        rc = self._get_rc(name, namespace)
-        rc["spec"]["replicas"] = num
+        logger.debug("{} out of {} pods in namespace {} are in state {}".format(len(waiting_pods), state_count, namespace, reason))  # noqa
 
-        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        resp = self.session.put(url, json=rc)
-        if unhealthy(resp.status_code):
-            error(resp, 'scale ReplicationController "{}"', name)
-
-        resource_ver = rc['metadata']['resourceVersion']
-        for _ in range(30):
-            js_template = self._get_rc(name, namespace)
-            if js_template["metadata"]["resourceVersion"] != resource_ver:
-                break
-
-            time.sleep(1)
-
-        self._get_schedule_status(name, num, namespace)
-        for _ in range(120):
+    def _get_pod_ready_status(self, namespace, name, num):
+        # Ensure the minimum desired number of pods are available
+        logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(num, namespace))  # noqa
+        for waited in range(120):
             count = 0
             pods = self._get_pods(namespace).json()
             for pod in pods['items']:
@@ -659,7 +706,58 @@ class KubeHTTPClient(AbstractSchedulerClient):
             if count == num:
                 break
 
+            if waited > 0 and (waited % 10) == 0:
+                logger.debug("waited {}s and {} pods are in service".format(waited, count))
+
             time.sleep(1)
+
+        logger.debug("{} out of {} pods in namespace {} are in service".format(count, num, namespace))  # noqa
+
+    def _scale_rc(self, name, namespace, desired):
+        rc = self._get_rc(name, namespace)
+
+        # get the current replica count by querying for pods instead of introspecting RC
+        labels = {
+            'app': rc['spec']['selector']['app'],
+            'type': rc['spec']['selector']['type'],
+            'version': rc['spec']['selector']['version']
+        }
+        current = len(self._get_pods(namespace, labels=labels).json()['items'])
+
+        # Set the new desired replica count
+        rc['spec']['replicas'] = desired
+
+        logger.debug("scaling RC {} in namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+
+        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
+        resp = self.session.put(url, json=rc)
+        if unhealthy(resp.status_code):
+            error(resp, 'scale ReplicationController "{}"', name)
+
+        resource_ver = rc['metadata']['resourceVersion']
+        logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
+        for waited in range(30):
+            js_template = self._get_rc(name, namespace)
+            if js_template["metadata"]["resourceVersion"] != resource_ver:
+                break
+
+            if waited > 0 and (waited % 10) == 0:
+                logger.debug("waited {}s so far for a new resource version".format(waited))
+
+            time.sleep(1)
+
+        logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
+
+        # figure out the schedule state
+        self._get_schedule_status(
+            namespace,
+            name,
+            current,
+            desired,
+            js_template['metadata']['resourceVersion']
+        )
+
+        self._get_pod_ready_status(namespace, name, desired)
 
     def _create_rc(self, name, image, command, **kwargs):  # noqa
         container_fullname = name
@@ -703,8 +801,18 @@ class KubeHTTPClient(AbstractSchedulerClient):
         env = kwargs.get('envs', {})
 
         if env:
-            for k, v in env.items():
-                containers[0]["env"].append({"name": k, "value": str(v)})
+            for key, value in env.items():
+                containers[0]["env"].append({
+                    "name": key,
+                    "value": str(value)
+                })
+
+        # Inject debugging if workflow is in debug mode
+        if os.environ.get("DEBUG", False):
+            containers[0]["env"].append({
+                "name": "DEBUG",
+                "value": "1"
+            })
 
         if mem or cpu:
             containers[0]["resources"] = {"limits": {}}
@@ -917,23 +1025,8 @@ class KubeHTTPClient(AbstractSchedulerClient):
         return resp.status_code, resp.reason, resp.text
 
     def _get_pods(self, namespace, **kwargs):
-        path = "/namespaces/{}/pods"
-        query = {}
-
-        # labels and fields are encoded slightly differently than python-requests can do
-        labels = kwargs.get('labels', {})
-        if labels:
-            # http://kubernetes.io/v1.1/docs/user-guide/labels.html#list-and-watch-filtering
-            labels = ['{}={}'.format(key, value) for key, value in labels.items()]
-            query['labelSelector'] = ','.join(labels)
-
-        fields = kwargs.get('fields', {})
-        if fields:
-            fields = ['{}={}'.format(key, value) for key, value in fields.items()]
-            query['fieldSelector'] = ','.join(fields)
-
-        url = self._api(path, namespace)
-        response = self.session.get(url, params=query)
+        url = self._api("/namespaces/{}/pods", namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
             error(response, 'get Pods in Namespace "{}"', namespace)
 

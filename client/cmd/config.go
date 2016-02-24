@@ -238,6 +238,7 @@ func parseConfig(configVars []string) map[string]interface{} {
 			configMap[captures[1]] = captures[2]
 		} else {
 			fmt.Printf("'%s' does not match the pattern 'key=var', ex: MODE=test\n", config)
+			os.Exit(1)
 		}
 	}
 

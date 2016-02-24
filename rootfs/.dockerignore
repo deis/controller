@@ -3,7 +3,6 @@
 .dockerignore
 Dockerfile
 Makefile
-docs_requirements.txt
 logs
 venv
 */tests*

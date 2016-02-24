@@ -38,6 +38,6 @@ The [Development Environment][dev-environment] documentation extensively details
 [dco]: DCO
 [issues]: https://github.com/pulls?utf8=%E2%9C%93&q=is%3Aopen+user%3Adeis+user%3Ahelm
 [repos]: https://github.com/deis
-[troubleshooting]: docs/src/troubleshooting/troubleshooting.md
-[dev-environment]: docs/src/contributing/development-environment.md
-[pr]: docs/src/contributing/submitting-a-pull-request.md
+[troubleshooting]: https://github.com/deis/docs-v2/blob/master/src/troubleshooting/troubleshooting.md
+[dev-environment]: https://github.com/deis/docs-v2/blob/master/src/contributing/development-environment.md
+[pr]: https://github.com/deis/docs-v2/blob/master/src/contributing/submitting-a-pull-request.md

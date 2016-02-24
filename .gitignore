@@ -25,9 +25,6 @@ client/deis.exe
 client/*.run
 client/makeself/
 _dist/
-docs/_build/
-docs/docs.zip
-docs/dummy.sqlite3
 manifests/*.tmp.yml
 _tests/_tests.test
 _tests/example-*/

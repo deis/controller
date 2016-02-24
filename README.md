@@ -42,7 +42,7 @@ $ helm install deis/deis
 ```
 
 Complete instructions for installing and managing a Deis cluster are
-available in the [docs folder](https://github.com/deis/workflow/tree/master/docs/src).
+available at https://github.com/deis/docs-v2
 
 If you want to retrieve the latest client dev build for OS X or Linux, download the client:
 

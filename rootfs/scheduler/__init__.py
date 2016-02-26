@@ -580,7 +580,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
             }
         }
         resp = self.session.post(url, json=data)
-        if not resp.status_code == 201:
+        if resp.status_code not in (201, 409):  # created or already exists
             error(resp, "create Namespace {}".format(app_name))
 
     def _check_status(self, resp, app_name):

@@ -121,7 +121,8 @@ func configPull(argv []string) error {
 	usage := `
 Extract all environment variables from an application for local use.
 
-Your environment will be stored locally in a file named .env. This file can be
+The environmental variables can be piped into a file, 'deis config:pull > file',
+or stored locally in a file named .env. This file can be
 read by foreman to load the local environment for your app.
 
 Usage: deis config:pull [options]

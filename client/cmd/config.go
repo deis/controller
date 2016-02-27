@@ -151,14 +151,6 @@ func ConfigUnset(appID string, configVars []string) error {
 
 // ConfigPull pulls an app's config to a file.
 func ConfigPull(appID string, interactive bool, overwrite bool) error {
-	filename := ".env"
-
-	if !overwrite {
-		if _, err := os.Stat(filename); err == nil {
-			return fmt.Errorf("%s already exists, pass -o to overwrite", filename)
-		}
-	}
-
 	c, appID, err := load(appID)
 
 	if err != nil {
@@ -166,6 +158,29 @@ func ConfigPull(appID string, interactive bool, overwrite bool) error {
 	}
 
 	configVars, err := config.List(c, appID)
+
+	if err != nil {
+		return err
+	}
+
+	stat, err := os.Stdout.Stat()
+
+	if err != nil {
+		return err
+	}
+
+	if (stat.Mode() & os.ModeCharDevice) == 0 {
+		fmt.Print(formatConfig(configVars.Values))
+		return nil
+	}
+
+	filename := ".env"
+
+	if !overwrite {
+		if _, err := os.Stat(filename); err == nil {
+			return fmt.Errorf("%s already exists, pass -o to overwrite", filename)
+		}
+	}
 
 	if interactive {
 		contents, err := ioutil.ReadFile(filename)

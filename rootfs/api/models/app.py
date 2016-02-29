@@ -18,7 +18,7 @@ from api.models.config import Config
 from api.models.container import Container
 from api.models.domain import Domain
 
-from scheduler import KubeException
+from scheduler import KubeHTTPException, KubeException
 
 logger = logging.getLogger(__name__)
 
@@ -551,7 +551,7 @@ class App(UuidAuditedModel):
             data.sort(key=lambda x: x['started'], reverse=True)
 
             return data
-        except KubeException as e:
+        except KubeHTTPException as e:
             pass
         except Exception as e:
             err = '(list pods): {}'.format(e)

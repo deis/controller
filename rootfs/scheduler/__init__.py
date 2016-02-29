@@ -264,14 +264,25 @@ MATCH = re.compile(
 
 class KubeException(Exception):
     def __init__(self, *args, **kwargs):
-        self.response = kwargs.pop('response', object)
         Exception.__init__(self, *args, **kwargs)
 
 
-def error(resp, errmsg, *args):
+class KubeHTTPException(KubeException):
+    def __init__(self, *args, **kwargs):
+        self.response = kwargs.pop('response', object)
+        KubeException.__init__(self, *args, **kwargs)
+
+
+def error(response, errmsg, *args):
     errmsg = errmsg.format(*args)
-    errmsg = "failed to {}: {} {}\n{}".format(errmsg, resp.status_code, resp.reason, resp.json())
-    raise KubeException(errmsg, response=resp)
+    errmsg = "failed to {}: {} {}\n{}".format(
+        errmsg,
+        response.status_code,
+        response.reason,
+        response.json()
+    )
+
+    raise KubeHTTPException(errmsg, response=response)
 
 
 def unhealthy(status_code):
@@ -1076,7 +1087,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         for _ in range(30):
             try:
                 self._get_pod(name, namespace)
-            except KubeException as e:
+            except KubeHTTPException as e:
                 if e.response.status_code == 404:
                     break
 
@@ -1085,7 +1096,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         # Pod was not deleted within the grace period.
         try:
             self._get_pod(name, namespace)
-        except KubeException as e:
+        except KubeHTTPException as e:
             if e.response.status_code != 404:
                 error(e.response, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 

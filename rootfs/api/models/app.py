@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import re
 import requests
@@ -538,7 +539,11 @@ class App(UuidAuditedModel):
                 item['state'] = self._scheduler.resolve_state(p).name
                 item['release'] = p['metadata']['labels']['version']
                 item['type'] = p['metadata']['labels']['type']
-                item['started'] = p['status']['startTime']
+                if 'startTime' in p['status']:
+                    started = p['status']['startTime']
+                else:
+                    started = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
+                item['started'] = started
 
                 data.append(item)
 

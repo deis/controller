@@ -517,16 +517,31 @@ class KubeHTTPClient(AbstractSchedulerClient):
             return JobState.error
 
     def resolve_state(self, pod):
+        if pod is None:
+            return JobState.destroyed
+
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
         states = {
-            "Pending": JobState.initialized,
-            "Running": JobState.up,
-            "Succeeded": JobState.down,
-            "Failed": JobState.crashed,
-            "Unknown": JobState.error,
+            'Pending': JobState.initialized,
+            'Starting': JobState.starting,
+            'Running': JobState.up,
+            'Terminating': JobState.terminating,
+            'Succeeded': JobState.down,
+            'Failed': JobState.crashed,
+            'Unknown': JobState.error,
         }
 
-        return states[pod["status"]["phase"]]
+        # being in a running state can mean a pod is starting, actually running or terminating
+        if pod['status']['phase'] == 'Running':
+            # is the readiness probe passing?
+            container_status = self._pod_readiness_status(pod)
+            if container_status in ['Starting', 'Terminating']:
+                return states[container_status]
+            elif container_status == 'Running' and self._pod_liveness_status(pod):
+                # is the pod ready to serve requests?
+                return states[container_status]
+
+        return states[pod['status']['phase']]
 
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
@@ -685,9 +700,12 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         logger.debug("{} out of {} pods in namespace {} are in state {}".format(len(waiting_pods), state_count, namespace, reason))  # noqa
 
-    def _get_pod_ready_status(self, namespace, name, num):
-        # Ensure the minimum desired number of pods are available
-        logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(num, namespace))  # noqa
+        # if it was a scale down operation, wait until terminating pods are done
+        if reason == 'Killing':
+            self._wait_until_pods_terminate(namespace, name, state_count)
+
+    def _wait_until_pods_terminate(self, namespace, name, desired):
+        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(desired, namespace))  # noqa
         for waited in range(120):
             count = 0
             pods = self._get_pods(namespace).json()
@@ -697,13 +715,44 @@ class KubeHTTPClient(AbstractSchedulerClient):
                     pod['metadata']['generateName'] == name+'-' and
                     pod['status']['phase'] == 'Running' and
                     # is the readiness probe passing?
-                    self._pod_readiness_status(pod, name) and
+                    self._pod_readiness_status(pod) == 'Terminating'
+                ):
+                    count += 1
+
+            # stop when all pods are terminated as expected
+            if count == 0:
+                break
+
+            if waited > 0 and (waited % 10) == 0:
+                logger.debug("waited {}s and {} pods out of {} are fully terminated".format(waited, (desired - count), desired))  # noqa
+
+            time.sleep(1)
+
+        logger.debug("{} pods in namespace {} are terminated".format(desired, namespace))  # noqa
+
+    def _get_pod_ready_status(self, namespace, name, desired):
+        # If desired is 0 then there is no ready state to check on
+        if desired == 0:
+            return
+
+        # Ensure the minimum desired number of pods are available
+        logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(desired, namespace))  # noqa
+        for waited in range(120):
+            count = 0
+            pods = self._get_pods(namespace).json()
+            for pod in pods['items']:
+                # now that state is running time to see if probes are passing
+                if (
+                    pod['metadata']['generateName'] == name+'-' and
+                    pod['status']['phase'] == 'Running' and
+                    # is the readiness probe passing?
+                    self._pod_readiness_status(pod) == 'Running' and
                     # is the pod ready to serve requests?
                     self._pod_liveness_status(pod)
                 ):
                     count += 1
 
-            if count == num:
+            if count == desired:
                 break
 
             if waited > 0 and (waited % 10) == 0:
@@ -711,7 +760,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
             time.sleep(1)
 
-        logger.debug("{} out of {} pods in namespace {} are in service".format(count, num, namespace))  # noqa
+        logger.debug("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
 
     def _scale_rc(self, name, namespace, desired):
         rc = self._get_rc(name, namespace)
@@ -757,6 +806,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
             js_template['metadata']['resourceVersion']
         )
 
+        # Double check enough pods are in the required state to service the application
         self._get_pod_ready_status(namespace, name, desired)
 
     def _create_rc(self, name, image, command, **kwargs):  # noqa
@@ -948,7 +998,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         url = self._api("/namespaces/{}/secrets", namespace)
         response = self.session.post(url, json=template)
-        logger.critical(response)
         if unhealthy(response.status_code):
             error(response, 'failed to create secret "{}" in Namespace "{}"', name, namespace)
 
@@ -1063,14 +1112,22 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return resp.status_code, resp.text, resp.reason
 
-    def _pod_readiness_status(self, pod, name):
+    def _pod_readiness_status(self, pod):
         """Check if the pod container have passed the readiness probes"""
+        name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         for container in pod['status']['containerStatuses']:
             # find the right container in case there are many on the pod
-            if container['name'] == name and not container['ready']:
-                return False
+            if container['name'] == name:
+                if not container['ready']:
+                    if 'running' in container['state']:
+                        return 'Starting'
+                    elif 'terminated' in container['state']:
+                        return 'Terminating'
+                else:
+                    return 'Running'
 
-        return True
+        # Seems like the most sensible default
+        return 'Unknown'
 
     def _pod_liveness_status(self, pod):
         """Check if the pods liveness probe status has passed all checks"""

@@ -528,6 +528,21 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return states[pod['status']['phase']]
 
+    def _get_port(self, image):
+        try:
+            image = self.registry + '/' + image
+            repo = image.split(":")
+            # image already includes the tag, so we split it out here
+            docker_cli = Client(version="auto")
+            docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
+            image_info = docker_cli.inspect_image(image)
+            port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
+        except Exception:
+            logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
+            port = 5000
+
+        return port
+
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
         url = "/api/{}".format(self.apiversion) + tmpl.format(*args)
@@ -1007,23 +1022,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
         return response
 
     def _create_service(self, name, app_name, app_type, data={}, **kwargs):
-        docker_cli = Client(version="auto")
-        image = kwargs.get('image')
-        try:
-            image = self.registry + '/' + image
-            repo = image.split(":")
-            # image already includes the tag, so we split it out here
-            docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-            image_info = docker_cli.inspect_image(image)
-            port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-        except:
-            port = 5000
+        port = self._get_port(kwargs.get('image'))
         l = {
             "version": self.apiversion,
             "port": port,
             "type": app_type,
             "name": app_name,
         }
+
         # Merge external data on to the prefined template
         template = json.loads(string.Template(SERVICE_TEMPLATE).substitute(l))
         data = dict_merge(template, data)

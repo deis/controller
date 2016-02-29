@@ -420,21 +420,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
         elif resp.status_code != 200:
             error(resp, 'delete Namespace "{}"', namespace)
 
-    def logs(self, name):
-        logger.debug("logs {}".format(name))
-        app_name = name.split('_')[0]
-        name = name.replace('.', '-').replace('_', '-')
-        pods = self._get_pods(app_name)
-        parsed_json = pods.json()
-        log_data = ''
-        for pod in parsed_json['items']:
-            # FIXME: a pod can be running without being in ready state
-            if name in pod['metadata']['generateName'] and pod['status']['phase'] == 'Running':
-                status, data, reason = self._pod_log(pod['metadata']['name'], app_name)
-                log_data += data
-
-        return log_data
-
     def run(self, name, image, entrypoint, command):
         """Run a one-off command."""
         logger.debug('run {}, img {}, entrypoint {}, cmd "{}"'.format(

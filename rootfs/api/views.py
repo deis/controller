@@ -307,7 +307,8 @@ class ConfigViewSet(ReleasableViewSet):
         release = config.app.release_set.latest()
         self.release = release.new(self.request.user, config=config, build=release.build)
         try:
-            config.app.deploy(self.request.user, self.release)
+            if self.release.build is not None:
+                config.app.deploy(self.request.user, self.release)
         except RuntimeError:
             self.release.delete()
             raise

@@ -13,8 +13,10 @@ class TransitionError(Exception):
 class JobState(enum.Enum):
     initialized = 1
     created = 2
-    up = 3
-    down = 4
-    destroyed = 5
-    crashed = 6
-    error = 7
+    starting = 3
+    up = 4
+    terminating = 5
+    down = 6
+    destroyed = 7
+    crashed = 8
+    error = 9

@@ -461,7 +461,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
                 status, reason, data = self._get_pod(name, appname)
                 parsed_json = json.loads(data)
                 if parsed_json['status']['phase'] == 'Succeeded':
-                    status, data, reason = self._pod_log(name, appname)
+                    data = self._pod_log(appname, name).text
                     self._delete_pod(name, appname)
                     return 0, data
                 if parsed_json['status']['phase'] == 'Running':
@@ -570,6 +570,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
+    def _get_namespace(self, namespace):
+        url = self._api("/namespaces/{}/", namespace)
+        response = self.session.get(url)
+        if unhealthy(response.status_code):
+            error(response, 'get Namespace "{}"', namespace)
+
+        return response
+
     def _create_namespace(self, app_name):
         url = self._api("/namespaces")
         data = {
@@ -600,8 +608,12 @@ class KubeHTTPClient(AbstractSchedulerClient):
         exists = False
         prev_rc = []
         for rc in resp.json()['items']:
-            if('app' in rc['spec']['selector'] and name == rc['metadata']['labels']['app'] and
-               'type' in rc['spec']['selector'] and app_type == rc['spec']['selector']['type']):
+            if (
+                'app' in rc['spec']['selector'] and
+                name == rc['metadata']['labels']['app'] and
+                'type' in rc['spec']['selector'] and
+                app_type == rc['spec']['selector']['type']
+            ):
                 exists = True
                 prev_rc = rc
                 break
@@ -622,6 +634,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
             error(resp, 'get ReplicationController "{}" in Namespace "{}"', name, namespace)
 
         return resp.json()
+
+    def _get_rcs(self, namespace, **kwargs):
+        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            error(response, 'get ReplicationControllers in Namespace "{}"', namespace)
+
+        return response
 
     def _get_schedule_status(self, namespace, name, current, desired, resource_version):  # noqa
         if int(desired) > int(current):
@@ -969,6 +989,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
+    def _get_secrets(self, namespace, **kwargs):
+        url = self._api('/namespaces/{}/secrets', namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            error(response, 'get Secrets in Namespace "{}"', namespace)
+
+        return response
+
     def _create_secret(self, namespace, name, data):
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
@@ -1003,6 +1031,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
         response = self.session.get(url)
         if unhealthy(response.status_code):
             error(response, 'get Service "{}" in Namespace "{}"', name, namespace)
+
+        return response
+
+    def _get_services(self, namespace, **kwargs):
+        url = self._api('/namespaces/{}/services', namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            error(response, 'get Services in Namespace "{}"', namespace)
 
         return response
 
@@ -1089,13 +1125,13 @@ class KubeHTTPClient(AbstractSchedulerClient):
             if e.response.status_code != 404:
                 error(e.response, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
-    def _pod_log(self, name, namespace):
+    def _pod_log(self, namespace, name):
         url = self._api("/namespaces/{}/pods/{}/log", namespace, name)
-        resp = self.session.get(url)
-        if unhealthy(resp.status_code):
-            error(resp, 'get logs for Pod "{}" in Namespace "{}"', name, namespace)
+        response = self.session.get(url)
+        if unhealthy(response.status_code):
+            error(response, 'get logs for Pod "{}" in Namespace "{}"', name, namespace)
 
-        return resp.status_code, resp.text, resp.reason
+        return response
 
     def _pod_readiness_status(self, pod):
         """Check if the pod container have passed the readiness probes"""
@@ -1126,23 +1162,8 @@ class KubeHTTPClient(AbstractSchedulerClient):
     # NODES #
 
     def _get_nodes(self, **kwargs):
-        path = '/nodes'
-        query = {}
-
-        # labels and fields are encoded slightly differently than python-requests can do
-        labels = kwargs.get('labels', {})
-        if labels:
-            # http://kubernetes.io/v1.1/docs/user-guide/labels.html#list-and-watch-filtering
-            labels = ['{}={}'.format(key, value) for key, value in labels.items()]
-            query['labelSelector'] = ','.join(labels)
-
-        fields = kwargs.get('fields', {})
-        if fields:
-            fields = ['{}={}'.format(key, value) for key, value in fields.items()]
-            query['fieldSelector'] = ','.join(fields)
-
-        url = self._api(path)
-        response = self.session.get(url, params=query)
+        url = self._api('/nodes')
+        response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
             error(response, 'get Nodes')
 

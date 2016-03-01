@@ -90,7 +90,7 @@ class App(UuidAuditedModel):
         app = self.id
         release = self.release_set.latest()
         version = "v{}".format(release.version)
-        job_id = "{app}_{version}.{container_type}".format(**locals())
+        job_id = "{app}-{version}-{container_type}".format(**locals())
         return job_id
 
     def _get_command(self, container_type):
@@ -159,7 +159,7 @@ class App(UuidAuditedModel):
         try:
             for pod in pods:
                 # This function verifies the delete. Gives pod 30 seconds
-                self._scheduler._delete_pod(pod['name'], str(self))
+                self._scheduler._delete_pod(self.id, pod['name'])
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
             log_event(self, err, logging.WARNING)
@@ -307,7 +307,6 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'version': version,
-                'aname': self.id,
                 'num': scale_types[scale_type],
                 'app_type': scale_type,
                 'build_type': build_type,
@@ -318,6 +317,7 @@ class App(UuidAuditedModel):
             command = self._get_command(scale_type)
             try:
                 self._scheduler.scale(
+                    namespace=self.id,
                     name=job_id,
                     image=image,
                     command=command,
@@ -418,7 +418,6 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'aname': self.id,
                 'num': 0,
                 'version': version,
                 'app_type': scale_type,
@@ -430,6 +429,7 @@ class App(UuidAuditedModel):
             command = self._get_command(scale_type)
             try:
                 self._scheduler.deploy(
+                    namespace=self.id,
                     name=job_id,
                     image=image,
                     command=command,
@@ -524,9 +524,9 @@ class App(UuidAuditedModel):
 
             # in case a singular pod is requested
             if 'name' in kwargs:
-                pods = [self._scheduler._get_pod(kwargs['name'], str(self), True).json()]
+                pods = [self._scheduler._get_pod(self.id, kwargs['name']).json()]
             else:
-                pods = self._scheduler._get_pods(str(self), labels=labels).json()['items']
+                pods = self._scheduler._get_pods(self.id, labels=labels).json()['items']
 
             data = []
             for p in pods:

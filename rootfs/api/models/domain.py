@@ -58,7 +58,7 @@ class Domain(AuditedModel):
 
         # Deatch cert, updates k8s
         if self.certificate:
-            self.certificate.deatch(domain=str(self.domain))
+            self.certificate.detach(domain=str(self.domain))
 
         # Delete from DB
         return super(Domain, self).delete(*args, **kwargs)

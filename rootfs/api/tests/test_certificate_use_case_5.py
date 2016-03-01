@@ -12,7 +12,7 @@ class CertificateUseCase5Test(TestCase):
 
     """
     Tests creation of 3 domains (one is a wildcard) and 2 SSL certificate (one is a wildcard).
-    Attach each certificate to a matching domain(s) and then deatch.
+    Attach each certificate to a matching domain(s) and then detach.
     """
 
     fixtures = ['tests.json']

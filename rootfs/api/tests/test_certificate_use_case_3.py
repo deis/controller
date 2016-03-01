@@ -12,7 +12,7 @@ class CertificateUseCase3Test(TestCase):
 
     """
     Tests creation of 2 domains and 2 SSL certificate.
-    Attach each certificate to a matching domain and then deatch.
+    Attach each certificate to a matching domain and then detach.
     """
 
     fixtures = ['tests.json']

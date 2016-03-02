@@ -330,7 +330,7 @@ class ContainerViewSet(AppResourceViewSet):
 
     def get_object(self, **kwargs):
         qs = self.get_queryset(**kwargs)
-        return qs.get(num=self.kwargs['num'])
+        return get_object_or_404(qs, num=self.kwargs['num'])
 
     def restart(self, *args, **kwargs):
         try:
@@ -378,7 +378,7 @@ class DomainViewSet(AppResourceViewSet):
 
     def get_object(self, **kwargs):
         qs = self.get_queryset(**kwargs)
-        return qs.get(domain=self.kwargs['domain'])
+        return get_object_or_404(qs, domain=self.kwargs['domain'])
 
 
 class CertificateViewSet(BaseDeisViewSet):
@@ -389,7 +389,7 @@ class CertificateViewSet(BaseDeisViewSet):
     def get_object(self, **kwargs):
         """Retrieve domain certificate by its name"""
         qs = self.get_queryset(**kwargs)
-        return qs.get(name=self.kwargs['name'])
+        return get_object_or_404(qs, name=self.kwargs['name'])
 
     def attach(self, request, *args, **kwargs):
         try:
@@ -430,7 +430,8 @@ class ReleaseViewSet(AppResourceViewSet):
 
     def get_object(self, **kwargs):
         """Get release by version always"""
-        return self.get_queryset(**kwargs).get(version=self.kwargs['version'])
+        qs = self.get_queryset(**kwargs)
+        return get_object_or_404(qs, version=self.kwargs['version'])
 
     def rollback(self, request, **kwargs):
         """

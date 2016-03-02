@@ -42,8 +42,7 @@ bootstrap:
 glideup:
 	${DEV_ENV_CMD} glide up
 
-build:
-	${DEV_ENV_CMD} make binary-build
+build: binary-build
 	@$(call check-static-binary,deis)
 
 build-all:
@@ -53,7 +52,7 @@ build-all:
 	-output="$(DIST_DIR)/deis-${VERSION}-{{.OS}}-{{.Arch}}" .
 
 binary-build:
-	go build -a -installsuffix cgo -ldflags '-s' -o deis .
+	${DEV_ENV_CMD} go build -a -installsuffix cgo -ldflags "-s -X ${repo_path}/version.BuildVersion=${VERSION}" -o deis .
 
 dist: build-all
 

@@ -14,6 +14,7 @@ from django.contrib.postgres.fields import ArrayField
 from api.models import AuditedModel, validate_label, AlreadyExists
 from api.models.domain import Domain
 
+from scheduler import KubeHTTPException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -174,7 +175,7 @@ class Certificate(AuditedModel):
         try:
             # We raise an exception when a secret doesn't exist
             self._scheduler._get_secret(app, name)
-        except RuntimeError:
+        except KubeHTTPException:
             self._scheduler._create_secret(app, name, data)
 
         # get config for the service
@@ -206,7 +207,7 @@ class Certificate(AuditedModel):
             # We raise an exception when a secret doesn't exist
             self._scheduler._get_secret(app, name)
             self._scheduler._delete_secret(app, name)
-        except RuntimeError as e:
+        except KubeHTTPException as e:
             logger.critical(e)
 
         # get config for the service

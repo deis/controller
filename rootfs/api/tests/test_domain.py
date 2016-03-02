@@ -109,6 +109,16 @@ class DomainTest(TestCase):
             )
             self.assertEqual(0, response.data['count'], msg)
 
+    def test_delete_domain_does_not_exist(self):
+        """Remove a domain that does not exist"""
+        url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+
+        url = '/v2/apps/{app_id}/domains/{domain}'.format(domain='test-domain.example.com',
+                                                          app_id=self.app_id)
+        response = self.client.delete(url, content_type='application/json',
+                                      HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 404)
+
     def test_delete_domain_does_not_remove_latest(self):
         """https://github.com/deis/deis/issues/3239"""
         url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)

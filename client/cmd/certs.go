@@ -142,7 +142,7 @@ func CertRemove(name string) error {
 	fmt.Printf("Removing %s... ", name)
 	quit := progress()
 
-	certs.Delete(c, name)
+	err = certs.Delete(c, name)
 
 	quit <- true
 	<-quit
@@ -204,7 +204,7 @@ func CertAttach(name string, domain string) error {
 	fmt.Printf("Attaching certificate %s to domain %s... ", name, domain)
 	quit := progress()
 
-	certs.Attach(c, name, domain)
+	err = certs.Attach(c, name, domain)
 
 	quit <- true
 	<-quit
@@ -227,7 +227,7 @@ func CertDetach(name string, domain string) error {
 	fmt.Printf("Detaching certificate %s from domain %s... ", name, domain)
 	quit := progress()
 
-	certs.Detach(c, name, domain)
+	err = certs.Detach(c, name, domain)
 
 	quit <- true
 	<-quit

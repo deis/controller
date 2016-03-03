@@ -69,7 +69,7 @@ func (c Client) Request(method string, path string, body []byte) (*http.Response
 
 // LimitedRequest allows limiting the number of responses in a request.
 func (c Client) LimitedRequest(path string, results int) (string, int, error) {
-	body, err := c.BasicRequest("GET", path+"?page_size="+strconv.Itoa(results), nil)
+	body, err := c.BasicRequest("GET", path+"?limit="+strconv.Itoa(results), nil)
 
 	if err != nil {
 		return "", -1, err

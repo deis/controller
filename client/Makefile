@@ -12,7 +12,7 @@ endif
 
 DEV_ENV_IMAGE := quay.io/deis/go-dev:0.9.0
 DEV_ENV_WORK_DIR := /go/src/${repo_path}
-DEV_ENV_PREFIX := docker run --rm -e GO15VENDOREXPERIMENT=1 -e CGO_ENABLED=0 -e GOOS=${GOOS} -v ${CURDIR}:${DEV_ENV_WORK_DIR} -w ${DEV_ENV_WORK_DIR}
+DEV_ENV_PREFIX := docker run --rm -e GO15VENDOREXPERIMENT=1 -e CGO_ENABLED=0 -v ${CURDIR}:${DEV_ENV_WORK_DIR} -w ${DEV_ENV_WORK_DIR}
 DEV_ENV_CMD := ${DEV_ENV_PREFIX} ${DEV_ENV_IMAGE}
 DIST_DIR := _dist
 
@@ -59,7 +59,7 @@ build-all:
 	-output="$(DIST_DIR)/deis-${VERSION}-{{.OS}}-{{.Arch}}" .
 
 binary-build:
-	${DEV_ENV_CMD} go build -a -installsuffix cgo -ldflags "-s -X ${repo_path}/version.BuildVersion=${VERSION}" -o deis .
+	${DEV_ENV_PREFIX} -e GOOS=${GOOS} ${DEV_ENV_IMAGE} go build -a -installsuffix cgo -ldflags "-s -X ${repo_path}/version.BuildVersion=${VERSION}" -o deis .
 
 dist: build-all
 

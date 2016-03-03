@@ -47,7 +47,7 @@ func (fakeHTTPServer) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if req.URL.Path == "/limited/" && req.Method == "GET" && req.URL.RawQuery == "page_size=2" {
+	if req.URL.Path == "/limited/" && req.Method == "GET" && req.URL.RawQuery == "limit=2" {
 		res.Write([]byte(limitedFixture))
 		return
 	}

@@ -6,6 +6,10 @@ VERSION ?= git-$(shell git rev-parse --short HEAD)
 IMAGE = $(DEIS_REGISTRY)$(IMAGE_PREFIX)/$(COMPONENT):$(VERSION)
 SHELL_SCRIPTS = $(wildcard rootfs/bin/*) $(shell find "rootfs" -name '*.sh') $(wildcard _scripts/*.sh)
 
+# Get the component informtation to a tmp location and get replica count
+$(shell kubectl get rc deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(COMPONENT))
+DESIRED_REPLICAS=$(shell kubectl get -o template rc/deis-$(COMPONENT) --template={{.status.replicas}})
+
 info:
 	@echo "Build tag:  ${VERSION}"
 	@echo "Registry:   ${DEIS_REGISTRY}"
@@ -52,6 +56,11 @@ kube-update: update-manifests
 update-manifests:
 	sed 's#\(image:\) .*#\1 $(IMAGE)#' manifests/deis-workflow-rc.yml \
 		> manifests/deis-workflow-rc.tmp.yml
+
+deploy: docker-build docker-push
+	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
+	kubectl scale rc deis-workflow --replicas 0 --namespace deis
+	kubectl scale rc deis-workflow --replicas $(DESIRED_REPLICAS) --namespace deis
 
 clean: check-docker
 	docker rmi $(IMAGE)

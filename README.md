@@ -37,8 +37,16 @@ $ helm repo add deis https://github.com/deis/charts
 
 Then, install Deis!
 
+To work off the latest stable
+
 ```console
 $ helm install deis/deis
+```
+
+To work off the latest development version
+
+```console
+$ helm install deis/deis-dev
 ```
 
 Complete instructions for installing and managing a Deis cluster are
@@ -55,16 +63,18 @@ registry. The `$DEIS_REGISTRY` environment variable must point to a registry acc
 Kubernetes cluster. You may need to configure the Docker engines on your Kubernetes nodes to allow
 `--insecure-registry 192.168.0.0/16` (or the appropriate address range).
 
+When you want to test changes then commit the changes to your branch and run
+
 ```console
-$ make docker-build docker-push
+$ make deploy
 ```
 
-You'll want to modify the deis chart to use your custom image, then run `helm install` on the
-chart.
+This will build the required docker images and push them to the registry that was configured, then update and recreate the Replication Controller.
+Give it a bit of time for the changes to go live.
 
 ## License
 
-Copyright 2013, 2014, 2015 Engine Yard, Inc.
+Copyright 2013, 2014, 2015, 2016 Engine Yard, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at <http://www.apache.org/licenses/LICENSE-2.0>
 

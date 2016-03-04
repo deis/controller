@@ -17,6 +17,7 @@ DEV_ENV_CMD := ${DEV_ENV_PREFIX} ${DEV_ENV_IMAGE}
 DIST_DIR := _dist
 
 GO_FILES = $(wildcard *.go)
+GO_LDFLAGS = -ldflags "-s -X ${repo_path}/version.BuildVersion=${VERSION}"
 GO_PACKAGES = cmd controller/api controller/client $(wildcard controller/models/*) parser $(wildcard pkg/*)
 GO_PACKAGES_REPO_PATH = $(addprefix $(repo_path)/,$(GO_PACKAGES))
 GOFMT = gofmt -e -l -s
@@ -54,12 +55,13 @@ build: binary-build
 
 build-all:
 	${DEV_ENV_CMD} gox -verbose \
+	${GO_LDFLAGS} \
 	-os="linux darwin " \
 	-arch="amd64 386" \
 	-output="$(DIST_DIR)/deis-${VERSION}-{{.OS}}-{{.Arch}}" .
 
 binary-build:
-	${DEV_ENV_PREFIX} -e GOOS=${GOOS} ${DEV_ENV_IMAGE} go build -a -installsuffix cgo -ldflags "-s -X ${repo_path}/version.BuildVersion=${VERSION}" -o deis .
+	${DEV_ENV_PREFIX} -e GOOS=${GOOS} ${DEV_ENV_IMAGE} go build -a -installsuffix cgo ${GO_LDFLAGS} -o deis .
 
 dist: build-all
 

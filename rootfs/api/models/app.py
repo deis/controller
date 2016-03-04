@@ -123,10 +123,17 @@ class App(UuidAuditedModel):
         config = Config.objects.create(owner=self.owner, app=self)
         Release.objects.create(version=1, owner=self.owner, app=self, config=config, build=None)
 
+        # create required minimum resources in k8s for the application
+        self._scheduler.create(self.id)
+
+        # Attach the platform specific application sub domain to the k8s service
+        Domain(owner=self.owner, app=self, domain=self.id).save()
+
     def delete(self, *args, **kwargs):
         """Delete this application including all containers"""
         try:
             # attempt to remove containers from the scheduler
+            self._scheduler.destroy(self.id)
             self._destroy_containers([c for c in self.container_set.exclude(type='run')])
         except RuntimeError:
             pass
@@ -323,12 +330,6 @@ class App(UuidAuditedModel):
                     command=command,
                     **kwargs
                 )
-
-                # Attach the platform specific application sub domain
-                # scheduler.scale creates the required service on apps:create
-                if not Domain.objects.filter(owner=self.owner, app=self, domain=self).exists():
-                    Domain(owner=self.owner, app=self, domain=str(self)).save()
-
             except Exception as e:
                 err = '{} (scale): {}'.format(job_id, e)
                 log_event(self, err, logging.ERROR)
@@ -375,14 +376,19 @@ class App(UuidAuditedModel):
         """Destroys containers via the scheduler"""
         if not to_destroy:
             return
-        destroy_threads = [Thread(target=c.destroy) for c in to_destroy]
-        [t.start() for t in destroy_threads]
-        [t.join() for t in destroy_threads]
-        [c.delete() for c in to_destroy if c.state == 'destroyed']
-        if any(c.state != 'destroyed' for c in to_destroy):
-            err = 'aborting, failed to destroy some containers'
-            log_event(self, err, logging.ERROR)
-            raise RuntimeError(err)
+
+        # for mock scheduler
+        if "scale" not in dir(self._scheduler):
+            destroy_threads = [Thread(target=c.destroy) for c in to_destroy]
+            [t.start() for t in destroy_threads]
+            [t.join() for t in destroy_threads]
+            [c.delete() for c in to_destroy if c.state == 'destroyed']
+            if any(c.state != 'destroyed' for c in to_destroy):
+                err = 'aborting, failed to destroy some containers'
+                log_event(self, err, logging.ERROR)
+                raise RuntimeError(err)
+        else:
+            [c.delete() for c in to_destroy]
 
     def deploy(self, user, release):
         """Deploy a new release to this application"""
@@ -418,7 +424,7 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'num': 0,
+                'num': 0,  # Scaling up happens in a separate operation
                 'version': version,
                 'app_type': scale_type,
                 'build_type': build_type,
@@ -458,7 +464,16 @@ class App(UuidAuditedModel):
         else:
             structure = {'web': 1}
 
-        self.scale(user, structure)
+        if "scale" in dir(self._scheduler):
+            self._deploy_app(structure, release, [])
+        else:
+            for key, num in structure.items():
+                c = Container.objects.create(owner=self.owner,
+                                             app=self,
+                                             release=release,
+                                             type=key,
+                                             num=num)
+                self._start_containers([c])
 
     def logs(self, log_lines=str(settings.LOG_LINES)):
         """Return aggregated log data for this application."""

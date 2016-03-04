@@ -87,8 +87,8 @@ class DomainTest(TestCase):
                 content_type='application/json',
                 HTTP_AUTHORIZATION='token {}'.format(self.token)
             )
-            result = response.data['results'][0]
-            self.assertEqual(domain, result['domain'], msg)
+            expected = [data['domain'] for data in response.data['results']]
+            self.assertEqual([self.app_id, domain], expected, msg)
 
             # Delete
             url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=domain,
@@ -107,7 +107,11 @@ class DomainTest(TestCase):
                 content_type='application/json',
                 HTTP_AUTHORIZATION='token {}'.format(self.token)
             )
-            self.assertEqual(0, response.data['count'], msg)
+            self.assertEqual(1, response.data['count'], msg)
+
+            # verify only app domain is left
+            expected = [data['domain'] for data in response.data['results']]
+            self.assertEqual([self.app_id], expected, msg)
 
     def test_delete_domain_does_not_exist(self):
         """Remove a domain that does not exist"""
@@ -146,7 +150,7 @@ class DomainTest(TestCase):
     def test_delete_domain_does_not_remove_others(self):
         """https://github.com/deis/deis/issues/3475"""
         self.test_delete_domain_does_not_remove_latest()
-        self.assertEqual(Domain.objects.all().count(), 1)
+        self.assertEqual(Domain.objects.all().count(), 2)
 
     def test_manage_domain_invalid_app(self):
         # Create domain

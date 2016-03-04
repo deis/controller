@@ -7,7 +7,7 @@ class AbstractSchedulerClient(object):
     def __init__(self, target):
         self.target = target
 
-    def create(self, name, image, command, **kwargs):
+    def create(self, name, **kwargs):
         """Create a new container."""
         raise NotImplementedError
 

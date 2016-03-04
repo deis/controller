@@ -12,12 +12,12 @@ STOP_ERROR_RATE = 0
 
 class ChaosSchedulerClient(MockSchedulerClient):
 
-    def create(self, name, image, command, **kwargs):
+    def create(self, name, **kwargs):
         """Create a new container."""
         if random.random() < CREATE_ERROR_RATE:
             jobs.setdefault(name, {})['state'] = JobState.error
         else:
-            super(ChaosSchedulerClient, self).create(name, image, command, **kwargs)
+            super(ChaosSchedulerClient, self).create(name, **kwargs)
 
     def destroy(self, name):
         """Destroy a container."""

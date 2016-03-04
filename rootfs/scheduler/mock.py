@@ -5,6 +5,8 @@ import base64
 from .abstract import AbstractSchedulerClient
 from .states import JobState, TransitionError
 
+import logging
+logger = logging.getLogger(__name__)
 
 # HACK: MockSchedulerClient is not persistent across requests
 jobs = {}
@@ -12,8 +14,7 @@ secrets = {}
 
 
 class MockSchedulerClient(AbstractSchedulerClient):
-
-    def create(self, name, image, command, **kwargs):
+    def create(self, name, **kwargs):
         """Create a new container."""
         jobs.setdefault(name, {})['state'] = JobState.created
 

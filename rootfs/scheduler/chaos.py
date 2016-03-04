@@ -26,7 +26,7 @@ class ChaosSchedulerClient(MockSchedulerClient):
         else:
             super(ChaosSchedulerClient, self).destroy(name)
 
-    def run(self, name, image, entrypoint, command):
+    def run(self, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         if random.random() < CREATE_ERROR_RATE:
             raise RuntimeError('exit code 1')

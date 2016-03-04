@@ -270,7 +270,7 @@ REGISTRY_URL = '{}:{}'.format(REGISTRY_HOST, REGISTRY_PORT)
 
 # logger settings
 LOGGER_HOST = os.environ.get('DEIS_LOGGER_SERVICE_HOST', '127.0.0.1')
-LOGGER_PORT = os.environ.get('DEIS_LOGGER_PORT_8088_TCP_PORT', 8088)
+LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 
 # check if we can register users with `deis register`
 REGISTRATION_ENABLED = True

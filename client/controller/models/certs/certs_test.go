@@ -229,7 +229,7 @@ func TestCertInfo(t *testing.T) {
 	}
 }
 
-func TestCertDeleteion(t *testing.T) {
+func TestCertDeletion(t *testing.T) {
 	t.Parallel()
 
 	handler := fakeHTTPServer{}
@@ -248,6 +248,10 @@ func TestCertDeleteion(t *testing.T) {
 
 	if err = Delete(&client, "test-example-com"); err != nil {
 		t.Fatal(err)
+	}
+
+	if err := Delete(&client, "non-existent-cert"); err == nil {
+		t.Fatal("An Error should have resulted from the attempt to delete a non-existent-cert")
 	}
 }
 
@@ -271,6 +275,15 @@ func TestCertAttach(t *testing.T) {
 	if err = Attach(&client, "test-example-com", "foo.com"); err != nil {
 		t.Fatal(err)
 	}
+
+	if err := Attach(&client, "non-existent-cert", "foo.com"); err == nil {
+		t.Fatal("An Error should have resulted from the attempt to attach a non-existent cert to a valid domain")
+	}
+
+	// TODO: #475
+	// if err := Attach(&client, "test-example-com", "non-existent.domain.com"); err == nil {
+	// 	t.Fatal("An Error should have resulted from the attempt to attach a valid cert to a non-existent domain")
+	// }
 }
 
 func TestCertDetach(t *testing.T) {
@@ -292,5 +305,13 @@ func TestCertDetach(t *testing.T) {
 
 	if err = Detach(&client, "test-example-com", "foo.com"); err != nil {
 		t.Fatal(err)
+	}
+
+	if err := Detach(&client, "non-existent-cert", "foo.com"); err == nil {
+		t.Fatal("An Error should have resulted from the attempt to detach a non-existent cert from a valid domain")
+	}
+
+	if err := Detach(&client, "test-example-com", "non-existent.domain.com"); err == nil {
+		t.Fatal("An Error should have resulted from the attempt to detach a valid cert from a non-existent domain")
 	}
 }

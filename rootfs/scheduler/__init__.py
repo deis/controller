@@ -217,6 +217,7 @@ RCB_TEMPLATE = """\
 }
 """
 
+# Ports and app type will be overwritten as required
 SERVICE_TEMPLATE = """\
 {
   "kind": "Service",
@@ -231,14 +232,15 @@ SERVICE_TEMPLATE = """\
   "spec": {
     "ports": [
       {
+        "name": "http",
         "port": 80,
-        "targetPort": $port,
+        "targetPort": 8080,
         "protocol": "TCP"
       }
     ],
     "selector": {
       "app": "$name",
-      "type": "$type",
+      "type": "web",
       "heritage": "deis"
     }
   }
@@ -293,7 +295,6 @@ def unhealthy(status_code):
 
 
 class KubeHTTPClient(AbstractSchedulerClient):
-
     def __init__(self, target):
         super(KubeHTTPClient, self).__init__(target)
         self.url = settings.SCHEDULER_URL
@@ -316,15 +317,41 @@ class KubeHTTPClient(AbstractSchedulerClient):
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
 
+        # Fetch service
+        service = self._get_service(namespace, namespace).json()
+        old_service = service.copy()  # in case anything fails for rollback
+
+        # Update service information
+        # Make sure the router knows what to do with this
+        # TODO this should potentially be higher up in the flow
+        if app_type in ['web', 'cmd']:
+            # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+            service['metadata']['labels']['router.deis.io/routable'] = 'true'
+
+        # Set app type
+        if (
+            'type' not in service['spec']['selector'] or
+            app_type != service['spec']['selector']['type']
+        ):
+            service['spec']['selector']['type'] = app_type
+
+        # Find if target port exists already, which it also may not
+        port = self._get_port(image)
+        for pos, item in enumerate(service['spec']['ports']):
+            if item['port'] == 80 and port != item['targetPort']:
+                # port 80 is the only one we care about right now
+                service['spec']['ports'][pos]['targetPort'] = port
+
+        self._update_service(namespace, namespace, data=service)
+
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
         new_rc = self._create_rc(namespace, name, image, command, **kwargs)
 
         # Get the desired number to scale to
+        desired = 1
         if old_rc:
             desired = int(old_rc["spec"]["replicas"])
-        else:
-            desired = 1
 
         try:
             count = 1
@@ -351,8 +378,15 @@ class KubeHTTPClient(AbstractSchedulerClient):
             logger.error('Could not scale {} to {}. Deleting and going back to old release'.format(
                 new_rc["metadata"]["name"], desired)
             )
+
+            # Fix service to old port and app type
+            self._update_service(namespace, namespace, data=old_service)
+
+            # Remove old release
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
+
+            # Bring back old release if available
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
@@ -363,49 +397,33 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
-        rc_name = name.replace('.', '-').replace('_', '-')
-        if unhealthy(self._get_rc_status(namespace, rc_name)):
-            self.create(namespace, name, image, command, **kwargs)
-            return
+        if unhealthy(self._get_rc_status(namespace, name)):
+            # add RC if it is missing for the namespace
+            try:
+                self._create_rc(namespace, name, image, command, **kwargs)
+            except KubeException as e:
+                logger.debug("Creating RC failed because of: {}".format(str(e)))
+                raise RuntimeError('{} (RC): {}'.format(name, e))
 
-        name = name.replace('.', '-').replace('_', '-')
-        num = kwargs.get('num', {})
-        js_template = self._get_rc(namespace, name).json()
-        old_replicas = js_template["spec"]["replicas"]
         try:
-            self._scale_rc(namespace, name, num)
-        except Exception as e:
+            self._scale_rc(namespace, name, kwargs.get('num'))
+        except KubeException as e:
             logger.debug("Scaling failed because of: {}".format(str(e)))
-            self._scale_rc(namespace, name, old_replicas)
+            old = self._get_rc(namespace, name).json()
+            self._scale_rc(namespace, name, old['spec']['replicas'])
             raise RuntimeError('{} (Scale): {}'.format(name, e))
 
-    def create(self, namespace, name, image, command, **kwargs):
-        """Create a container."""
-        logger.debug('create {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
-        name = name.replace('.', '-').replace('_', '-')
-        app_type = name.split('-')[-1]
+    def create(self, namespace, **kwargs):
+        """Create a basic structure for an application in k8s"""
+        logger.debug('create {}'.format(namespace))
         try:
-            # Make sure the router knows what to do with this
-            data = {}
-            # TODO this should potentially be higher up in the flow
-            # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            if app_type in ['web', 'cmd']:
-                data = {'metadata': {'labels': {'router.deis.io/routable': 'true'}}}
+            # Create essential resources
             self._create_namespace(namespace)
             self._create_minio_secret(namespace)
-            self._create_service(namespace, name, app_type, data, image=image)
-
-            # Create RC with 0 pods and instead use scale to get polling
-            num = kwargs.pop('num')
-            kwargs['num'] = 0
-            self._create_rc(namespace, name, image, command, **kwargs)
-            self._scale_rc(namespace, name, num)
-        except Exception as e:
+            self._create_service(namespace, namespace)
+        except KubeException as e:
             logger.debug(e)
-            # TODO check if RC exists first
-            self._scale_rc(namespace, name, 0)
-            # TODO check if RC exists first
-            self._delete_rc(namespace, name)
+            self._delete_namespace(namespace)
             raise
 
     def start(self, name):
@@ -416,16 +434,17 @@ class KubeHTTPClient(AbstractSchedulerClient):
         """Stop a container."""
         pass
 
-    def destroy(self, name):
+    def destroy(self, namespace):
         """Destroy a application by deleting its namespace."""
-        namespace = name.split("_")[0]
-        logger.debug("destroy {}".format(name))
-        url = self._api("/namespaces/{}", namespace)
-        resp = self.session.delete(url)
-        if resp.status_code == 404:
-            logger.warn('delete Namespace "{}": not found'.format(namespace))
-        elif resp.status_code != 200:
-            error(resp, 'delete Namespace "{}"', namespace)
+        logger.debug("destroy {}".format(namespace))
+        self._delete_namespace(namespace)
+
+        # wait 30 seconds for termination
+        for _ in range(30):
+            try:
+                self._get_namespace(namespace).json()
+            except KubeException:
+                break
 
     def run(self, name, image, entrypoint, command):
         """Run a one-off command."""
@@ -600,24 +619,30 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
-    def _create_namespace(self, app_name):
+    def _create_namespace(self, namespace):
         url = self._api("/namespaces")
         data = {
             "kind": "Namespace",
             "apiVersion": self.apiversion,
             "metadata": {
-                "name": app_name
+                "name": namespace
             }
         }
-        resp = self.session.post(url, json=data)
-        if not resp.status_code == 201:
-            error(resp, "create Namespace {}".format(app_name))
+        response = self.session.post(url, json=data)
+        if not response.status_code == 201:
+            error(response, "create Namespace {}".format(namespace))
 
-    def _check_status(self, resp, app_name):
-        if resp.status_code == 404:
-            self._create_namespace(app_name)
-        elif resp.status_code != 200:
-            error(resp, "locate Namespace {}".format(app_name))
+        return response
+
+    def _delete_namespace(self, namespace):
+        url = self._api("/namespaces/{}", namespace)
+        response = self.session.delete(url)
+        if response.status_code == 404:
+            logger.warn('delete Namespace "{}": not found'.format(namespace))
+        elif response.status_code != 200:
+            error(response, 'delete Namespace "{}"', namespace)
+
+        return response
 
     # REPLICATION CONTROLLER #
 
@@ -839,10 +864,9 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
     def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
         container_fullname = name
-        app_type = name.split('-')[-1]
+        app_type = kwargs.get('app_type')
         container_name = namespace + '-' + app_type
         args = command.split()
-        num = kwargs.get('num', {})
         imgurl = self.registry + "/" + image
         TEMPLATE = RCD_TEMPLATE
 
@@ -910,8 +934,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
         if unhealthy(resp.status_code):
-            error(resp, 'create ReplicationController "{}" in Namespace "{}"',
-                  name, namespace)
+            error(resp, 'create ReplicationController "{}" in Namespace "{}"', name, namespace)
             logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
 
         create = False
@@ -1065,12 +1088,9 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
-    def _create_service(self, namespace, name, app_type, data={}, **kwargs):
-        port = self._get_port(kwargs.get('image'))
+    def _create_service(self, namespace, name, data={}, **kwargs):
         l = {
             "version": self.apiversion,
-            "port": port,
-            "type": app_type,
             "name": namespace,
         }
 
@@ -1078,16 +1098,11 @@ class KubeHTTPClient(AbstractSchedulerClient):
         template = json.loads(string.Template(SERVICE_TEMPLATE).substitute(l))
         data = dict_merge(template, data)
         url = self._api("/namespaces/{}/services", namespace)
-        resp = self.session.post(url, json=data)
-        if resp.status_code == 409:
-            srv = self._get_service(namespace, namespace).json()
-            if srv['spec']['selector']['type'] == 'web':
-                return
-            srv['spec']['selector']['type'] = app_type
-            srv['spec']['ports'][0]['targetPort'] = port
-            self._update_service(namespace, namespace, srv)
-        elif unhealthy(resp.status_code):
-            error(resp, 'create Service "{}" in Namespace "{}"', namespace, namespace)
+        response = self.session.post(url, json=data)
+        if unhealthy(response.status_code):
+            error(response, 'create Service "{}" in Namespace "{}"', namespace, namespace)
+
+        return response
 
     def _update_service(self, namespace, name, data):
         url = self._api("/namespaces/{}/services/{}", namespace, name)

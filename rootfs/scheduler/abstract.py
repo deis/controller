@@ -15,7 +15,7 @@ class AbstractSchedulerClient(object):
         """Destroy a container."""
         raise NotImplementedError
 
-    def run(self, name, image, entrypoint, command):
+    def run(self, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         raise NotImplementedError
 

@@ -22,7 +22,7 @@ class MockSchedulerClient(AbstractSchedulerClient):
         """Destroy a container."""
         jobs.setdefault(name, {})['state'] = JobState.destroyed
 
-    def run(self, name, image, entrypoint, command):
+    def run(self, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         # dump input into a json object for testing purposes
         return 0, json.dumps({

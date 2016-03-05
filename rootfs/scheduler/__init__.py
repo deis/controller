@@ -446,7 +446,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
             except KubeException:
                 break
 
-    def run(self, name, image, entrypoint, command):
+    def run(self, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         logger.debug('run {}, img {}, entrypoint {}, cmd "{}"'.format(
             name, image, entrypoint, command))
@@ -470,8 +470,12 @@ class KubeHTTPClient(AbstractSchedulerClient):
             args = [command[1:-1]]
 
         js_template = json.loads(template)
-        js_template['spec']['containers'][0]['command'] = [entrypoint]
-        js_template['spec']['containers'][0]['args'] = args
+        containers = js_template['spec']['containers'][0]
+        containers['command'] = [entrypoint]
+        containers['args'] = args
+
+        self._set_environment(containers, **kwargs)
+
         url = self._api("/namespaces/{}/pods", appname)
         resp = self.session.post(url, json=js_template)
         if unhealthy(resp.status_code):
@@ -507,6 +511,39 @@ class KubeHTTPClient(AbstractSchedulerClient):
             self._delete_pod(appname, name)
             return err_code, data
         return 0, data
+
+    def _set_environment(self, json_data, **kwargs):
+        app_type = kwargs.get('app_type')
+        mem = kwargs.get('memory', {}).get(app_type)
+        cpu = kwargs.get('cpu', {}).get(app_type)
+        env = kwargs.get('envs', {})
+
+        if env:
+            for key, value in env.items():
+                json_data["env"].append({
+                    "name": key,
+                    "value": str(value)
+                })
+
+        # Inject debugging if workflow is in debug mode
+        if os.environ.get("DEBUG", False):
+            json_data["env"].append({
+                "name": "DEBUG",
+                "value": "1"
+            })
+
+        if mem or cpu:
+            json_data["resources"] = {"limits": {}}
+
+        if mem:
+            if mem[-2:-1].isalpha() and mem[-1].isalpha():
+                mem = mem[:-1]
+
+            mem = mem + "i"
+            json_data["resources"]["limits"]["memory"] = mem
+
+        if cpu:
+            json_data["resources"]["limits"]["cpu"] = cpu
 
     def state(self, name):
         """Display the state of a container."""
@@ -896,36 +933,8 @@ class KubeHTTPClient(AbstractSchedulerClient):
         containers[0]['args'] = args
         loc = locals().copy()
         loc.update(re.match(MATCH, container_fullname).groupdict())
-        mem = kwargs.get('memory', {}).get(app_type)
-        cpu = kwargs.get('cpu', {}).get(app_type)
-        env = kwargs.get('envs', {})
 
-        if env:
-            for key, value in env.items():
-                containers[0]["env"].append({
-                    "name": key,
-                    "value": str(value)
-                })
-
-        # Inject debugging if workflow is in debug mode
-        if os.environ.get("DEBUG", False):
-            containers[0]["env"].append({
-                "name": "DEBUG",
-                "value": "1"
-            })
-
-        if mem or cpu:
-            containers[0]["resources"] = {"limits": {}}
-
-        if mem:
-            if mem[-2:-1].isalpha() and mem[-1].isalpha():
-                mem = mem[:-1]
-
-            mem = mem+"i"
-            containers[0]["resources"]["limits"]["memory"] = mem
-
-        if cpu:
-            containers[0]["resources"]["limits"]["cpu"] = cpu
+        self._set_environment(containers[0], **kwargs)
 
         # add in healtchecks
         if kwargs.get('healthcheck'):

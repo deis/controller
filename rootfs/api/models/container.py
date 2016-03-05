@@ -134,6 +134,10 @@ class Container(UuidAuditedModel):
             raise EnvironmentError('No build associated with this release '
                                    'to run this command')
         image = self.release.image
+        kwargs = {'memory': self.release.config.memory,
+                  'cpu': self.release.config.cpu,
+                  'tags': self.release.config.tags,
+                  'envs': self.release.config.values}
         entrypoint = '/bin/bash'
         # if this is a procfile-based app, switch the entrypoint to slugrunner's default
         # FIXME: remove slugrunner's hardcoded entrypoint
@@ -145,7 +149,7 @@ class Container(UuidAuditedModel):
         else:
             command = "-c '{}'".format(command)
         try:
-            rc, output = self._scheduler.run(self.job_id, image, entrypoint, command)
+            rc, output = self._scheduler.run(self.job_id, image, entrypoint, command, **kwargs)
             return rc, output
         except Exception as e:
             err = '{} (run): {}'.format(self.job_id, e)

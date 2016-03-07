@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import re
 import string
 import time
 from urllib.parse import urljoin
@@ -259,9 +258,6 @@ SECRET_TEMPLATE = """\
   "data": {}
 }
 """
-
-MATCH = re.compile(
-    r'(?P<app>[a-z0-9-]+)_?(?P<version>v[0-9]+)?\.?(?P<c_type>[a-z-_]+)')
 
 
 class KubeException(Exception):
@@ -900,7 +896,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
         self._get_pod_ready_status(namespace, name, desired)
 
     def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
-        container_fullname = name
         app_type = kwargs.get('app_type')
         container_name = namespace + '-' + app_type
         args = command.split()
@@ -931,8 +926,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
         # Deal with container information
         containers = template["spec"]["template"]["spec"]["containers"]
         containers[0]['args'] = args
-        loc = locals().copy()
-        loc.update(re.match(MATCH, container_fullname).groupdict())
 
         self._set_environment(containers[0], **kwargs)
 

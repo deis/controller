@@ -486,7 +486,9 @@ class KubeHTTPClient(AbstractSchedulerClient):
                 data = response.text
                 pod = response.json()
                 if pod['status']['phase'] == 'Succeeded':
-                    log = self._pod_log(appname, name).text
+                    response = self._pod_log(appname, name)
+                    response.encoding = 'utf-8'  # defaults to "ISO-8859-1" otherwise...
+                    log = response.text
                     self._delete_pod(appname, name)
                     return 0, log
                 if pod['status']['phase'] == 'Running':

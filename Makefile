@@ -26,36 +26,8 @@ build: docker-build
 docker-build: check-docker
 	docker build --rm -t $(IMAGE) rootfs
 
-docker-push: update-manifests
+docker-push:
 	docker push ${IMAGE}
-
-kube-delete:
-	-kubectl delete service deis-workflow
-	-kubectl delete rc deis-workflow
-
-kube-delete-database:
-	-kubectl delete service deis-database
-	-kubectl delete rc deis-database
-
-kube-delete-all: kube-delete kube-delete-database
-
-kube-create: update-manifests
-	kubectl create -f manifests/deis-workflow-service.yml
-	kubectl create -f manifests/deis-workflow-rc.tmp.yml
-
-kube-create-database:
-	kubectl create -f manifests/deis-database-rc.yml
-	kubectl create -f manifests/deis-database-service.yml
-
-kube-create-all: kube-create-database kube-create
-
-kube-update: update-manifests
-	kubectl delete -f manifests/deis-workflow-rc.tmp.yml
-	kubectl create -f manifests/deis-workflow-rc.tmp.yml
-
-update-manifests:
-	sed 's#\(image:\) .*#\1 $(IMAGE)#' manifests/deis-workflow-rc.yml \
-		> manifests/deis-workflow-rc.tmp.yml
 
 deploy: docker-build docker-push
 	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -

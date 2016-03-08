@@ -509,12 +509,33 @@ class ConfigTest(TransactionTestCase):
         tags4 = response.data
         self.assertNotEqual(tags3['uuid'], tags4['uuid'])
         self.assertNotIn('rack', json.dumps(response.data['tags']))
+        # set valid values
+        body = {'tags': json.dumps({'kubernetes.io/hostname': 'valid'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 201)
+        body = {'tags': json.dumps({'is.valid': 'is-also_valid'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 201)
+        body = {'tags': json.dumps({'host.the-name.com/is.valid': 'valid'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 201)
         # set invalid values
         body = {'tags': json.dumps({'valid': 'in\nvalid'})}
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 400)
-        body = {'tags': json.dumps({'in.valid': 'valid'})}
+        body = {'tags': json.dumps({'host.name.com/notvalid-': 'valid'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 400)
+        body = {'tags': json.dumps({'valid': 'invalid.'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 400)
+        body = {'tags': json.dumps({'host.name.com/,not.valid': 'valid'})}
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 400)

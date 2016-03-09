@@ -414,10 +414,22 @@ class KubeHTTPClient(AbstractSchedulerClient):
         logger.debug('create {}'.format(namespace))
         try:
             # Create essential resources
-            self._create_namespace(namespace)
-            self._create_minio_secret(namespace)
-            self._create_service(namespace, namespace)
+            try:
+                self._get_namespace(namespace)
+            except KubeException:
+                self._create_namespace(namespace)
+
+            try:
+                self._get_secret(namespace, 'minio-user')
+            except KubeException:
+                self._create_minio_secret(namespace)
+
+            try:
+                self._get_service(namespace, namespace)
+            except KubeException:
+                self._create_service(namespace, namespace)
         except KubeException as e:
+            # Blow it all away only if something horrible happens
             logger.debug(e)
             self._delete_namespace(namespace)
             raise

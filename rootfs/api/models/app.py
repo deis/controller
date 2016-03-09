@@ -75,13 +75,18 @@ class App(UuidAuditedModel):
 
         return name
 
-    def save(self, **kwargs):
+    def save(self, *args, **kwargs):
         if not self.id:
             self.id = generate_app_name()
             while App.objects.filter(id=self.id).exists():
                 self.id = generate_app_name()
 
-        return super(App, self).save(**kwargs)
+        application = super(App, self).save(**kwargs)
+
+        # create all the required resources
+        self.create(*args, **kwargs)
+
+        return application
 
     def __str__(self):
         return self.id
@@ -119,15 +124,31 @@ class App(UuidAuditedModel):
         logger.log(level, "[{}]: {}".format(self.id, message))
 
     def create(self, *args, **kwargs):
-        """Create a new application with an initial config and release"""
-        config = Config.objects.create(owner=self.owner, app=self)
-        Release.objects.create(version=1, owner=self.owner, app=self, config=config, build=None)
+        """
+        Create a application with an initial config, release, domain
+        and k8s resource if needed
+        """
+        try:
+            cfg = self.config_set.latest()
+        except Config.DoesNotExist:
+            cfg = Config.objects.create(owner=self.owner, app=self)
+
+        # Only create if no release can be found
+        try:
+            rel = self.release_set.latest()
+        except Release.DoesNotExist:
+            rel = Release.objects.create(
+                version=1, owner=self.owner, app=self,
+                config=cfg, build=None
+            )
 
         # create required minimum resources in k8s for the application
         self._scheduler.create(self.id)
 
         # Attach the platform specific application sub domain to the k8s service
-        Domain(owner=self.owner, app=self, domain=self.id).save()
+        # Only attach it on first release in case a customer has remove the app domain
+        if rel.version == 1 and not Domain.objects.filter(domain=self.id).exists():
+            Domain(owner=self.owner, app=self, domain=self.id).save()
 
     def delete(self, *args, **kwargs):
         """Delete this application including all containers"""
@@ -231,6 +252,9 @@ class App(UuidAuditedModel):
 
     def scale(self, user, structure):  # noqa
         """Scale containers up or down to match requested structure."""
+        # use create to make sure minimum resources are created
+        self.create()
+
         if self.release_set.latest().build is None:
             raise EnvironmentError('No build associated with this release')
 
@@ -392,6 +416,9 @@ class App(UuidAuditedModel):
 
     def deploy(self, user, release):
         """Deploy a new release to this application"""
+        # use create to make sure minimum resources are created
+        self.create()
+
         existing = self.container_set.exclude(type='run')
         new = []
         scale_types = set()

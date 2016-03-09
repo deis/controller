@@ -361,7 +361,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
                 ))
 
                 if old_rc:
-                    logger.debug('scaling old release {} from {} to {}'.format(
+                    logger.debug('scaling old release {} from original {} to {}'.format(
                         old_rc["metadata"]["name"], desired, (desired-count))
                     )
                     self._scale_rc(namespace, old_rc["metadata"]["name"], (desired-count))
@@ -737,100 +737,25 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
-    def _get_schedule_status(self, namespace, name, current, desired, resource_version):  # noqa
-        if int(desired) > int(current):
-            # new pods are going to be scheduled
-            component = 'scheduler'
-            reason = 'Scheduled'
-            # events endpoints will return *all* scheduled pods
-            state_count = desired
-        else:
-            # pods will be deleted
-            component = 'kubelet'
-            reason = 'Killing'
-            # only the delta should be found in a particular state
-            state_count = current - desired
-
-        # always get the highest value so all pods are processed
-        ready_desired = desired if int(desired) > int(current) else current
-        logger.debug("waiting for {} pods to be processed in {} namespace to be known by the k8s api (120s timeout)".format(ready_desired, namespace))  # noqa
-
-        pods = []
+    def _wait_until_pods_terminate(self, namespace, labels, current, desired):
+        delta = current - desired
+        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(delta, namespace))  # noqa
         for waited in range(120):
-            count = 0
-            pods = []
-            data = self._get_pods(namespace).json()
-            for pod in data['items']:
-                if pod['metadata']['generateName'] == name+'-':
-                    count += 1
-                    pods.append(pod['metadata']['name'])
-
-            if count == ready_desired:
-                break
-
-            if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s and {} pods are found ".format(waited, count))
-
-            time.sleep(1)
-
-        logger.debug("{} out of {} pods to be processed in namespace {} were found".format(count, ready_desired, namespace))  # noqa
-
-        logger.debug("waiting for {} pods to get to state {} in {} namespace (120s timeout)".format(state_count, reason, namespace))  # noqa
-        for waited in range(120):
-            waiting_pods = []
-            # TODO Too many objects returned for this... look for alternative
-            events = self._get_namespace_events(namespace, resourceVersion=resource_version).json()
-            for event in events['items']:
-                if (
-                    event['involvedObject']['name'] in pods and
-                    event['source']['component'] == component and
-                    event['reason'] == reason and
-                    event['involvedObject']['name'] not in waiting_pods
-                ):
-                    # certain reasons, like Killing, can happen many times per pod
-                    waiting_pods.append(event['involvedObject']['name'])
-
-            if len(waiting_pods) == state_count:
-                break
-
-            if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s and {} pods are in state {}".format(waited, len(waiting_pods), reason))  # noqa
-
-            time.sleep(1)
-
-        logger.debug("{} out of {} pods in namespace {} are in state {}".format(len(waiting_pods), state_count, namespace, reason))  # noqa
-
-        # if it was a scale down operation, wait until terminating pods are done
-        if reason == 'Killing':
-            self._wait_until_pods_terminate(namespace, name, state_count)
-
-    def _wait_until_pods_terminate(self, namespace, name, desired):
-        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(desired, namespace))  # noqa
-        for waited in range(120):
-            count = 0
-            pods = self._get_pods(namespace).json()
-            for pod in pods['items']:
-                # now that state is running time to see if probes are passing
-                if (
-                    pod['metadata']['generateName'] == name+'-' and
-                    pod['status']['phase'] == 'Running' and
-                    # is the readiness probe passing?
-                    self._pod_readiness_status(pod) == 'Terminating'
-                ):
-                    count += 1
+            pods = self._get_pods(namespace, labels=labels).json()
+            count = len(pods['items'])
 
             # stop when all pods are terminated as expected
-            if count == 0:
+            if count == desired:
                 break
 
             if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s and {} pods out of {} are fully terminated".format(waited, (desired - count), desired))  # noqa
+                logger.debug("waited {}s and {} pods out of {} are fully terminated".format(waited, (delta - count), delta))  # noqa
 
             time.sleep(1)
 
-        logger.debug("{} pods in namespace {} are terminated".format(desired, namespace))  # noqa
+        logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))  # noqa
 
-    def _get_pod_ready_status(self, namespace, name, desired):
+    def _get_pod_ready_status(self, namespace, labels, desired):
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -839,11 +764,10 @@ class KubeHTTPClient(AbstractSchedulerClient):
         logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(desired, namespace))  # noqa
         for waited in range(120):
             count = 0
-            pods = self._get_pods(namespace).json()
+            pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
                 # now that state is running time to see if probes are passing
                 if (
-                    pod['metadata']['generateName'] == name+'-' and
                     pod['status']['phase'] == 'Running' and
                     # is the readiness probe passing?
                     self._pod_readiness_status(pod) == 'Running' and
@@ -897,17 +821,12 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
-        # figure out the schedule state
-        self._get_schedule_status(
-            namespace,
-            name,
-            current,
-            desired,
-            js_template['metadata']['resourceVersion']
-        )
-
         # Double check enough pods are in the required state to service the application
-        self._get_pod_ready_status(namespace, name, desired)
+        self._get_pod_ready_status(namespace, labels, desired)
+
+        # if it was a scale down operation, wait until terminating pods are done
+        if int(desired) < int(current):
+            self._wait_until_pods_terminate(namespace, labels, current, desired)
 
     def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')

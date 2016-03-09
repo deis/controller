@@ -220,9 +220,6 @@ class AppViewSet(BaseDeisViewSet):
 
         return Response(serializer.data)
 
-    def post_save(self, app):
-        app.create()
-
     def scale(self, request, **kwargs):
         new_structure = {}
         app = self.get_object()

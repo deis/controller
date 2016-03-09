@@ -2,18 +2,15 @@
 DEIS_REGISTRY ?= $(DEV_REGISTRY)
 IMAGE_PREFIX ?= deis
 COMPONENT ?= workflow
-VERSION ?= git-$(shell git rev-parse --short HEAD)
-IMAGE = $(DEIS_REGISTRY)$(IMAGE_PREFIX)/$(COMPONENT):$(VERSION)
+SHORT_NAME ?= $(COMPONENT)
+
+include versioning.mk
+
 SHELL_SCRIPTS = $(wildcard rootfs/bin/*) $(shell find "rootfs" -name '*.sh') $(wildcard _scripts/*.sh)
 
 # Get the component informtation to a tmp location and get replica count
 $(shell kubectl get rc deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(COMPONENT))
 DESIRED_REPLICAS=$(shell kubectl get -o template rc/deis-$(COMPONENT) --template={{.status.replicas}} --namespace deis)
-
-info:
-	@echo "Build tag:  ${VERSION}"
-	@echo "Registry:   ${DEIS_REGISTRY}"
-	@echo "Image:      ${IMAGE}"
 
 check-docker:
 	@if [ -z $$(which docker) ]; then \
@@ -24,10 +21,8 @@ check-docker:
 build: docker-build
 
 docker-build: check-docker
-	docker build --rm -t $(IMAGE) rootfs
-
-docker-push:
-	docker push ${IMAGE}
+	docker build --rm -t ${IMAGE} rootfs
+	docker tag -f ${IMAGE} ${MUTABLE_IMAGE}
 
 deploy: docker-build docker-push
 	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
@@ -73,6 +68,6 @@ test-functional:
 	@echo "Implement functional tests in _tests directory"
 
 test-integration:
-	@echo "Check https://github.com/deis/workflow-e2e for the complete interation test suite"
+	@echo "Check https://github.com/deis/workflow-e2e for the complete integration test suite"
 
 .PHONY: build clean commit-hook full-clean postgres setup-venv test test-style test-unit test-functional

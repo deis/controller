@@ -14,8 +14,7 @@ from api import models
 PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z]+)')
 MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE)
 CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[0-9.]+[m]{0,1})$')
-TAGKEY_MATCH = re.compile(r'^[a-z]+$')
-TAGVAL_MATCH = re.compile(r'^\w+$')
+TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
 
 
@@ -181,11 +180,31 @@ class ConfigSerializer(serializers.ModelSerializer):
             if value is None:  # use NoneType to unset an item
                 continue
 
-            if not re.match(TAGKEY_MATCH, key):
-                raise serializers.ValidationError("Tag keys can only contain [a-z]")
+            # split key into a prefix and name
+            if '/' in key:
+                prefix, name = key.split('/')
+            else:
+                prefix, name = None, key
 
-            if not re.match(TAGVAL_MATCH, str(value)):
-                raise serializers.ValidationError("Invalid tag data")
+            # validate optional prefix
+            if prefix:
+                if len(prefix) > 253:
+                    raise serializers.ValidationError(
+                        "Tag key prefixes must 253 characters or less.")
+                for part in prefix.split('/'):
+                    if not re.match(TAGVAL_MATCH, part):
+                        raise serializers.ValidationError(
+                            "Tag key prefixes must be DNS subdomains.")
+
+            # validate required name
+            if not re.match(TAGVAL_MATCH, name):
+                raise serializers.ValidationError(
+                    "Tag keys must be alphanumeric or \"-_.\", and 1-63 characters.")
+
+            # validate value if it isn't empty
+            if value and not re.match(TAGVAL_MATCH, str(value)):
+                raise serializers.ValidationError(
+                    "Tag values must be alphanumeric or \"-_.\", and 1-63 characters.")
 
         return data
 

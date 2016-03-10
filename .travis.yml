@@ -1,15 +1,9 @@
-language: go
-go:
-  - 1.5.1
-env:
-  - GO15VENDOREXPERIMENT=1
+language: python
+python:
+  - 3.5
 branches:
   only:
     - master
-cache:
-  directories:
-    - $HOME/.cache/pip
-    - $HOME/venv
 services:
   - docker
   - postgresql
@@ -19,9 +13,6 @@ addons:
 before_install:
   - wget "http://ftp.debian.org/debian/pool/main/s/shellcheck/shellcheck_0.3.7-5_amd64.deb"
   - sudo dpkg -i shellcheck_0.3.7-5_amd64.deb
-  - sudo pip install virtualenv
-  - virtualenv -p python3.5 $HOME/venv
-  - source $HOME/venv/bin/activate
   - createdb -U postgres deis
 install:
   - pip install -r rootfs/requirements.txt

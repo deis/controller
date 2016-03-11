@@ -510,7 +510,7 @@ class ConfigTest(TransactionTestCase):
         self.assertNotEqual(tags3['uuid'], tags4['uuid'])
         self.assertNotIn('rack', json.dumps(response.data['tags']))
         # set valid values
-        body = {'tags': json.dumps({'kubernetes.io/hostname': 'valid'})}
+        body = {'tags': json.dumps({'kubernetes.io/hostname': '172.17.8.100'})}
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)

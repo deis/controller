@@ -9,7 +9,6 @@ import base64
 from django.conf import settings
 from docker import Client
 from .states import JobState
-from .abstract import AbstractSchedulerClient
 import requests
 from .utils import dict_merge
 
@@ -294,14 +293,16 @@ def unhealthy(status_code):
     return False
 
 
-class KubeHTTPClient(AbstractSchedulerClient):
-    def __init__(self, target):
-        super(KubeHTTPClient, self).__init__(target)
+class KubeHTTPClient(object):
+    apiversion = "v1"
+
+    def __init__(self):
         self.url = settings.SCHEDULER_URL
         self.registry = settings.REGISTRY_URL
-        self.apiversion = "v1"
+
         with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as token_file:
             token = token_file.read()
+
         session = requests.Session()
         session.headers = {
             'Authorization': 'Bearer ' + token,
@@ -375,6 +376,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
                 count += 1
         except Exception as e:
+            # New release is broken. Clean up
             logger.error('Could not scale {} to {}. Deleting and going back to old release'.format(
                 new_rc["metadata"]["name"], desired)
             )
@@ -390,8 +392,9 @@ class KubeHTTPClient(AbstractSchedulerClient):
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise RuntimeError('{} (deploy): {}'.format(name, e))
+            raise RuntimeError('{} (scheduler::deploy): {}'.format(name, e))
 
+        # New release is live and kicking. Clean up old release
         if old_rc:
             self._delete_rc(namespace, old_rc["metadata"]["name"])
 
@@ -441,14 +444,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
             self._delete_namespace(namespace)
             raise
 
-    def start(self, name):
-        """Start a container."""
-        pass
-
-    def stop(self, name):
-        """Stop a container."""
-        pass
-
     def destroy(self, namespace):
         """Destroy a application by deleting its namespace."""
         logger.debug("destroy {}".format(namespace))
@@ -461,12 +456,12 @@ class KubeHTTPClient(AbstractSchedulerClient):
             except KubeException:
                 break
 
-    def run(self, name, image, entrypoint, command, **kwargs):
+    def run(self, namespace, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         logger.debug('run {}, img {}, entrypoint {}, cmd "{}"'.format(
-            name, image, entrypoint, command))
-        appname = name.split('_')[0]
-        name = name.replace('.', '-').replace('_', '-')
+            name, image, entrypoint, command)
+        )
+
         imgurl = self.registry + '/' + image
         POD = POD_TEMPLATE
 
@@ -481,59 +476,62 @@ class KubeHTTPClient(AbstractSchedulerClient):
             l["image"] = image
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
 
-        template = string.Template(POD).substitute(l)
+        template = json.loads(string.Template(POD).substitute(l))
+
         if command.startswith('-c '):
             args = command.split(' ', 1)
             args[1] = args[1][1:-1]
         else:
             args = [command[1:-1]]
 
-        js_template = json.loads(template)
-        containers = js_template['spec']['containers'][0]
+        containers = template['spec']['containers'][0]
         containers['command'] = [entrypoint]
         containers['args'] = args
 
         self._set_environment(containers, **kwargs)
 
-        url = self._api("/namespaces/{}/pods", appname)
-        resp = self.session.post(url, json=js_template)
-        if unhealthy(resp.status_code):
-            error(resp, 'create Pod in Namespace "{}"', appname)
+        url = self._api("/namespaces/{}/pods", namespace)
+        response = self.session.post(url, json=template)
+        if unhealthy(response.status_code):
+            error(response, 'create Pod in Namespace "{}"', namespace)
 
         data = ''
         duration = 30
         iteration = 1
-        while(iteration < duration):
+        while (iteration < duration):
             try:
-                response = self._get_pod(appname, name)
+                response = self._get_pod(namespace, name)
                 data = response.text
                 pod = response.json()
                 if pod['status']['phase'] == 'Succeeded':
-                    response = self._pod_log(appname, name)
+                    response = self._pod_log(namespace, name)
                     response.encoding = 'utf-8'  # defaults to "ISO-8859-1" otherwise...
                     log = response.text
-                    self._delete_pod(appname, name)
+                    self._delete_pod(namespace, name)
                     return 0, log
+
                 if pod['status']['phase'] == 'Running':
                     if iteration > 28:
-                        duration = duration + 1
-            except:
+                        duration += 1
+            except KubeException:
                 break
-            iteration = iteration + 1
+
+            iteration += 1
             time.sleep(1)
 
         if iteration >= duration:
-            error(resp, 'Pod start took more than 30 seconds', appname)
+            error(response, 'Pod start took more than 30 seconds', namespace)
             return 0, data
 
         if pod['status']['phase'] == 'Failed':
             pod_state = pod['status']['containerStatuses'][0]['state']
             err_code = pod_state['terminated']['exitCode']
-            self._delete_pod(appname, name)
+            self._delete_pod(namespace, name)
             return err_code, data
+
         return 0, data
 
-    def _set_environment(self, json_data, **kwargs):
+    def _set_environment(self, data, **kwargs):
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
@@ -541,55 +539,39 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         if env:
             for key, value in env.items():
-                json_data["env"].append({
+                data["env"].append({
                     "name": key,
                     "value": str(value)
                 })
 
         # Inject debugging if workflow is in debug mode
         if os.environ.get("DEBUG", False):
-            json_data["env"].append({
+            data["env"].append({
                 "name": "DEBUG",
                 "value": "1"
             })
 
         if mem or cpu:
-            json_data["resources"] = {"limits": {}}
+            data["resources"] = {"limits": {}}
 
         if mem:
             if mem[-2:-1].isalpha() and mem[-1].isalpha():
                 mem = mem[:-1]
 
             mem = mem + "i"
-            json_data["resources"]["limits"]["memory"] = mem
+            data["resources"]["limits"]["memory"] = mem
 
         if cpu:
-            json_data["resources"]["limits"]["cpu"] = cpu
-
-    def state(self, name):
-        """Display the state of a container."""
-        try:
-            appname = name.split('_')[0]
-            name = name.split('.')
-            name = name[0] + '-' + name[1]
-            name = name.replace('_', '-')
-            # FIXME fetch a singular pod instead of *all* pods
-            pods = self._get_pods(appname)
-            parsed_json = pods.json()
-            for pod in parsed_json["items"]:
-                if pod["metadata"]["generateName"] == name + "-":
-                    return self.resolve_state(pod)
-
-            return JobState.destroyed
-        except Exception as err:
-            logger.warn(err)
-            return JobState.error
+            data["resources"]["limits"]["cpu"] = cpu
 
     def resolve_state(self, pod):
         if pod is None:
             return JobState.destroyed
 
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
+        if pod is None:
+            return JobState.destroyed
+
         states = {
             'Pending': JobState.initialized,
             'Starting': JobState.starting,
@@ -677,6 +659,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
+    def _get_namespaces(self, **kwargs):
+        url = self._api("/namespaces")
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            error(response, 'get Namespaces')
+
+        return response
+
     def _create_namespace(self, namespace):
         url = self._api("/namespaces")
         data = {
@@ -686,6 +676,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
                 "name": namespace
             }
         }
+
         response = self.session.post(url, json=data)
         if not response.status_code == 201:
             error(response, "create Namespace {}".format(namespace))
@@ -741,7 +732,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         return response
 
     def _get_rcs(self, namespace, **kwargs):
-        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace)
+        url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
             error(response, 'get ReplicationControllers in Namespace "{}"', namespace)
@@ -750,6 +741,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
     def _wait_until_pods_terminate(self, namespace, labels, current, desired):
         delta = current - desired
+
         logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(delta, namespace))  # noqa
         for waited in range(120):
             pods = self._get_pods(namespace, labels=labels).json()
@@ -817,10 +809,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
-        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        resp = self.session.put(url, json=rc)
-        if unhealthy(resp.status_code):
-            error(resp, 'scale ReplicationController "{}"', name)
+        self._update_rc(namespace, name, rc)
 
         resource_ver = rc['metadata']['resourceVersion']
         logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
@@ -874,10 +863,10 @@ class KubeHTTPClient(AbstractSchedulerClient):
         template["spec"]["template"]["spec"]["nodeSelector"] = tags
 
         # Deal with container information
-        containers = template["spec"]["template"]["spec"]["containers"]
-        containers[0]['args'] = args
+        container = template["spec"]["template"]["spec"]["containers"][0]
+        container['args'] = args
 
-        self._set_environment(containers[0], **kwargs)
+        self._set_environment(container, **kwargs)
 
         # add in healtchecks
         if kwargs.get('healthcheck'):
@@ -897,6 +886,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
             create = True
             rc = self._get_rc(namespace, name).json()
+            # TODO: Does this matter? Is there a better indicator?
             if (
                 "observedGeneration" in rc["status"] and
                 rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
@@ -909,14 +899,20 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
     def _update_rc(self, namespace, name, data):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        return self.session.put(url, json=data)
+        response = self.session.put(url, json=data)
+        if unhealthy(response.status_code):
+            error(response, 'scale ReplicationController "{}"', name)
+
+        return response
 
     def _delete_rc(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        resp = self.session.delete(url)
-        if unhealthy(resp.status_code):
-            error(resp, 'delete ReplicationController "{}" in Namespace "{}"',
+        response = self.session.delete(url)
+        if unhealthy(response.status_code):
+            error(response, 'delete ReplicationController "{}" in Namespace "{}"',
                   name, namespace)
+
+        return response
 
     def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
         # FIXME this logic ideally should live higher up
@@ -960,6 +956,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         }
 
         # Because it comes from a JSON template, need to hit the first key
+        # FIXME: assumption that container 0 is the app
         controller['spec']['template']['spec']['containers'][0].update(healthcheck)
 
         return controller
@@ -981,6 +978,8 @@ class KubeHTTPClient(AbstractSchedulerClient):
         response = self.session.get(url)
         if unhealthy(response.status_code):
             error(response, 'get Secret "{}" in Namespace "{}"', name, namespace)
+
+        # FIXME decode data - can it be done without affecting the response object too much???
 
         return response
 
@@ -1061,6 +1060,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
         return response
 
+    def _delete_service(self, namespace, name):
+        url = self._api("/namespaces/{}/services/{}", namespace, name)
+        response = self.session.delete(url)
+        if unhealthy(response.status_code):
+            error(response, 'delete Service "{}" in Namespace "{}"', name, namespace)
+
+        return response
+
     # PODS #
 
     def _get_pod(self, namespace, name):
@@ -1072,7 +1079,7 @@ class KubeHTTPClient(AbstractSchedulerClient):
         return response
 
     def _get_pods(self, namespace, **kwargs):
-        url = self._api("/namespaces/{}/pods", namespace)
+        url = self._api('/namespaces/{}/pods', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
             error(response, 'get Pods in Namespace "{}"', namespace)
@@ -1117,9 +1124,9 @@ class KubeHTTPClient(AbstractSchedulerClient):
             # find the right container in case there are many on the pod
             if container['name'] == name:
                 if not container['ready']:
-                    if 'running' in container['state']:
+                    if 'running' in container['state'].keys():
                         return 'Starting'
-                    elif 'terminated' in container['state']:
+                    elif 'terminated' in container['state'].keys():
                         return 'Terminating'
                 else:
                     return 'Running'
@@ -1143,6 +1150,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
             error(response, 'get Nodes')
+
+        return response
+
+    def _get_node(self, name, **kwargs):
+        url = self._api('/nodes/{}'.format(name))
+        response = self.session.get(url)
+        if unhealthy(response.status_code):
+            error(response, 'get Node {} in Nodes'.format(name))
 
         return response
 

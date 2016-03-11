@@ -181,7 +181,7 @@ class TestAppPerms(TestCase):
         # check that user 2 sees (empty) results now for builds, containers,
         # and releases. (config and limit will still give 404s since we didn't
         # push a build here.)
-        for model in ['builds', 'containers', 'releases']:
+        for model in ['builds', 'releases']:
             response = self.client.get("/v2/apps/{}/{}/".format(app_id, model),
                                        HTTP_AUTHORIZATION='token {}'.format(self.token2))
             self.assertEqual(len(response.data['results']), 0)

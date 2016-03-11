@@ -270,13 +270,15 @@ class HookTest(TransactionTestCase):
         self.assertEqual(build['sha'], SHA)
         self.assertEqual(build['procfile'], PROCFILE)
         # test listing/retrieving container info
-        url = "/v2/apps/{app_id}/containers/web".format(**locals())
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'web')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
     def test_build_hook_dockerfile(self):
         """Test creating a Dockerfile build via an API Hook"""
@@ -313,13 +315,15 @@ class HookTest(TransactionTestCase):
         self.assertEqual(build['sha'], SHA)
         self.assertEqual(build['dockerfile'], DOCKERFILE)
         # test default container
-        url = "/v2/apps/{app_id}/containers/cmd".format(**locals())
+        url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
     def test_config_hook(self):
         """Test reading Config via an API Hook"""

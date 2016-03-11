@@ -220,22 +220,6 @@ class ReleaseSerializer(serializers.ModelSerializer):
         model = models.Release
 
 
-class ContainerSerializer(serializers.ModelSerializer):
-    """Serialize a :class:`~api.models.Container` model."""
-
-    app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
-    owner = serializers.ReadOnlyField(source='owner.username')
-    release = serializers.SerializerMethodField()
-
-    class Meta:
-        """Metadata options for a :class:`ContainerSerializer`."""
-        model = models.Container
-        fields = ['owner', 'app', 'release', 'type', 'num', 'state', 'created', 'updated', 'uuid']
-
-    def get_release(self, obj):
-        return "v{}".format(obj.release.version)
-
-
 class KeySerializer(serializers.ModelSerializer):
     """Serialize a :class:`~api.models.Key` model."""
 

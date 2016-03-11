@@ -1,7 +1,7 @@
 # If DEIS_REGISTRY is not set, try to populate it from legacy DEV_REGISTRY
 DEIS_REGISTRY ?= $(DEV_REGISTRY)
 IMAGE_PREFIX ?= deis
-COMPONENT ?= workflow
+COMPONENT ?= controller
 SHORT_NAME ?= $(COMPONENT)
 
 include versioning.mk

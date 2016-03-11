@@ -6,3 +6,6 @@ flake8==2.5.4
 
 # code coverage report at https://codecov.io/github/deis/workflow
 codecov==1.6.3
+
+# mock out python-requests, mostly k8s
+requests-mock==0.7.0

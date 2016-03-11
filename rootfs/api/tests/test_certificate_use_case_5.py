@@ -2,6 +2,7 @@ import os
 import json
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
@@ -57,6 +58,10 @@ class CertificateUseCase5Test(TestCase):
         self.certificates['bar.com']['fingerprint'] = '7A:CA:B8:50:FF:8D:EB:03:3D:AC:AD:13:4F:EE:03:D5:5D:EB:5E:37:51:8C:E0:98:F8:1B:36:2B:20:83:0D:C0'  # noqa
         self.certificates['bar.com']['common_name'] = 'bar.com'
         self.certificates['bar.com']['san'] = []
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     def test_create_certificate_with_domain(self):
         """Tests creating a certificate."""
@@ -137,7 +142,7 @@ class CertificateUseCase5Test(TestCase):
                     '{} - {}'.format(certificate['name'], key)
                 )
 
-            # detach domain to certificate
+            # detach domain from certificate
             response = self.client.delete(
                 '{}/{}/domain/{}'.format(self.url, certificate['name'], domain),
                 content_type='application/json',
@@ -172,12 +177,15 @@ class CertificateUseCase5Test(TestCase):
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
         for domain, certificate in self.certificates.items():
+            # Create certificate
             Certificate.objects.create(
                 name=certificate['name'],
                 owner=self.user,
                 common_name=domain,
                 certificate=certificate['cert']
             )
+
+            # Remove certificate
             url = '/v2/certs/{}'.format(certificate['name'])
             response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
             self.assertEqual(response.status_code, 204)

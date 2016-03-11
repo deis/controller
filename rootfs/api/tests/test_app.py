@@ -11,6 +11,7 @@ from unittest import mock
 import requests
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
@@ -26,6 +27,10 @@ class AppTest(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     def test_app(self):
         """

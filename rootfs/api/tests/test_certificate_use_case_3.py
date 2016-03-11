@@ -2,6 +2,7 @@ import os
 import json
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
@@ -49,6 +50,10 @@ class CertificateUseCase3Test(TestCase):
 
         self.certificates['bar.com']['expires'] = '2017-01-14T23:57:57UTC'
         self.certificates['bar.com']['fingerprint'] = '7A:CA:B8:50:FF:8D:EB:03:3D:AC:AD:13:4F:EE:03:D5:5D:EB:5E:37:51:8C:E0:98:F8:1B:36:2B:20:83:0D:C0'  # noqa
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     def test_create_certificate_with_domain(self):
         """Tests creating a certificate."""

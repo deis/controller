@@ -55,22 +55,27 @@ class Release(UuidAuditedModel):
         # create new release and auto-increment version
         release = Release.objects.create(
             owner=user, app=self.app, config=config,
-            build=build, version=new_version, summary=summary)
+            build=build, version=new_version, summary=summary
+        )
+
         try:
             release.publish()
         except EnvironmentError as e:
             # If we cannot publish this app, just log and carry on
             log_event(self.app, e)
             pass
+
         return release
 
     def publish(self, source_version='latest'):
         if self.build is None:
             raise EnvironmentError('No build associated with this release to publish')
+
         source_image = self.build.image
         if ':' not in source_image:
             source_tag = 'git-{}'.format(self.build.sha) if self.build.sha else source_version
             source_image = "{}:{}".format(source_image, source_tag)
+
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         deis_registry = bool(self.build.sha)
         if not self.build.dockerfile and not self.build.sha:
@@ -95,6 +100,7 @@ class Release(UuidAuditedModel):
     def rollback(self, user, version):
         if version < 1:
             raise EnvironmentError('version cannot be below 0')
+
         summary = "{} rolled back to v{}".format(user, version)
         prev = self.app.release_set.get(version=version)
         new_release = self.new(
@@ -102,9 +108,12 @@ class Release(UuidAuditedModel):
             build=prev.build,
             config=prev.config,
             summary=summary,
-            source_version='v{}'.format(version))
+            source_version='v{}'.format(version)
+        )
+
         try:
-            self.app.deploy(user, new_release)
+            if self.build is not None:
+                self.app.deploy(user, new_release)
             return new_release
         except RuntimeError:
             if 'new_release' in locals():

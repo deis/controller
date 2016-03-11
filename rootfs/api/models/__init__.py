@@ -54,7 +54,7 @@ class AuditedModel(models.Model):
     @property
     def _scheduler(self):
         mod = importlib.import_module(settings.SCHEDULER_MODULE)
-        return mod.SchedulerClient(settings.SCHEDULER_URL)
+        return mod.SchedulerClient()
 
     def _fetch_service_config(self, app):
         # Get the service from k8s to attach the domain correctly
@@ -110,7 +110,6 @@ class UuidAuditedModel(AuditedModel):
 
 
 from .app import App, validate_id_is_docker_compatible, validate_reserved_names, validate_app_structure  # noqa
-from .container import Container  # noqa
 from .push import Push  # noqa
 from .key import Key, validate_base64  # noqa
 from .certificate import Certificate, validate_certificate  # noqa

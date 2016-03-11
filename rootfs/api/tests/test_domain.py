@@ -8,6 +8,7 @@ Run the tests with "./manage.py test api"
 import json
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
@@ -27,6 +28,10 @@ class DomainTest(TestCase):
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
         self.app_id = response.data['id']  # noqa
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     def test_response_data(self):
         """Test that the serialized response contains only relevant data."""

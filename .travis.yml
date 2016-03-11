@@ -20,7 +20,7 @@ install:
 script:
   - make test
 after_success:
-  - cd rootfs/ && codecov
+  - pushd rootfs/ && codecov && popd
 deploy:
   - provider: script
     # ensure client/doc builds aren't removed

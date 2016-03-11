@@ -1,6 +1,6 @@
 # Deis Workflow v2
 
-[![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow) [![Go Report Card](http://goreportcard.com/badge/deis/workflow)](http://goreportcard.com/report/deis/workflow)
+[![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow) [![codecov.io](https://codecov.io/github/deis/workflow/coverage.svg?branch=master)](https://codecov.io/github/deis/workflow?branch=master)
 
 Deis (pronounced DAY-iss) is an open source PaaS that makes it easy to deploy and manage
 applications on your own servers. Deis builds on [Kubernetes](http://kubernetes.io/) to provide

@@ -3,3 +3,6 @@ coverage==4.0.3
 
 # Run "make flake8" to check python syntax and style
 flake8==2.5.4
+
+# code coverage report at https://codecov.io/github/deis/workflow
+codecov==1.6.3

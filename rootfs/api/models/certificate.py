@@ -202,13 +202,16 @@ class Certificate(AuditedModel):
 
         name = '%s-cert' % self.name
         app = domain.app
-        # only delete if it exists
-        try:
-            # We raise an exception when a secret doesn't exist
-            self._scheduler._get_secret(app, name)
-            self._scheduler._delete_secret(app, name)
-        except KubeHTTPException as e:
-            logger.critical(e)
+
+        # only delete if it exists and if no other domains depend on secret
+        if len(self.domains):
+            try:
+                # We raise an exception when a secret doesn't exist
+                self._scheduler._get_secret(app, name)
+                self._scheduler._delete_secret(app, name)
+            except KubeHTTPException as e:
+                logger.critical(e)
+                raise EnvironmentError("Could not delete certificate secret {} for application {}".format(name, app))  # noqa
 
         # get config for the service
         config = self._load_service_config(app, 'router')

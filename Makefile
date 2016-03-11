@@ -29,8 +29,8 @@ docker-build: check-docker
 
 deploy: docker-build docker-push
 	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
-	kubectl scale rc deis-workflow --replicas 0 --namespace deis
-	kubectl scale rc deis-workflow --replicas $(DESIRED_REPLICAS) --namespace deis
+	kubectl scale rc deis-$(COMPONENT) --replicas 0 --namespace deis
+	kubectl scale rc deis-$(COMPONENT) --replicas $(DESIRED_REPLICAS) --namespace deis
 
 clean: check-docker
 	docker rmi $(IMAGE)

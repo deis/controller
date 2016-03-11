@@ -19,6 +19,8 @@ install:
   - pip install -r rootfs/dev_requirements.txt
 script:
   - make test
+after_success:
+  - cd rootfs/ && codecov
 deploy:
   - provider: script
     # ensure client/doc builds aren't removed

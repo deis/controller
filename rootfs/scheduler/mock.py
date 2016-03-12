@@ -412,13 +412,13 @@ class MockSchedulerClient(KubeHTTPClient):
             self._create_namespace('deis')
 
         try:
-            self._get_secret('deis', 'minio-user')
+            self._get_secret('deis', 'objectstorage-keyfile')
         except KubeHTTPException:
             secrets = {
                 'access-key-id': 'i am a key',
                 'access-secret-key': 'i am a secret'
             }
-            self._create_secret('deis', 'minio-user', secrets)
+            self._create_secret('deis', 'objectstorage-keyfile', secrets)
 
         try:
             self._get_namespace('duplicate')

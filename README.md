@@ -71,35 +71,18 @@ Also, since this component is central to the platform, it's recommended that you
 * `SHORT_NAME` (optional) - The name of the image. This defaults to `controller`
 * `VERSION` (optional) - The tag of the Docker image. This defaults to the current Git SHA (the output of `git rev-parse --short HEAD`)
 
-Then, run the following commands to build and push a new Docker image with your changes, and install it on your Kubernetes cluster.
-
-```console
-make docker-build docker-push
-```
-
-See below for a complete example with appropriate environment variables.
+Then, run `make deploy` to build and push a new Docker image with your changes and replace the existing one with your new one in the Kubernetes cluster. See below for an example with appropriate environment variables.
 
 ```console
 export DEIS_REGISTRY=quay.io/
 export IMAGE_PREFIX=arschles
-make docker-build docker-push
+make deploy
 ```
 
-Once the Docker push is complete, edit `$(helm home)/workspace/charts/deis-dev/manifests/deis-controller-rc.yaml` so that the `image:` field has the complete location of your Docker image (for example, the image produced by the previous command would be similar to `quay.io/arschles/controller:bba8eca`.)
-
-Finally, delete and re-create the Deis controller [Replication Controller][repl-controller]:
+After the `make deploy` finishes, a new pod will be launched but may not be running. You'll need to wait until the pod is listed as `Running` and the value in its `Ready` column is `1/1`. Use the following command to check the Pod's status:
 
 ```console
-kubectl delete rc deis-controller --namespace=deis
-kubectl create -f $(helm home)/workspace/charts/deis-dev/manifests/deis-controller-rc.yaml
-```
-
-Note: if you used the stable release of the Deis chart, the path to the `deis-controller-rc.yaml` will be `Note that if you used the stable release of the Deis chart, the path will be `$(helm home)/workspace/charts/deis/manifests/deis-controller-rc.yaml`.
-
-Once you've re-created the replication controller, a new pod will be launched by it. You'll need to wait until the pod is listed as `Running` and the value in its `Ready` column is `1/1`. Use the following command to check the Pod's status:
-
-```console
-kubectl get pod --namespace=deis
+kubectl get pod --namespace=deis | grep deis-controller
 ```
 
 ## License

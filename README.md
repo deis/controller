@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow)
 [![codecov.io](https://codecov.io/github/deis/workflow/coverage.svg?branch=master)](https://codecov.io/github/deis/workflow?branch=master)
-[![Docker Repository on Quay](https://quay.io/repository/deisci/workflow/status "Docker Repository on Quay")](https://quay.io/repository/deisci/workflow)
+[![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
 
 Deis (pronounced DAY-iss) is an open source PaaS that makes it easy to deploy and manage applications on your own servers. Deis builds on Kubernetes to provide a lightweight, easy and secure way to deploy your code to production.
 

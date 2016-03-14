@@ -204,7 +204,7 @@ class Certificate(AuditedModel):
         app = domain.app
 
         # only delete if it exists and if no other domains depend on secret
-        if len(self.domains):
+        if len(self.domains) == 0:
             try:
                 # We raise an exception when a secret doesn't exist
                 self._scheduler._get_secret(app, name)

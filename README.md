@@ -67,7 +67,7 @@ Also, since this component is central to the platform, it's recommended that you
 * `DEIS_REGISTRY` - A Docker registry that you have push access to and your Kubernetes cluster can pull from
   * If this is [Docker Hub](https://hub.docker.com/), leave this variable empty
   * Otherwise, ensure it has a trailing `/`. For example, if you're using [Quay.io](https://quay.io), use `quay.io/`
-* `IMAGE_PREFIX` - The name of the repository. This defaults to `deis`, but if you don't have access to that repository, set this to a repository that you have push access to.
+* `IMAGE_PREFIX` - The organization in the Docker repository. This defaults to `deis`, but if you don't have access to that organization, set this to one you have push access to.
 * `SHORT_NAME` (optional) - The name of the image. This defaults to `controller`
 * `VERSION` (optional) - The tag of the Docker image. This defaults to the current Git SHA (the output of `git rev-parse --short HEAD`)
 

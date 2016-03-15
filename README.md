@@ -79,10 +79,10 @@ export IMAGE_PREFIX=arschles
 make deploy
 ```
 
-After the `make deploy` finishes, a new pod will be launched but may not be running. You'll need to wait until the pod is listed as `Running` and the value in its `Ready` column is `1/1`. Use the following command to check the Pod's status:
+After the `make deploy` finishes, a new pod will be launched but may not be running. You'll need to wait until the pod is listed as `Running` and the value in its `Ready` column is `1/1`. Use the following command watch the pod's status:
 
 ```console
-kubectl get pod --namespace=deis | grep deis-controller
+kubectl get pod --namespace=deis -w | grep deis-controller
 ```
 
 ## License

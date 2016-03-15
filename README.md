@@ -58,8 +58,6 @@ helm generate -x manifests deis-dev
 helm install deis-dev
 ```
 
-Note that to work off the latest stable release, change the `helm install deis/deis-dev` command to `helm install deis/deis`.
-
 ## Testing Your Code
 
 When you've built your new feature or fixed a bug, make sure you've added appropriate unit tests and run `make test` to ensure your code works properly.

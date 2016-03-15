@@ -92,6 +92,8 @@ RCD_TEMPLATE = """\
     "name": "$name",
     "labels": {
       "app": "$id",
+      "version": "$appversion",
+      "type": "$type",
       "heritage": "deis"
     }
   },
@@ -144,6 +146,8 @@ RCB_TEMPLATE = """\
     "name": "$name",
     "labels": {
       "app": "$id",
+      "version": "$appversion",
+      "type": "$type",
       "heritage": "deis"
     }
   },

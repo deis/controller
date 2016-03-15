@@ -801,10 +801,14 @@ class KubeHTTPClient(AbstractSchedulerClient):
         }
         current = len(self._get_pods(namespace, labels=labels).json()['items'])
 
+        if desired == current:
+            logger.debug("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
+            return
+
         # Set the new desired replica count
         rc['spec']['replicas'] = desired
 
-        logger.debug("scaling RC {} in namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+        logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         resp = self.session.put(url, json=rc)

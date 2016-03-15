@@ -53,7 +53,9 @@ After you have a working Kubernetes cluster, install [helm](http://helm.sh) and 
 
 ```console
 helm repo add deis https://github.com/deis/charts
-helm install deis/deis-dev
+helm fetch deis/deis-dev
+helm generate -x manifests deis-dev
+helm install deis-dev
 ```
 
 Note that to work off the latest stable release, change the `helm install deis/deis-dev` command to `helm install deis/deis`.

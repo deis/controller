@@ -397,16 +397,19 @@ class KubeHTTPClient(AbstractSchedulerClient):
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
+        num = kwargs.pop('num')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
             try:
+                # Create RC with scale as 0 and then scale to get pod monitoring
+                kwargs['num'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
                 raise RuntimeError('{} (RC): {}'.format(name, e))
 
         try:
-            self._scale_rc(namespace, name, kwargs.get('num'))
+            self._scale_rc(namespace, name, num)
         except KubeException as e:
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()

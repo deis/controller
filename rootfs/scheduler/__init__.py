@@ -28,7 +28,7 @@ POD_BTEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "quay.io/deisci/slugrunner:v2-beta",
+        "image": "$slugimage",
         "env": [
         {
             "name":"PORT",
@@ -172,7 +172,7 @@ RCB_TEMPLATE = """\
         "containers": [
           {
             "name": "$containername",
-            "image": "quay.io/deisci/slugrunner:v2-beta",
+            "image": "$slugimage",
             "imagePullPolicy": "Always",
             "env": [
             {
@@ -469,14 +469,18 @@ class KubeHTTPClient(AbstractSchedulerClient):
         name = name.replace('.', '-').replace('_', '-')
         imgurl = self.registry + '/' + image
         POD = POD_TEMPLATE
-        if image.startswith('http://') or image.startswith('https://'):
-            POD = POD_BTEMPLATE
-            imgurl = image
+
         l = {
             'id': name,
             'version': self.apiversion,
             'image': imgurl,
         }
+
+        if image.startswith('http://') or image.startswith('https://'):
+            POD = POD_BTEMPLATE
+            l["image"] = image
+            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+
         template = string.Template(POD).substitute(l)
         if command.startswith('-c '):
             args = command.split(' ', 1)
@@ -846,11 +850,6 @@ class KubeHTTPClient(AbstractSchedulerClient):
         imgurl = self.registry + "/" + image
         TEMPLATE = RCD_TEMPLATE
 
-        # Check if it is a slug builder image.
-        if kwargs.get('build_type') == "buildpack":
-            imgurl = image
-            TEMPLATE = RCB_TEMPLATE
-
         l = {
             "name": name,
             "id": namespace,
@@ -861,6 +860,13 @@ class KubeHTTPClient(AbstractSchedulerClient):
             "containername": container_name,
             "type": app_type,
         }
+
+        # Check if it is a slug builder image.
+        if kwargs.get('build_type') == "buildpack":
+            l["image"] = image
+            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            TEMPLATE = RCB_TEMPLATE
+
         template = json.loads(string.Template(TEMPLATE).substitute(l))
 
         # apply tags as needed

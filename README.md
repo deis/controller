@@ -1,76 +1,89 @@
 # Deis Workflow v2
 
-[![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow) [![codecov.io](https://codecov.io/github/deis/workflow/coverage.svg?branch=master)](https://codecov.io/github/deis/workflow?branch=master)
+[![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow)
+[![codecov.io](https://codecov.io/github/deis/workflow/coverage.svg?branch=master)](https://codecov.io/github/deis/workflow?branch=master)
+[![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
 
-Deis (pronounced DAY-iss) is an open source PaaS that makes it easy to deploy and manage
-applications on your own servers. Deis builds on [Kubernetes](http://kubernetes.io/) to provide
-a lightweight, [Heroku-inspired](http://heroku.com) workflow.
+Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.
 
-## Work in Progress
+For more information about the Deis Workflow, please visit the main project page at https://github.com/deis/workflow.
 
-![Deis Graphic](https://s3-us-west-2.amazonaws.com/get-deis/deis-graphic-small.png)
+## Beta Status
 
-Deis Workflow v2 is currently in alpha. Your feedback and participation are more than welcome, but be
-aware that this project is considered a work in progress.
+This Deis component is currently in beta status, and we welcome your input! If you have feedback, please [submit an issue][issues]. If you'd like to participate in development, please read the "Development" section below and [submit a pull request][prs].
 
-The following features are not ready in Alpha1, but will be coming
-soon.
+The following features are not ready in Beta, but will be coming soon.
 
 - Complete SSL support
-- Dockerfile builds
 - Backup and restore features
 - Persistent storage (though it can be manually configured)
 
-## Hacking Workflow
+# About
 
-First, [obtain a Kubernetes cluster][install-k8s]. Deis Workflow currently targets Kubernetes
-v1.1 with the following requirements:
+The controller is the central API for the entire Deis Platform. Below is a non-exhaustive list of things it can do:
 
-* Configure Docker's `insecure-registry` parameter to include the subnets used by your Kubernetes installation
+* Create a new application
+* Delete an application
+* Scale an application
+* Configure an application
+* Create a new user
+
+# Development
+
+The Deis project welcomes contributions from all developers. The high level process for development matches many other open source projects. See below for an outline.
+
+* Fork this repository
+* Make your changes
+* [Submit a pull request][prs] (PR) to this repository with your changes, and unit tests whenever possible.
+  * If your PR fixes any [issues][issues], make sure you write Fixes #1234 in your PR description (where #1234 is the number of the issue you're closing)
+* The Deis core contributors will review your code. After each of them sign off on your code, they'll label your PR with LGTM1 and LGTM2 (respectively). Once that happens, you may merge
+
+## Prerequisities
+
+### Kubernetes
+
+In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Workflow currently targets version 1.1 with the following requirements:
+
+* Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
 * If you are testing the logger components, you must enable `DaemonSet` experimental APIs via `--runtime-config=extensions/v1beta1/daemonsets=true`
 
-Next, install [helm](http://helm.sh). Next, add the deis repository to your chart list:
+### Helm
+
+After you have a working Kubernetes cluster, install [helm](http://helm.sh) and run the following commands to add the Deis chart repository and install Deis to your new cluster:
 
 ```console
-$ helm repo add deis https://github.com/deis/charts
+helm repo add deis https://github.com/deis/charts
+helm fetch deis/deis-dev
+helm generate -x manifests deis-dev
+helm install deis-dev
 ```
 
-Then, install Deis!
+## Testing Your Code
 
-To work off the latest stable
+When you've built your new feature or fixed a bug, make sure you've added appropriate unit tests and run `make test` to ensure your code works properly.
+
+Also, since this component is central to the platform, it's recommended that you manually test and verify that your feature or fix works as expected. To do so, ensure the following environment variables are set:
+
+* `DEIS_REGISTRY` - A Docker registry that you have push access to and your Kubernetes cluster can pull from
+  * If this is [Docker Hub](https://hub.docker.com/), leave this variable empty
+  * Otherwise, ensure it has a trailing `/`. For example, if you're using [Quay.io](https://quay.io), use `quay.io/`
+* `IMAGE_PREFIX` - The organization in the Docker repository. This defaults to `deis`, but if you don't have access to that organization, set this to one you have push access to.
+* `SHORT_NAME` (optional) - The name of the image. This defaults to `controller`
+* `VERSION` (optional) - The tag of the Docker image. This defaults to the current Git SHA (the output of `git rev-parse --short HEAD`)
+
+Then, run `make deploy` to build and push a new Docker image with your changes and replace the existing one with your new one in the Kubernetes cluster. See below for an example with appropriate environment variables.
 
 ```console
-$ helm install deis/deis
+export DEIS_REGISTRY=quay.io/
+export IMAGE_PREFIX=arschles
+make deploy
 ```
 
-To work off the latest development version
+After the `make deploy` finishes, a new pod will be launched but may not be running. You'll need to wait until the pod is listed as `Running` and the value in its `Ready` column is `1/1`. Use the following command watch the pod's status:
 
 ```console
-$ helm install deis/deis-dev
+kubectl get pod --namespace=deis -w | grep deis-controller
 ```
-
-Complete instructions for installing and managing a Deis cluster are
-available at https://github.com/deis/docs-v2
-
-If you want to retrieve the latest client dev build for OS X or Linux, download the client:
-
-```console
-$ curl -sSL http://deis.io/deis-cli/install-v2-alpha.sh | bash
-```
-
-If you want to hack on a new feature, build the deis/workflow image and push it to a Docker
-registry. The `$DEIS_REGISTRY` environment variable must point to a registry accessible to your
-Kubernetes cluster. You may need to configure the Docker engines on your Kubernetes nodes to allow
-`--insecure-registry 192.168.0.0/16` (or the appropriate address range).
-
-When you want to test changes then commit the changes to your branch and run
-
-```console
-$ make deploy
-```
-
-This will build the required docker images and push them to the registry that was configured, then update and recreate the Replication Controller.
-Give it a bit of time for the changes to go live.
 
 ## License
 
@@ -82,3 +95,6 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 
 [install-k8s]: http://kubernetes.io/gettingstarted/
+[repl-controller]: http://kubernetes.io/docs/user-guide/replication-controller/
+[issues]: https://github.com/deis/workflow/issues
+[prs]: https://github.com/deis/workflow/pulls

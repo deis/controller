@@ -50,8 +50,8 @@ postgres:
 	@echo "    export PGUSER=postgres"
 
 setup-venv:
-	@if [ ! -d venv ]; then virtualenv venv; fi
-	venv/bin/pip install --disable-pip-version-check -q -r rootfs/requirements.txt -r rootfs/dev_requirements.txt
+	@if [ ! -d venv ]; then pyvenv venv && source venv/bin/activate; fi
+	pip install --disable-pip-version-check -q -r rootfs/requirements.txt -r rootfs/dev_requirements.txt
 
 test: test-style test-check test-unit test-functional
 

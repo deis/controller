@@ -1,7 +1,7 @@
 # Deis Workflow v2
 
-[![Build Status](https://travis-ci.org/deis/workflow.svg?branch=master)](https://travis-ci.org/deis/workflow)
-[![codecov.io](https://codecov.io/github/deis/workflow/coverage.svg?branch=master)](https://codecov.io/github/deis/workflow?branch=master)
+[![Build Status](https://travis-ci.org/deis/controller.svg?branch=master)](https://travis-ci.org/deis/controller)
+[![codecov.io](https://codecov.io/github/deis/controller/coverage.svg?branch=master)](https://codecov.io/github/deis/controller?branch=master)
 [![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
 
 Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.

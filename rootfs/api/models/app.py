@@ -66,15 +66,6 @@ class App(UuidAuditedModel):
     class Meta:
         permissions = (('use_app', 'Can use app'),)
 
-    @property
-    def select_app_name(self):
-        """Select a unique randomly generated app name"""
-        name = generate_app_name()
-        while App.objects.filter(id=name).exists():
-            name = generate_app_name()
-
-        return name
-
     def save(self, *args, **kwargs):
         if not self.id:
             self.id = generate_app_name()

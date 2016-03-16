@@ -177,15 +177,20 @@ class App(UuidAuditedModel):
                 version = "v{}".format(release.version)
                 kwargs['name'] = '{}-{}-{}'.format(kwargs['id'], version, kwargs['name'])
 
-            # Fetch the initial set of pods to work from
-            pods = self.list_pods(**kwargs)
-            desired = len(pods)
+            # Iterate over RCs to get total desired count if not a single item
+            desired = 1
+            if 'name' not in kwargs:
+                desired = 0
+                labels = self._scheduler_filter(**kwargs)
+                controllers = self._scheduler._get_rcs(kwargs['id'], labels=labels).json()['items']
+                for controller in controllers:
+                    desired += controller['spec']['replicas']
         except KubeException:
             # Nothing was found
             return []
 
         try:
-            for pod in pods:
+            for pod in self.list_pods(**kwargs):
                 # This function verifies the delete. Gives pod 30 seconds
                 self._scheduler._delete_pod(self.id, pod['name'])
         except Exception as e:
@@ -550,19 +555,7 @@ class App(UuidAuditedModel):
     def list_pods(self, *args, **kwargs):
         """Used to list basic information about pods running for a given application"""
         try:
-            labels = {'app': str(self)}
-
-            # always supply a version, either latest or a specific one
-            if 'release' not in kwargs or kwargs['release'] is None:
-                release = self.release_set.latest()
-            else:
-                release = self.release_set.get(version=kwargs['release'])
-
-            version = "v{}".format(release.version)
-            labels.update({'version': version})
-
-            if 'type' in kwargs:
-                labels.update({'type': kwargs['type']})
+            labels = self._scheduler_filter(**kwargs)
 
             # in case a singular pod is requested
             if 'name' in kwargs:
@@ -599,3 +592,20 @@ class App(UuidAuditedModel):
             err = '(list pods): {}'.format(e)
             log_event(self, err, logging.ERROR)
             raise
+
+    def _scheduler_filter(self, **kwargs):
+        labels = {'app': self.id}
+
+        # always supply a version, either latest or a specific one
+        if 'release' not in kwargs or kwargs['release'] is None:
+            release = self.release_set.latest()
+        else:
+            release = self.release_set.get(version=kwargs['release'])
+
+        version = "v{}".format(release.version)
+        labels.update({'version': version})
+
+        if 'type' in kwargs:
+            labels.update({'type': kwargs['type']})
+
+        return labels

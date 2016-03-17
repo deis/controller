@@ -11,7 +11,7 @@ info:
 	@echo "Mutable tag:     ${MUTABLE_IMAGE}"
 
 .PHONY: docker-push
-docker-push: docker-immutable-push docker-mutable-push
+docker-push: docker-mutable-push docker-immutable-push
 
 .PHONY: docker-immutable-push
 docker-immutable-push:

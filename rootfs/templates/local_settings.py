@@ -17,11 +17,7 @@ with open('/var/run/secrets/deis/database/creds/password') as f:
 
 DATABASES['default']['NAME'] = DATABASES['default']['USER']
 
-{{ if exists "/deis/controller/registrationMode" }}
-REGISTRATION_MODE = '{{ getv "/deis/controller/registrationMode" }}'
-{{ else }}
-REGISTRATION_MODE = 'enabled'
-{{ end }}
+REGISTRATION_MODE = '{{ getv "/deis/controller/registration/mode" "enabled" }}'
 
 {{ if exists "/deis/controller/subdomain" }}
 DEIS_RESERVED_NAMES = ['{{ getv "/deis/controller/subdomain" }}']

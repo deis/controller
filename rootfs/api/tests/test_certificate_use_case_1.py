@@ -154,6 +154,57 @@ class CertificateUseCase1Test(TestCase):
             name=self.name,
             certificate=self.cert
         )
+
         url = '/v2/certs/{}'.format(self.name)
         response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 204)
+
+    def test_delete_certificate_with_attached_domain(self):
+        """
+        Destroy a certificate with attached domain.
+        Domain should not have assigned cert anymore
+        """
+        # Create certificate
+        response = self.client.post(
+            self.url,
+            json.dumps({
+                'name': self.name,
+                'certificate': self.cert,
+                'key': self.key
+            }),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='token {}'.format(self.token)
+        )
+        self.assertEqual(response.status_code, 201)
+
+        # Attach domain to certificate
+        response = self.client.post(
+            '{}/{}/domain/'.format(self.url, self.name),
+            json.dumps({
+                'domain': str(self.domain)
+            }),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='token {}'.format(self.token)
+        )
+        self.assertEqual(response.status_code, 201)
+
+        # Assert data from cert side
+        response = self.client.get(
+            '{}/{}'.format(self.url, self.name),
+            HTTP_AUTHORIZATION='token {}'.format(self.token)
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['domains'], [str(self.domain)])
+
+        # Assert data from domain side
+        domain = Domain.objects.get(id=self.domain.id)
+        self.assertEqual(domain.certificate.name, self.name)
+
+        # Delete certificate
+        url = '/v2/certs/{}'.format(self.name)
+        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 204)
+
+        # verify certificate is not attached to domain anymore
+        domain = Domain.objects.get(id=self.domain.id)
+        self.assertEqual(domain.certificate, None)

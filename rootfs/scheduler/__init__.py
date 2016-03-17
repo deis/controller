@@ -968,14 +968,11 @@ class KubeHTTPClient(AbstractSchedulerClient):
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
 
     def _create_minio_secret(self, namespace):
-        with open("/var/run/secrets/deis/minio/user/access-key-id", "rb") as the_file:
-            secretId = the_file.read()
-        with open("/var/run/secrets/deis/minio/user/access-secret-key", "rb") as the_file:
-            secretKey = the_file.read()
+        secret = self._get_secret('deis', 'minio-user').json()  # fetch from deis namespace
 
         data = {
-            'access-key-id': secretId,
-            'access-secret-key': secretKey
+            'access-key-id': base64.b64decode(secret['data']['access-key-id']),
+            'access-secret-key': base64.b64decode(secret['data']['access-secret-key'])
         }
         self._create_secret(namespace, 'minio-user', data)
 

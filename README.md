@@ -58,6 +58,15 @@ helm generate -x manifests deis-dev
 helm install deis-dev
 ```
 
+### Python
+
+Python 3.5 is a minimum requirement and can be installed via [Homebrew](http://brew.sh) for OS X or the package manager of choice on your OS.
+
+With the correct Python in place the quickest way to get up and running is to run `make setup-venv` which will install the Python specific dependencies via [PIP](https://pip.pypa.io/en/stable/) inside an isolated (virtualenv)[https://docs.python.org/3/library/venv.html].
+Running `python --version` to verify the correct version is recommend.
+
+Follow the linked documentation to learn about (virtualenv)[https://docs.python.org/3/library/venv.html] and how to `activate` and `deactivate` the environment.
+
 ## Testing Your Code
 
 When you've built your new feature or fixed a bug, make sure you've added appropriate unit tests and run `make test` to ensure your code works properly.
@@ -97,4 +106,4 @@ Unless required by applicable law or agreed to in writing, software distributed 
 [install-k8s]: http://kubernetes.io/gettingstarted/
 [repl-controller]: http://kubernetes.io/docs/user-guide/replication-controller/
 [issues]: https://github.com/deis/workflow/issues
-[prs]: https://github.com/deis/workflow/pulls
+[prs]: https://github.com/deis/controller/pulls

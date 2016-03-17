@@ -1,12 +1,16 @@
-# Deis Workflow v2
+# Deis Controller
 
 [![Build Status](https://travis-ci.org/deis/controller.svg?branch=master)](https://travis-ci.org/deis/controller)
 [![codecov.io](https://codecov.io/github/deis/controller/coverage.svg?branch=master)](https://codecov.io/github/deis/controller?branch=master)
 [![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
 
-Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.
+The Controller is the central API server for [Deis Workflow][workflow]. It is installed on a [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own cluster. Below is a non-exhaustive list of things it can do:
 
-For more information about the Deis Workflow, please visit the main project page at https://github.com/deis/workflow.
+* Create a new application
+* Delete an application
+* Scale an application
+* Configure an application
+* Create a new user
 
 ## Beta Status
 
@@ -18,16 +22,6 @@ The following features are not ready in Beta, but will be coming soon.
 - Backup and restore features
 - Persistent storage (though it can be manually configured)
 
-# About
-
-The controller is the central API for the entire Deis Platform. Below is a non-exhaustive list of things it can do:
-
-* Create a new application
-* Delete an application
-* Scale an application
-* Configure an application
-* Create a new user
-
 # Development
 
 The Deis project welcomes contributions from all developers. The high level process for development matches many other open source projects. See below for an outline.
@@ -38,11 +32,11 @@ The Deis project welcomes contributions from all developers. The high level proc
   * If your PR fixes any [issues][issues], make sure you write Fixes #1234 in your PR description (where #1234 is the number of the issue you're closing)
 * The Deis core contributors will review your code. After each of them sign off on your code, they'll label your PR with LGTM1 and LGTM2 (respectively). Once that happens, the contributors will merge it
 
-## Prerequisities
+## Prerequisites
 
 ### Kubernetes
 
-In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Workflow currently targets version 1.1 with the following requirements:
+In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.1 with the following requirements:
 
 * Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
 * If you are testing the logger components, you must enable `DaemonSet` experimental APIs via `--runtime-config=extensions/v1beta1/daemonsets=true`
@@ -105,5 +99,6 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 [install-k8s]: http://kubernetes.io/gettingstarted/
 [repl-controller]: http://kubernetes.io/docs/user-guide/replication-controller/
-[issues]: https://github.com/deis/workflow/issues
+[issues]: https://github.com/deis/controller/issues
 [prs]: https://github.com/deis/controller/pulls
+[workflow]: https://github.com/deis/workflow

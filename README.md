@@ -4,13 +4,9 @@
 [![codecov.io](https://codecov.io/github/deis/controller/coverage.svg?branch=master)](https://codecov.io/github/deis/controller?branch=master)
 [![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
 
-The Controller is the central API server for [Deis Workflow][workflow]. It is installed on a [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own cluster. Below is a non-exhaustive list of things it can do:
+Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.
 
-* Create a new application
-* Delete an application
-* Scale an application
-* Configure an application
-* Create a new user
+For more information about the Deis Workflow, please visit the main project page at https://github.com/deis/workflow.
 
 ## Beta Status
 
@@ -21,6 +17,16 @@ The following features are not ready in Beta, but will be coming soon.
 - Complete SSL support
 - Backup and restore features
 - Persistent storage (though it can be manually configured)
+
+# About
+
+The Controller is the central API server for [Deis Workflow][workflow]. It is installed on a [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own cluster. Below is a non-exhaustive list of things it can do:
+
+* Create a new application
+* Delete an application
+* Scale an application
+* Configure an application
+* Create a new user
 
 # Development
 

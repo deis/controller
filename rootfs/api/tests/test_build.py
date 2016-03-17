@@ -114,14 +114,17 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/cmd".format(**locals())
-        response = self.client.get(url,
-                                   HTTP_AUTHORIZATION='token {}'.format(self.token))
+
+        url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
+        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
@@ -135,19 +138,24 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/cmd".format(**locals())
+
+        url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url,
                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
+
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example',
@@ -157,20 +165,25 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/cmd".format(**locals())
+
+        url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url,
                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
         # post a new build with procfile
+
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example',
                 'sha': 'a'*40,
@@ -179,14 +192,16 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/web".format(**locals())
-        response = self.client.get(url,
-                                   HTTP_AUTHORIZATION='token {}'.format(self.token))
+
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
+        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'web')
-        self.assertEqual(container['num'], 1)
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
     @mock.patch('requests.post', mock_status_ok)
     def test_build_str(self):
@@ -217,12 +232,14 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(token))
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
+
         # post a new build as admin
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
+
         build = Build.objects.get(uuid=response.data['uuid'])
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
@@ -267,7 +284,7 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/web".format(**locals())
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url,
                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
@@ -287,7 +304,7 @@ class BuildTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
-        url = "/v2/apps/{app_id}/containers/web".format(**locals())
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url,
                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)

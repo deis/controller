@@ -4,7 +4,7 @@ omit =
     */virtualenv/*
     *tests*
     api/__init__.py
-    scheduler/*
+    scheduler/mock.py
     # osx library files when not running in virtualenv
     /Library/*
     /System/*

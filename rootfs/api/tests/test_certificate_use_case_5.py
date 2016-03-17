@@ -137,7 +137,7 @@ class CertificateUseCase5Test(TestCase):
                     '{} - {}'.format(certificate['name'], key)
                 )
 
-            # detach domain to certificate
+            # detach domain from certificate
             response = self.client.delete(
                 '{}/{}/domain/{}'.format(self.url, certificate['name'], domain),
                 content_type='application/json',
@@ -172,12 +172,15 @@ class CertificateUseCase5Test(TestCase):
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
         for domain, certificate in self.certificates.items():
+            # Create certificate
             Certificate.objects.create(
                 name=certificate['name'],
                 owner=self.user,
                 common_name=domain,
                 certificate=certificate['cert']
             )
+
+            # Remove certificate
             url = '/v2/certs/{}'.format(certificate['name'])
             response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
             self.assertEqual(response.status_code, 204)

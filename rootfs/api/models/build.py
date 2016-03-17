@@ -4,6 +4,9 @@ from jsonfield import JSONField
 
 from api.models import UuidAuditedModel
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class Build(UuidAuditedModel):
     """
@@ -29,10 +32,14 @@ class Build(UuidAuditedModel):
         source_version = 'latest'
         if self.sha:
             source_version = 'git-{}'.format(self.sha)
-        new_release = latest_release.new(user,
-                                         build=self,
-                                         config=latest_release.config,
-                                         source_version=source_version)
+
+        new_release = latest_release.new(
+            user,
+            build=self,
+            config=latest_release.config,
+            source_version=source_version
+        )
+
         try:
             self.app.deploy(user, new_release)
             return new_release
@@ -43,13 +50,14 @@ class Build(UuidAuditedModel):
 
     def save(self, **kwargs):
         try:
+            removed = {}
             previous_build = self.app.build_set.latest()
-            to_destroy = []
-            for proctype in previous_build.procfile:
-                if proctype not in self.procfile:
-                    for c in self.app.container_set.filter(type=proctype):
-                        to_destroy.append(c)
-            self.app._destroy_containers(to_destroy)
+            for proc in previous_build.procfile:
+                if proc not in self.procfile:
+                    # Scale proc type down to 0
+                    removed[proc] = 0
+
+            self.app.scale(self.owner, removed)
         except Build.DoesNotExist:
             pass
         return super(Build, self).save(**kwargs)

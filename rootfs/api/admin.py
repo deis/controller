@@ -11,7 +11,6 @@ from guardian.admin import GuardedModelAdmin
 from .models import App
 from .models import Build
 from .models import Config
-from .models import Container
 from .models import Domain
 from .models import Key
 from .models import Release
@@ -45,16 +44,6 @@ class ConfigAdmin(admin.ModelAdmin):
     list_display = ('created', 'owner', 'app')
     list_filter = ('owner', 'app')
 admin.site.register(Config, ConfigAdmin)
-
-
-class ContainerAdmin(admin.ModelAdmin):
-    """Set presentation options for :class:`~api.models.Container` models
-    in the Django admin.
-    """
-    date_hierarchy = 'created'
-    list_display = ('short_name', 'owner', 'app', 'state')
-    list_filter = ('owner', 'app')
-admin.site.register(Container, ContainerAdmin)
 
 
 class DomainAdmin(admin.ModelAdmin):

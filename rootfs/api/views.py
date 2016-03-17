@@ -304,38 +304,12 @@ class ConfigViewSet(ReleasableViewSet):
         release = config.app.release_set.latest()
         self.release = release.new(self.request.user, config=config, build=release.build)
         try:
+            # It's possible to set config values before a build
             if self.release.build is not None:
                 config.app.deploy(self.request.user, self.release)
         except RuntimeError:
             self.release.delete()
             raise
-
-
-class ContainerViewSet(AppResourceViewSet):
-    """A viewset for interacting with Container objects."""
-    model = models.Container
-    serializer_class = serializers.ContainerSerializer
-
-    def get_queryset(self, **kwargs):
-        qs = super(ContainerViewSet, self).get_queryset(**kwargs)
-        container_type = self.kwargs.get('type')
-        if container_type:
-            qs = qs.filter(type=container_type)
-        else:
-            qs = qs.exclude(type='run')
-        return qs
-
-    def get_object(self, **kwargs):
-        qs = self.get_queryset(**kwargs)
-        return get_object_or_404(qs, num=self.kwargs['num'])
-
-    def restart(self, *args, **kwargs):
-        try:
-            containers = self.get_app().restart_old(**kwargs)
-            serializer = self.get_serializer(containers, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 class PodViewSet(AppResourceViewSet):

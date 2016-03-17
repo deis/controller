@@ -15,6 +15,9 @@ $(shell kubectl get rc deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(
 DESIRED_REPLICAS=$(shell kubectl get -o template rc/deis-$(COMPONENT) --template={{.status.replicas}} --namespace deis)
 endif
 
+# Test processes used in quick unit testing
+TEST_PROCS ?= 4
+
 check-docker:
 	@if [ -z $$(which docker) ]; then \
 	  echo "Missing \`docker\` client which is required for development"; \
@@ -66,6 +69,10 @@ test-unit:
 	cd rootfs \
 		&& coverage run manage.py test --noinput registry api \
 		&& coverage report -m
+
+test-unit-quick:
+	cd rootfs \
+		&& ./manage.py test --noinput --parallel ${TEST_PROCS} --noinput registry api
 
 test-functional:
 	@echo "Implement functional tests in _tests directory"

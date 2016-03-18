@@ -3,8 +3,6 @@ Django settings for the Deis project.
 """
 
 import os.path
-import random
-import string
 import tempfile
 
 # A boolean that turns on/off debug mode.
@@ -255,8 +253,11 @@ TEMPDIR = tempfile.mkdtemp(prefix='deis')
 DEIS_RESERVED_NAMES = ['deis']
 
 # default scheduler settings
-SCHEDULER_MODULE = 'scheduler.mock'
-SCHEDULER_URL = 'localhost'
+SCHEDULER_MODULE = 'scheduler'
+SCHEDULER_URL = "https://{}:{}".format(
+    os.environ.get('KUBERNETES_SERVICE_HOST', 'kubernetes.default.svc.cluster.local'),
+    os.environ.get('KUBERNETES_SERVICE_PORT', '443')
+)
 
 # security keys and auth tokens
 random_secret = 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi*#@&*^'
@@ -285,9 +286,6 @@ DATABASES = {
         'PASSWORD': os.environ.get('DEIS_DATABASE_PASSWORD', ''),
         'HOST': os.environ.get('DEIS_DATABASE_SERVICE_HOST', ''),
         'PORT': os.environ.get('DEIS_DATABASE_SERVICE_PORT', 5432),
-        # randomize test database name so we can run multiple unit tests simultaneously
-        'TEST_NAME': "unittest-{}".format(''.join(
-            random.choice(string.ascii_letters + string.digits) for _ in range(8)))
     }
 }
 

@@ -9,6 +9,7 @@ import json
 import uuid
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
@@ -27,6 +28,10 @@ class ReleaseTest(TransactionTestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     @mock.patch('requests.post', mock_status_ok)
     def test_release(self):

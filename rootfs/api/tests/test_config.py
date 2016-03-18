@@ -10,6 +10,7 @@ import json
 import requests
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
@@ -43,6 +44,10 @@ class ConfigTest(TransactionTestCase):
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
         self.app = App.objects.all()[0]
+
+    def tearDown(self):
+        # make sure every test has a clean slate for k8s mocking
+        cache.clear()
 
     @mock.patch('requests.post', mock_status_ok)
     def test_config(self):
@@ -510,7 +515,7 @@ class ConfigTest(TransactionTestCase):
         self.assertNotEqual(tags3['uuid'], tags4['uuid'])
         self.assertNotIn('rack', json.dumps(response.data['tags']))
         # set valid values
-        body = {'tags': json.dumps({'kubernetes.io/hostname': 'valid'})}
+        body = {'tags': json.dumps({'kubernetes.io/hostname': '172.17.8.100'})}
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)

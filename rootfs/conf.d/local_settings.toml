@@ -5,7 +5,6 @@ uid = 1000
 gid = 1000
 mode  = "0640"
 keys = [
-  "/deis/controller",
-  "/deis/platform",
+  "/deis/controller"
 ]
 reload_cmd = "/app/bin/reload"

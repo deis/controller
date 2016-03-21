@@ -66,6 +66,12 @@ class UserManagementViewSet(GenericViewSet):
     def get_object(self):
         return self.get_queryset()[0]
 
+    def list(self, request, **kwargs):
+        user = self.get_object()
+
+        serializer = self.get_serializer(user, many=False)
+        return Response(serializer.data)
+
     def destroy(self, request, **kwargs):
         calling_obj = self.get_object()
         target_obj = calling_obj

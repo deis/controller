@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel
+from api.models import UuidAuditedModel, DeisException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -41,12 +41,14 @@ class Build(UuidAuditedModel):
         )
 
         try:
-            self.app.deploy(user, new_release)
+            self.app.deploy(new_release)
             return new_release
-        except RuntimeError:
+        except Exception as e:
             if 'new_release' in locals():
                 new_release.delete()
-            raise
+            self.delete()
+
+            raise DeisException(str(e)) from e
 
     def save(self, **kwargs):
         try:

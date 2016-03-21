@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import json
 import logging
 import os
@@ -10,7 +11,11 @@ from django.conf import settings
 from docker import Client
 from .states import JobState
 import requests
+from requests_toolbelt import user_agent
 from .utils import dict_merge
+from retrying import retry
+
+from deis import __version__ as deis_version
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +32,7 @@ POD_BTEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "$slugimage",
+        "image": "$image",
         "env": [
         {
             "name":"PORT",
@@ -35,30 +40,39 @@ POD_BTEMPLATE = """\
         },
         {
             "name":"SLUG_URL",
-            "value":"$image"
+            "value":"$slug_url"
         },
         {
-            "name": "DOCKERIMAGE",
-            "value":"1"
+            "name": "BUILDER_STORAGE",
+            "value":"$storagetype"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_HOST",
+            "value":"$mHost"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_PORT",
+            "value":"$mPort"
         }
         ],
         "volumeMounts":[
         {
-            "name":"minio-user",
-            "mountPath":"/var/run/secrets/object/store",
+            "name":"objectstorage-keyfile",
+            "mountPath":"/var/run/secrets/deis/objectstore/creds",
             "readOnly":true
         }
         ]
       }
     ],
     "volumes":[
-    {
-        "name":"minio-user",
+      {
+        "name":"objectstorage-keyfile",
         "secret":{
-        "secretName":"minio-user"
+        "secretName":"objectstorage-keyfile"
         }
-    }
+      }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -75,9 +89,11 @@ POD_TEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "$image"
+        "image": "$image",
+        "env": []
       }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -97,7 +113,7 @@ RCD_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -114,10 +130,12 @@ RCD_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
             "image": "$image",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"DEIS_APP",
@@ -151,7 +169,7 @@ RCB_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -168,11 +186,12 @@ RCB_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
-            "image": "$slugimage",
-            "imagePullPolicy": "Always",
+            "image": "$image",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"PORT",
@@ -180,7 +199,7 @@ RCB_TEMPLATE = """\
             },
             {
                 "name":"SLUG_URL",
-                "value":"$image"
+                "value":"$slug_url"
             },
             {
                 "name":"DEIS_APP",
@@ -191,25 +210,33 @@ RCB_TEMPLATE = """\
                 "value":"$appversion"
             },
             {
-                "name": "DOCKERIMAGE",
-                "value":"1"
+                "name": "BUILDER_STORAGE",
+                "value":"$storagetype"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_HOST",
+                "value":"$mHost"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_PORT",
+                "value":"$mPort"
             }
             ],
             "volumeMounts":[
-            {
-                "name":"minio-user",
-                "mountPath":"/var/run/secrets/object/store",
+              {
+                "name":"objectstorage-keyfile",
+                "mountPath":"/var/run/secrets/deis/objectstore/creds",
                 "readOnly":true
-            }
+              }
             ]
           }
         ],
         "nodeSelector": {},
         "volumes":[
         {
-            "name":"minio-user",
+            "name":"objectstorage-keyfile",
             "secret":{
-            "secretName":"minio-user"
+            "secretName":"objectstorage-keyfile"
             }
         }
         ]
@@ -242,7 +269,6 @@ SERVICE_TEMPLATE = """\
     ],
     "selector": {
       "app": "$name",
-      "type": "web",
       "heritage": "deis"
     }
   }
@@ -255,7 +281,10 @@ SECRET_TEMPLATE = """\
   "apiVersion": "$version",
   "metadata": {
     "name": "$name",
-    "namespace": "$id"
+    "namespace": "$id",
+    "labels": {
+      "app": "$id"
+    }
   },
   "type": "Opaque",
   "data": {}
@@ -298,7 +327,6 @@ class KubeHTTPClient(object):
 
     def __init__(self):
         self.url = settings.SCHEDULER_URL
-        self.registry = settings.REGISTRY_URL
 
         with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as token_file:
             token = token_file.read()
@@ -307,117 +335,171 @@ class KubeHTTPClient(object):
         session.headers = {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json',
+            'User-Agent': user_agent('Deis Controller', deis_version)
         }
-        # TODO: accessing the k8s api server by IP address rather than hostname avoids
-        # intermittent DNS errors, but at the price of disabling cert verification.
-        # session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
-        session.verify = False
+        session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         self.session = session
 
-    def deploy(self, namespace, name, image, command, **kwargs):
+    def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
+        build_type = kwargs.get('build_type')
+        routable = kwargs.get('routable', False)
+        port = None
 
-        # Fetch service
-        service = self._get_service(namespace, namespace).json()
-        old_service = service.copy()  # in case anything fails for rollback
-
-        # Update service information
-        # Make sure the router knows what to do with this
-        # TODO this should potentially be higher up in the flow
-        if app_type in ['web', 'cmd']:
-            # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            service['metadata']['labels']['router.deis.io/routable'] = 'true'
-
-        # Set app type
-        if (
-            'type' not in service['spec']['selector'] or
-            app_type != service['spec']['selector']['type']
-        ):
-            service['spec']['selector']['type'] = app_type
-
-        # Find if target port exists already, which it also may not
-        port = self._get_port(image)
-        for pos, item in enumerate(service['spec']['ports']):
-            if item['port'] == 80 and port != item['targetPort']:
-                # port 80 is the only one we care about right now
-                service['spec']['ports'][pos]['targetPort'] = port
-
-        self._update_service(namespace, namespace, data=service)
+        try:
+            if routable:
+                if build_type == "buildpack":
+                    logger.debug("Using default port 5000 for build pack app {}".format(name))
+                    port = 5000
+                else:
+                    port = self._get_port(image)
+                    if port is None:
+                        raise Exception("Expose a port or make the app non routable by changing"
+                                        " the process type")
+        except Exception as e:
+            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
-        new_rc = self._create_rc(namespace, name, image, command, **kwargs)
+
+        # If an RC already exists then stop processing of the deploy
+        try:
+            self._get_rc(namespace, name)
+            logger.debug('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
+            return
+        except KubeHTTPException:
+            new_rc = self._create_rc(namespace, name, image, command, **kwargs).json()
 
         # Get the desired number to scale to
-        desired = 1
         if old_rc:
             desired = int(old_rc["spec"]["replicas"])
+        else:
+            desired = kwargs['replicas']
+            logger.debug('No prior RC could be found for {}-{}'.format(namespace, app_type))
+
+        # see if application or global deploy batches are defined
+        if not kwargs.get('batches', None):
+            # figure out how many nodes the application can go on
+            tags = kwargs.get('tags', {})
+            steps = len(self._get_nodes(labels=tags).json()['items'])
+        else:
+            steps = int(kwargs.get('batches'))
+
+        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
+        if desired < steps:
+            # do it all in one go
+            batches = [desired]
+        else:
+            # figure out the stepped deploy count and then see if there is a leftover
+            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
+            if desired - sum(batches) > 0:
+                batches.append(desired - sum(batches))
 
         try:
-            count = 1
-            while desired >= count:
+            count = 0
+            new_name = new_rc["metadata"]["name"]
+            for batch in batches:
+                count += batch
                 logger.debug('scaling release {} to {} out of final {}'.format(
-                    new_rc["metadata"]["name"], count, desired
+                    new_name, count, desired
                 ))
-                self._scale_rc(namespace, new_rc["metadata"]["name"], count)
-                logger.debug('scaled up pod number {} for {}'.format(
-                    count, new_rc["metadata"]["name"]
-                ))
+                self._scale_rc(namespace, new_name, count)
 
                 if old_rc:
+                    old_name = old_rc["metadata"]["name"]
                     logger.debug('scaling old release {} from original {} to {}'.format(
-                        old_rc["metadata"]["name"], desired, (desired-count))
+                        old_name, desired, (desired-count))
                     )
-                    self._scale_rc(namespace, old_rc["metadata"]["name"], (desired-count))
-                    logger.debug('scaled down pod number {} for {}'.format(
-                        count, old_rc["metadata"]["name"]
-                    ))
-
-                count += 1
+                    self._scale_rc(namespace, old_name, (desired-count))
         except Exception as e:
             # New release is broken. Clean up
             logger.error('Could not scale {} to {}. Deleting and going back to old release'.format(
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Fix service to old port and app type
-            self._update_service(namespace, namespace, data=old_service)
+            # Remove new release of the RC
+            self._cleanup_release(namespace, new_rc)
 
-            # Remove old release
-            self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
-            self._delete_rc(namespace, new_rc["metadata"]["name"])
-
-            # Bring back old release if available
+            # If there was a previous release then bring that back
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise RuntimeError('{} (scheduler::deploy): {}'.format(name, e))
+            raise KubeException(str(e))
 
         # New release is live and kicking. Clean up old release
         if old_rc:
-            self._delete_rc(namespace, old_rc["metadata"]["name"])
+            self._cleanup_release(namespace, old_rc)
+
+        # Make sure the application is routable and uses the correct port
+        # Done after the fact to let initial deploy settle before routing
+        # traffic to the application
+        self._update_application_service(namespace, name, app_type, port, routable)
+
+    def _cleanup_release(self, namespace, controller):
+        """
+        Cleans up resources related to an application deployment
+        """
+        # Have the RC scale down pods and delete itself
+        self._scale_rc(namespace, controller['metadata']['name'], 0)
+        self._delete_rc(namespace, controller['metadata']['name'])
+
+        # Remove stray pods that the scale down will have missed (this can occassionally happen)
+        pods = self._get_pods(namespace, labels=controller['metadata']['labels']).json()
+        for pod in pods['items']:
+            if self._pod_deleted(pod):
+                continue
+
+            self._delete_pod(namespace, pod['metadata']['name'])
+
+    def _update_application_service(self, namespace, name, app_type, port, routable=False):
+        """Update application service with all the various required information"""
+        try:
+            # Fetch service
+            service = self._get_service(namespace, namespace).json()
+            old_service = service.copy()  # in case anything fails for rollback
+
+            # Update service information
+            if routable:
+                service['metadata']['labels']['router.deis.io/routable'] = 'true'
+
+            # Set app type if there is not one available
+            if 'type' not in service['spec']['selector']:
+                service['spec']['selector']['type'] = app_type
+
+            # Find if target port exists already, update / create as required
+            if routable:
+                for pos, item in enumerate(service['spec']['ports']):
+                    if item['port'] == 80 and port != item['targetPort']:
+                        # port 80 is the only one we care about right now
+                        service['spec']['ports'][pos]['targetPort'] = port
+
+            self._update_service(namespace, namespace, data=service)
+        except Exception as e:
+            # Fix service to old port and app type
+            self._update_service(namespace, namespace, data=old_service)
+            raise KubeException('{} (scheduler::deploy::service_update): {}'.format(name, e))
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
-        num = kwargs.pop('num')
+        replicas = kwargs.pop('replicas')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
             try:
                 # Create RC with scale as 0 and then scale to get pod monitoring
-                kwargs['num'] = 0
+                kwargs['replicas'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
-                raise RuntimeError('{} (RC): {}'.format(name, e))
+                raise KubeException('{} (RC): {}'.format(name, e))
 
         try:
-            self._scale_rc(namespace, name, num)
+            self._scale_rc(namespace, name, replicas)
         except KubeException as e:
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
-            raise RuntimeError('{} (Scale): {}'.format(name, e))
+            raise KubeException('{} (Scale): {}'.format(name, e))
 
     def create(self, namespace, **kwargs):
         """Create a basic structure for an application in k8s"""
@@ -428,11 +510,6 @@ class KubeHTTPClient(object):
                 self._get_namespace(namespace)
             except KubeException:
                 self._create_namespace(namespace)
-
-            try:
-                self._get_secret(namespace, 'minio-user')
-            except KubeException:
-                self._create_minio_secret(namespace)
 
             try:
                 self._get_service(namespace, namespace)
@@ -462,19 +539,23 @@ class KubeHTTPClient(object):
             name, image, entrypoint, command)
         )
 
-        imgurl = self.registry + '/' + image
         POD = POD_TEMPLATE
-
         l = {
             'id': name,
             'version': self.apiversion,
-            'image': imgurl,
+            'image': image,
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
+            'storagetype': os.getenv("APP_STORAGE"),
+            'terminationGracePeriodSeconds': settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
-        if image.startswith('http://') or image.startswith('https://'):
+        if entrypoint == '/runner/init':
             POD = POD_BTEMPLATE
-            l["image"] = image
-            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            l["slug_url"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
+            l["image"] = settings.SLUGRUNNER_IMAGE
+            l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
+            l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
 
         template = json.loads(string.Template(POD).substitute(l))
 
@@ -488,7 +569,7 @@ class KubeHTTPClient(object):
         containers['command'] = [entrypoint]
         containers['args'] = args
 
-        self._set_environment(containers, **kwargs)
+        self._set_environment(containers, namespace, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
@@ -510,9 +591,16 @@ class KubeHTTPClient(object):
                     self._delete_pod(namespace, name)
                     return 0, log
 
-                if pod['status']['phase'] == 'Running':
+                elif pod['status']['phase'] == 'Running':
                     if iteration > 28:
                         duration += 1
+
+                elif pod['status']['phase'] == 'Failed':
+                    pod_state = pod['status']['containerStatuses'][0]['state']
+                    err_code = pod_state['terminated']['exitCode']
+                    self._delete_pod(namespace, name)
+                    return err_code, data
+
             except KubeException:
                 break
 
@@ -523,25 +611,47 @@ class KubeHTTPClient(object):
             error(response, 'Pod start took more than 30 seconds', namespace)
             return 0, data
 
-        if pod['status']['phase'] == 'Failed':
-            pod_state = pod['status']['containerStatuses'][0]['state']
-            err_code = pod_state['terminated']['exitCode']
-            self._delete_pod(namespace, name)
-            return err_code, data
-
         return 0, data
 
-    def _set_environment(self, data, **kwargs):
+    def _set_environment(self, data, namespace, **kwargs):
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
         env = kwargs.get('envs', {})
 
+        # create env list if missing
+        if 'env' not in data:
+            data['env'] = []
+
         if env:
-            for key, value in env.items():
+            # env vars are stored in secrets and mapped to env in k8s
+            try:
+                # secrets use dns labels for keys, map those properly here
+                secrets_env = {}
+                for key, value in env.items():
+                    secrets_env[key.lower().replace('_', '-')] = str(value)
+
+                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
+                self._get_secret(namespace, secret_name)
+            except KubeHTTPException:
+                labels = {
+                    'version': kwargs.get('version'),
+                    'type': 'env'
+                }
+                self._create_secret(namespace, secret_name, secrets_env, labels)
+            else:
+                self._update_secret(namespace, secret_name, secrets_env)
+
+            for key in env.keys():
                 data["env"].append({
                     "name": key,
-                    "value": str(value)
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": secret_name,
+                            # k8s doesn't allow _ so translate to -, see above
+                            "key": key.lower().replace('_', '-')
+                        }
+                    }
                 })
 
         # Inject debugging if workflow is in debug mode
@@ -565,48 +675,50 @@ class KubeHTTPClient(object):
             data["resources"]["limits"]["cpu"] = cpu
 
     def resolve_state(self, pod):
-        if pod is None:
-            return JobState.destroyed
-
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
         if pod is None:
             return JobState.destroyed
 
         states = {
-            'Pending': JobState.initialized,
-            'Starting': JobState.starting,
-            'Running': JobState.up,
-            'Terminating': JobState.terminating,
-            'Succeeded': JobState.down,
-            'Failed': JobState.crashed,
-            'Unknown': JobState.error,
+            'Pending': JobState.initializing.name,
+            'ContainerCreating': JobState.creating.name,
+            'Starting': JobState.starting.name,
+            'Running': JobState.up.name,
+            'Terminating': JobState.terminating.name,
+            'Succeeded': JobState.down.name,
+            'Failed': JobState.crashed.name,
+            'Unknown': JobState.error.name,
         }
 
+        # being in a Pending state can mean different things, introspecting app container first
+        if pod['status']['phase'] == 'Pending':
+            pod_state = self._pod_pending_status(pod)
         # being in a running state can mean a pod is starting, actually running or terminating
-        if pod['status']['phase'] == 'Running':
+        elif pod['status']['phase'] == 'Running':
             # is the readiness probe passing?
-            container_status = self._pod_readiness_status(pod)
-            if container_status in ['Starting', 'Terminating']:
-                return states[container_status]
-            elif container_status == 'Running' and self._pod_liveness_status(pod):
+            pod_state = self._pod_readiness_status(pod)
+            if pod_state in ['Starting', 'Terminating']:
+                return states[pod_state]
+            elif pod_state == 'Running' and self._pod_liveness_status(pod):
                 # is the pod ready to serve requests?
-                return states[container_status]
+                return states[pod_state]
+        else:
+            # if no match was found for deis mapping then passthrough the real state
+            pod_state = pod['status']['phase']
 
-        return states[pod['status']['phase']]
+        return states.get(pod_state, pod_state)
 
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
     def _get_port(self, image):
-        try:
-            image = self.registry + '/' + image
-            repo = image.split(":")
-            # image already includes the tag, so we split it out here
-            docker_cli = Client(version="auto")
-            docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-            image_info = docker_cli.inspect_image(image)
-            port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-        except Exception:
-            logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
-            port = 5000
-
+        # try thrice to find the port before raising exception as docker-py is flaky
+        repo = image.split(":")
+        # image already includes the tag, so we split it out here
+        docker_cli = Client(version="auto")
+        docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
+        image_info = docker_cli.inspect_image(image)
+        if 'ExposedPorts' not in image_info['Config']:
+            return None
+        port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
         return port
 
     def _api(self, tmpl, *args):
@@ -696,27 +808,15 @@ class KubeHTTPClient(object):
     # REPLICATION CONTROLLER #
 
     def _get_old_rc(self, namespace, app_type):
-        url = self._api("/namespaces/{}/replicationcontrollers", namespace)
-        resp = self.session.get(url)
-        if unhealthy(resp.status_code):
-            error(resp, 'get ReplicationControllers in Namespace "{}"', namespace)
+        labels = {
+            'app': namespace,
+            'type': app_type
+        }
+        controllers = self._get_rcs(namespace, labels=labels).json()
+        if len(controllers['items']) == 0:
+            return False
 
-        exists = False
-        prev_rc = []
-        for rc in resp.json()['items']:
-            if (
-                'app' in rc['spec']['selector'] and
-                namespace == rc['metadata']['labels']['app'] and
-                'type' in rc['spec']['selector'] and
-                app_type == rc['spec']['selector']['type']
-            ):
-                exists = True
-                prev_rc = rc
-                break
-        if exists:
-            return prev_rc
-
-        return 0
+        return controllers['items'][0]
 
     def _get_rc_status(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
@@ -740,12 +840,26 @@ class KubeHTTPClient(object):
         return response
 
     def _wait_until_pods_terminate(self, namespace, labels, current, desired):
-        delta = current - desired
+        """Wait until all the desired pods are terminated"""
+        # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_podspec
+        # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+        # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
 
-        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(delta, namespace))  # noqa
-        for waited in range(120):
+        timeout = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
+        delta = current - desired
+        logger.debug("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
+        for waited in range(timeout):
             pods = self._get_pods(namespace, labels=labels).json()
             count = len(pods['items'])
+
+            # see if any pods are past their terminationGracePeriodsSeconds (as in stuck)
+            # seems to be a problem in k8s around that:
+            # https://github.com/kubernetes/kubernetes/search?q=terminating&type=Issues
+            # these will be eventually GC'ed by k8s, ignoring them for now
+            for pod in pods['items']:
+                # remove pod if it is passed the graceful termination period
+                if self._pod_deleted(pod):
+                    count -= 1
 
             # stop when all pods are terminated as expected
             if count == desired:
@@ -758,25 +872,68 @@ class KubeHTTPClient(object):
 
         logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))  # noqa
 
-    def _get_pod_ready_status(self, namespace, labels, desired):
+    def _get_pod_ready_status(self, namespace, controller, labels, desired):
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
 
+        waited = 0
+        timeout = 120  # 2 minutes
+        # If there is initial delay on the readiness check then timeout needs to be higher
+        # this is to account for kubernetes having readiness check report as failure until
+        # the initial delay period is up
+        delay = 0
+        container_name = '{}-{}'.format(
+            controller['metadata']['labels']['app'],
+            controller['metadata']['labels']['type']
+        )
+        # get health info from spec
+        for container in controller['spec']['template']['spec']['containers']:
+            if container['name'] != container_name or 'readinessProbe' not in container:
+                continue
+
+            delay = int(container['readinessProbe']['initialDelaySeconds'])
+            logger.debug("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe for the RC".format(delay, timeout, controller['metadata']['name']))  # noqa
+            timeout += delay
+
+        logger.debug("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
+
+        # has timeout been increased or not within the loop
+        timeout_padded = False
         # Ensure the minimum desired number of pods are available
-        logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(desired, namespace))  # noqa
-        for waited in range(120):
-            count = 0
+        while True:
+            # timed out, time to bail
+            if waited > timeout:
+                logger.debug('timed out waiting for pods to come up in namespace {}'.format(namespace))  # noqa
+                break
+
+            count = 0  # ready pods
             pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
-                # now that state is running time to see if probes are passing
+                # If pulling an image is taking long then increase the timeout
                 if (
-                    pod['status']['phase'] == 'Running' and
-                    # is the readiness probe passing?
-                    self._pod_readiness_status(pod) == 'Running' and
-                    # is the pod ready to serve requests?
-                    self._pod_liveness_status(pod)
+                    pod['status']['phase'] == 'Pending' and
+                    self._pod_pending_status(pod) == 'Pulling' and
+                    not timeout_padded
                 ):
+                    # last event should be Pulling in this case
+                    event = self._pod_events(pod).pop()
+                    # see if pull operation has been happening for over 1 minute
+                    start = datetime.strptime(
+                        event['firstTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    seconds = 60
+                    if (start + timedelta(seconds=seconds)) < datetime.utcnow():
+                        # add 10 minutes to timeout to allow a pull image operation to finish
+                        logger.debug('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
+                        logger.debug('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
+                        timeout += (60 * 10)
+                        timeout_padded = True
+
+                # now that state is running time to see if probes are passing
+                if self._pod_ready(pod):
                     count += 1
 
             if count == desired:
@@ -785,6 +942,8 @@ class KubeHTTPClient(object):
             if waited > 0 and (waited % 10) == 0:
                 logger.debug("waited {}s and {} pods are in service".format(waited, count))
 
+            # increase wait time without dealing with jitters from above code
+            waited += 1
             time.sleep(1)
 
         logger.debug("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
@@ -798,35 +957,41 @@ class KubeHTTPClient(object):
             'type': rc['spec']['selector']['type'],
             'version': rc['spec']['selector']['version']
         }
-        current = len(self._get_pods(namespace, labels=labels).json()['items'])
+
+        # Are there any pods running (and verified as ready) available?
+        pods = self._get_pods(namespace, labels=labels).json()['items']
+        current = 0
+        for pod in pods:
+            if self._pod_ready(pod):
+                current += 1
 
         if desired == current:
             logger.debug("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
             return
+        elif desired != rc['spec']['replicas']:  # RC needs new replica count
+            # Set the new desired replica count
+            rc['spec']['replicas'] = desired
 
-        # Set the new desired replica count
-        rc['spec']['replicas'] = desired
+            logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
-        logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+            self._update_rc(namespace, name, rc)
 
-        self._update_rc(namespace, name, rc)
+            resource_ver = rc['metadata']['resourceVersion']
+            logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
+            for waited in range(30):
+                js_template = self._get_rc(namespace, name).json()
+                if js_template["metadata"]["resourceVersion"] != resource_ver:
+                    break
 
-        resource_ver = rc['metadata']['resourceVersion']
-        logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
-        for waited in range(30):
-            js_template = self._get_rc(namespace, name).json()
-            if js_template["metadata"]["resourceVersion"] != resource_ver:
-                break
+                if waited > 0 and (waited % 10) == 0:
+                    logger.debug("waited {}s so far for a new resource version".format(waited))
 
-            if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s so far for a new resource version".format(waited))
+                time.sleep(1)
 
-            time.sleep(1)
-
-        logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
+            logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
         # Double check enough pods are in the required state to service the application
-        self._get_pod_ready_status(namespace, labels, desired)
+        self._get_pod_ready_status(namespace, rc, labels, desired)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):
@@ -836,24 +1001,37 @@ class KubeHTTPClient(object):
         app_type = kwargs.get('app_type')
         container_name = namespace + '-' + app_type
         args = command.split()
-        imgurl = self.registry + "/" + image
+        storageType = os.getenv("APP_STORAGE")
         TEMPLATE = RCD_TEMPLATE
 
         l = {
             "name": name,
             "id": namespace,
-            "appversion": kwargs.get("version", {}),
+            "appversion": kwargs.get("version"),
             "version": self.apiversion,
-            "image": imgurl,
-            "num": kwargs.get("num", {}),
+            "image": image,
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
+            "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
             "type": app_type,
+            "storagetype": storageType,
+            "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
+            "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
+            "terminationGracePeriodSeconds": settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
         # Check if it is a slug builder image.
         if kwargs.get('build_type') == "buildpack":
-            l["image"] = image
-            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            # only buildpack apps need access to object storage
+            try:
+                self._get_secret(namespace, 'objectstorage-keyfile')
+            except KubeException:
+                secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+                self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+
+            l["slug_url"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
+            l["image"] = settings.SLUGRUNNER_IMAGE
             TEMPLATE = RCB_TEMPLATE
 
         template = json.loads(string.Template(TEMPLATE).substitute(l))
@@ -866,11 +1044,13 @@ class KubeHTTPClient(object):
         container = template["spec"]["template"]["spec"]["containers"][0]
         container['args'] = args
 
-        self._set_environment(container, **kwargs)
+        self._set_environment(container, namespace, **kwargs)
 
-        # add in healtchecks
+        # add in healthchecks
         if kwargs.get('healthcheck'):
-            template = self._healthcheck(template, **kwargs['healthcheck'])
+            template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
+        else:
+            template = self._default_readiness_probe(template, image, kwargs.get('build_type'))
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -878,24 +1058,28 @@ class KubeHTTPClient(object):
             error(resp, 'create ReplicationController "{}" in Namespace "{}"', name, namespace)
             logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
 
-        create = False
+        self._wait_for_rc_ready(namespace, name)
+
+        return resp
+
+    def _wait_for_rc_ready(self, namespace, name):
+        """
+        Waits for status/observedGeneration and metadata/generation to match
+        Indicates RC is ready
+        """
         for _ in range(30):
-            if not create and self._get_rc_status(namespace, name) == 404:
+            try:
+                rc = self._get_rc(namespace, name).json()
+                if (
+                    "observedGeneration" in rc["status"] and
+                    rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
+                ):
+                    break
+
                 time.sleep(1)
-                continue
-
-            create = True
-            rc = self._get_rc(namespace, name).json()
-            # TODO: Does this matter? Is there a better indicator?
-            if (
-                "observedGeneration" in rc["status"] and
-                rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
-            ):
-                break
-
-            time.sleep(1)
-
-        return resp.json()
+            except KubeHTTPException as e:
+                if e.response.status_code == 404:
+                    time.sleep(1)
 
     def _update_rc(self, namespace, name, data):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
@@ -914,9 +1098,16 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
-        # FIXME this logic ideally should live higher up
-        if controller['spec']['selector']['type'] not in ['web', 'cmd']:
+    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5,
+                     period_seconds=1, success_threshold=1, failure_threshold=3):  # noqa
+        """
+        Apply HTTP GET healthcehck to the application container
+
+        http://kubernetes.io/docs/user-guide/walkthrough/k8s201/#health-checking
+        http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+        http://kubernetes.io/docs/user-guide/liveness/
+        """
+        if not routable:
             return controller
 
         namespace = controller['spec']['selector']['app']
@@ -940,7 +1131,10 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
             'readinessProbe': {
                 # an http probe
@@ -951,35 +1145,122 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
         }
 
-        # Because it comes from a JSON template, need to hit the first key
-        # FIXME: assumption that container 0 is the app
-        controller['spec']['template']['spec']['containers'][0].update(healthcheck)
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(healthcheck)
 
         return controller
 
+    def _default_readiness_probe(self, controller, image, build_type):
+        if build_type == "buildpack":
+            readinessprobe = self._default_buildpack_readiness_probe()
+        else:
+            readinessprobe = self._default_dockerapp_readiness_probe(image)
+        if readinessprobe is None:
+            return controller
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        namespace = controller['spec']['selector']['app']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(readinessprobe)
+
+        return controller
+
+    '''
+    Applies exec readiness probe to the slugrunner container.
+    http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+
+    /runner/init is the entry point of the slugrunner.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/Dockerfile#L20
+    Once it downloads the slug it starts running using `exec` which means the pid 1
+    will point to the slug/application command instead of entry point once the application has
+    started.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/runner/init#L90
+
+    This should be added only for the build pack apps when a custom liveness probe is not set to
+    make sure that the pod is ready only when the slug is downloaded and started running.
+    '''
+    def _default_buildpack_readiness_probe(self, delay=30, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'exec': {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "[[ '$(ps -p 1 -o args)' != *'bash /runner/init'* ]]"
+                    ]
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+        return readinessprobe
+
+    '''
+    Applies tcp socket readiness probe to the docker app container only if some port is exposed
+    by the docker image.
+    '''
+    def _default_dockerapp_readiness_probe(self, image, delay=5, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
+        try:
+            port = self._get_port(image)
+            if port is None:
+                return None
+        except Exception:
+            return None
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'tcpSocket': {
+                    "port": port
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+        return readinessprobe
+
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-
-    def _create_minio_secret(self, namespace):
-        secret = self._get_secret('deis', 'minio-user').json()  # fetch from deis namespace
-
-        data = {
-            'access-key-id': base64.b64decode(secret['data']['access-key-id']),
-            'access-secret-key': base64.b64decode(secret['data']['access-secret-key'])
-        }
-        self._create_secret(namespace, 'minio-user', data)
-
     def _get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
             error(response, 'get Secret "{}" in Namespace "{}"', name, namespace)
 
-        # FIXME decode data - can it be done without affecting the response object too much???
+        # decode the base64 data
+        secrets = response.json()
+        for key, value in secrets['data'].items():
+            secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
+
+        # tell python-requests it actually hasn't consumed the data
+        response._content = bytes(json.dumps(secrets), 'UTF-8')
 
         return response
 
@@ -991,7 +1272,29 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_secret(self, namespace, name, data):
+    def _create_secret(self, namespace, name, data, labels={}):
+        template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
+            "version": self.apiversion,
+            "id": namespace,
+            "name": name
+        }))
+
+        # add in any additional label info
+        template['metadata']['labels'].update(labels)
+
+        for key, value in data.items():
+            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            item = base64.b64encode(value).decode(encoding='UTF-8')
+            template["data"].update({key: item})
+
+        url = self._api("/namespaces/{}/secrets", namespace)
+        response = self.session.post(url, json=template)
+        if unhealthy(response.status_code):
+            error(response, 'failed to create Secret "{}" in Namespace "{}"', name, namespace)
+
+        return response
+
+    def _update_secret(self, namespace, name, data):
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
             "id": namespace,
@@ -1000,13 +1303,13 @@ class KubeHTTPClient(object):
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode()
+            item = base64.b64encode(value).decode(encoding='UTF-8')
             template["data"].update({key: item})
 
-        url = self._api("/namespaces/{}/secrets", namespace)
-        response = self.session.post(url, json=template)
+        url = self._api("/namespaces/{}/secrets/{}", namespace, name)
+        response = self.session.put(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'failed to create secret "{}" in Namespace "{}"', name, namespace)
+            error(response, 'failed to update Secret "{}" in Namespace "{}"', name, namespace)
 
         return response
 
@@ -1092,22 +1395,19 @@ class KubeHTTPClient(object):
         if unhealthy(resp.status_code):
             error(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
-        # Verify the pod has been deleted. Give it 30 seconds.
-        for _ in range(30):
+        # Verify the pod has been deleted
+        # Only wait as long as the grace period is - k8s will eventually GC
+        for _ in range(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS):
             try:
-                self._get_pod(namespace, name)
+                pod = self._get_pod(namespace, name).json()
+                # hide pod if it is passed the graceful termination period
+                if self._pod_deleted(pod):
+                    return
             except KubeHTTPException as e:
                 if e.response.status_code == 404:
                     break
 
             time.sleep(1)
-
-        # Pod was not deleted within the grace period.
-        try:
-            self._get_pod(namespace, name)
-        except KubeHTTPException as e:
-            if e.response.status_code != 404:
-                error(e.response, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
     def _pod_log(self, namespace, name):
         url = self._api("/namespaces/{}/pods/{}/log", namespace, name)
@@ -1117,19 +1417,63 @@ class KubeHTTPClient(object):
 
         return response
 
+    def _pod_pending_status(self, pod):
+        """Introspect the pod containers when pod is in Pending state"""
+        if 'containerStatuses' not in pod['status']:
+            return 'Pending'
+
+        name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
+        for container in pod['status']['containerStatuses']:
+            # find the right container in case there are many on the pod
+            if container['name'] != name:
+                continue
+
+            if 'waiting' in container['state']:
+                reason = container['state']['waiting']['reason']
+                if reason == 'ContainerCreating':
+                    # get the last event
+                    event = self._pod_events(pod).pop()
+                    return event['reason']
+
+        # Return Pending if nothing else can be found
+        return 'Pending'
+
+    def _pod_events(self, pod):
+        """Process events for a given Pod to find if Pulling is happening, among other events"""
+        # fetch all events for this pod
+        fields = {
+            'involvedObject.name': pod['metadata']['name'],
+            'involvedObject.namespace': pod['metadata']['namespace'],
+            'involvedObject.uid': pod['metadata']['uid']
+        }
+        events = self._get_namespace_events(pod['metadata']['namespace'], fields=fields).json()
+        # make sure that events are sorted
+        events['items'].sort(key=lambda x: x['lastTimestamp'])
+        return events['items']
+
     def _pod_readiness_status(self, pod):
         """Check if the pod container have passed the readiness probes"""
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         for container in pod['status']['containerStatuses']:
             # find the right container in case there are many on the pod
-            if container['name'] == name:
-                if not container['ready']:
-                    if 'running' in container['state'].keys():
-                        return 'Starting'
-                    elif 'terminated' in container['state'].keys():
-                        return 'Terminating'
-                else:
-                    return 'Running'
+            if container['name'] != name:
+                continue
+
+            if not container['ready']:
+                if 'running' in container['state'].keys():
+                    return 'Starting'
+
+                if (
+                    'terminated' in container['state'].keys() or
+                    'deletionTimestamp' in pod['metadata']
+                ):
+                    return 'Terminating'
+            else:
+                # See if k8s is in Terminating state
+                if 'deletionTimestamp' in pod['metadata']:
+                    return 'Terminating'
+
+                return 'Running'
 
         # Seems like the most sensible default
         return 'Unknown'
@@ -1142,6 +1486,32 @@ class KubeHTTPClient(object):
                 return False
 
         return True
+
+    def _pod_ready(self, pod):
+        """Combines various checks to see if the pod is considered up or not by checking probes"""
+        return (
+            pod['status']['phase'] == 'Running' and
+            # is the readiness probe passing?
+            self._pod_readiness_status(pod) == 'Running' and
+            # is the pod ready to serve requests?
+            self._pod_liveness_status(pod)
+        )
+
+    def _pod_deleted(self, pod):
+        """Checks if a pod is deleted and past its graceful termination period"""
+        # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+        # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
+        if 'deletionTimestamp' in pod['metadata']:
+            deletion = datetime.strptime(
+                pod['metadata']['deletionTimestamp'],
+                settings.DEIS_DATETIME_FORMAT
+            )
+
+            # past the graceful deletion period
+            if deletion < datetime.utcnow():
+                return True
+
+        return False
 
     # NODES #
 

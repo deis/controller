@@ -1,17 +1,23 @@
+from collections import OrderedDict
 from datetime import datetime
 import logging
 import random
 import re
 import requests
+from requests_toolbelt import user_agent
 import string
 import time
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import models
-from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, NotFound
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel, log_event
+from deis import __version__ as deis_version
+from api.models import UuidAuditedModel, log_event, AlreadyExists, \
+    DeisException, ServiceUnavailable
+
 from api.utils import generate_app_name, app_build_type
 from api.models.release import Release
 from api.models.config import Config
@@ -38,7 +44,7 @@ def validate_app_structure(value):
         if any(int(v) < 0 for v in value.values()):
             raise ValueError("Must be greater than or equal to zero")
     except ValueError as err:
-        raise ValidationError(err)
+        raise ValidationError(str(err))
 
 
 def validate_reserved_names(value):
@@ -70,6 +76,20 @@ class App(UuidAuditedModel):
             self.id = generate_app_name()
             while App.objects.filter(id=self.id).exists():
                 self.id = generate_app_name()
+
+        # verify the application name doesn't exist as a k8s namespace
+        # only check for it if there have been on releases
+        try:
+            self.release_set.latest()
+        except Release.DoesNotExist:
+            try:
+                if self._scheduler._get_namespace(self.id).status_code == 200:
+                    # Namespace already exists
+                    err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
+                    log_event(self, err, logging.INFO)
+                    raise AlreadyExists(err)
+            except KubeHTTPException:
+                pass
 
         application = super(App, self).save(**kwargs)
 
@@ -133,7 +153,10 @@ class App(UuidAuditedModel):
             )
 
         # create required minimum resources in k8s for the application
-        self._scheduler.create(self.id)
+        try:
+            self._scheduler.create(self.id)
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
 
         # Attach the platform specific application sub domain to the k8s service
         # Only attach it on first release in case a customer has remove the app domain
@@ -145,8 +168,8 @@ class App(UuidAuditedModel):
         try:
             # attempt to remove application from kubernetes
             self._scheduler.destroy(self.id)
-        except KubeException:
-            pass
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
 
         self._clean_app_logs()
         return super(App, self).delete(*args, **kwargs)
@@ -194,7 +217,7 @@ class App(UuidAuditedModel):
             while True:
                 # timed out
                 if elapsed >= timeout:
-                    raise RuntimeError('timeout - 5 minutes have passed and pods are not up')
+                    raise DeisException('timeout - 5 minutes have passed and pods are not up')
 
                 # restarting a single pod behaves differently, fetch the *newest* pod
                 # and hope it is the right one. Comes back sorted
@@ -215,7 +238,6 @@ class App(UuidAuditedModel):
 
                 elapsed += 5
                 time.sleep(5)
-
         except Exception as e:
             err = "warning, some pods failed to start:\n{}".format(str(e))
             log_event(self, err, logging.WARNING)
@@ -242,9 +264,17 @@ class App(UuidAuditedModel):
         self.create()
 
         if self.release_set.latest().build is None:
-            raise EnvironmentError('No build associated with this release')
+            raise DeisException('No build associated with this release')
 
         release = self.release_set.latest()
+
+        # Validate structure
+        try:
+            for target, count in structure.copy().items():
+                structure[target] = int(count)
+            validate_app_structure(structure)
+        except (TypeError, ValueError) as e:
+            raise DeisException('Invalid scaling format: {}'.format(e))
 
         # test for available process types
         available_process_types = release.build.procfile or {}
@@ -253,7 +283,7 @@ class App(UuidAuditedModel):
                 continue  # allow docker cmd types in case we don't have the image source
 
             if container_type not in available_process_types:
-                raise EnvironmentError(
+                raise DeisException(
                     'Container type {} does not exist in application'.format(container_type))
 
         # merge current structure and the new items together
@@ -278,7 +308,7 @@ class App(UuidAuditedModel):
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
         build_type = app_build_type(release)
-        for scale_type in scale_types:
+        for scale_type, replicas in scale_types.items():
             image = release.image
             version = "v{}".format(release.version)
             kwargs = {
@@ -287,10 +317,12 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'version': version,
-                'num': scale_types[scale_type],
+                'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': build_type,
-                'healthcheck': release.config.healthcheck()
+                'healthcheck': release.config.healthcheck(),
+                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+                'routable': True if scale_type in ['web', 'cmd'] else False
             }
 
             command = self._get_command(scale_type)
@@ -302,54 +334,72 @@ class App(UuidAuditedModel):
                     command=command,
                     **kwargs
                 )
-
             except Exception as e:
                 err = '{} (scale): {}'.format(self._get_job_id(scale_type), e)
                 log_event(self, err, logging.ERROR)
-                raise
+                raise ServiceUnavailable(e) from e
 
-    def deploy(self, user, release):
+    def deploy(self, release):
         """Deploy a new release to this application"""
+        if release.build is None:
+            raise DeisException('No build associated with this release')
+
         # use create to make sure minimum resources are created
         self.create()
-
-        if release.build is None:
-            raise EnvironmentError('No build associated with this release')
 
         if self.structure == {}:
             self.structure = self._default_structure(release)
             self.save()
 
+        # see if the app config has deploy batch preference, otherwise use global
+        batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
+
         # deploy application to k8s. Also handles initial scaling
+        deploys = {}
         build_type = app_build_type(release)
-        for scale_type in self.structure.keys():
-            image = release.image
-            version = "v{}".format(release.version)
-            kwargs = {
+        for scale_type, replicas in self.structure.items():
+            deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'num': 0,  # Scaling up happens in a separate operation
-                'version': version,
+                # only used if there is no previous RC
+                'replicas': replicas,
+                'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': build_type,
-                'healthcheck': release.config.healthcheck()
+                'healthcheck': release.config.healthcheck(),
+                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+                'routable': True if scale_type in ['web', 'cmd'] else False,
+                'batches': batches
             }
 
-            command = self._get_command(scale_type)
+        # Sort deploys so routable comes first
+        deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
+
+        for scale_type, kwargs in deploys.items():
             try:
                 self._scheduler.deploy(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=image,
-                    command=command,
+                    image=release.image,
+                    command=self._get_command(scale_type),
                     **kwargs
                 )
+
+                # Wait until application is available in the router
+                # Only run when there is no previous build / release
+                old = release.previous()
+                if old is None or old.build is None:
+                    self.verify_application_health(**kwargs)
+
             except Exception as e:
                 err = '{} (app::deploy): {}'.format(self._get_job_id(scale_type), e)
                 log_event(self, err, logging.ERROR)
-                raise
+                raise ServiceUnavailable(err) from e
+
+        # cleanup old releases from kubernetes
+        release.cleanup_old()
 
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
@@ -357,19 +407,107 @@ class App(UuidAuditedModel):
         if not release.build.sha:
             structure = {'cmd': 1}
 
-        # if a dockerfile exists without a procfile, assume docker workflow
-        elif release.build.dockerfile and not release.build.procfile:
+        elif release.build.procfile and 'web' in release.build.procfile:
+            structure = {'web': 1}
+
+        # if a dockerfile, assume docker workflow
+        elif release.build.dockerfile:
             structure = {'cmd': 1}
 
-        # if a procfile exists without a web entry, assume docker workflow
+        # if a procfile exists without a web entry and dockerfile, assume heroku workflow
+        # and return empty structure as only web type needs to be created by default and
+        # other types have to be manually scaled
         elif release.build.procfile and 'web' not in release.build.procfile:
-            structure = {'cmd': 1}
+            structure = {}
 
         # default to heroku workflow
         else:
             structure = {'web': 1}
 
         return structure
+
+    def verify_application_health(self, **kwargs):
+        """
+        Verify an application is healthy via the router.
+        This is only used in conjunction with the kubernetes health check system and should
+        only run after kubernetes has reported all pods as healthy
+        """
+        # Bail out early if the application is not routable
+        if not kwargs.get('routable', False):
+            return
+
+        app_type = kwargs.get('app_type')
+        self.log(
+            'Waiting for router to be ready to serve traffic to process type {}'.format(app_type),
+            level=logging.DEBUG
+        )
+
+        # Get the router host and append healthcheck path
+        url = 'http://{}:{}'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+
+        # if a health check url is available then 200 is the only acceptable status code
+        if len(kwargs['healthcheck']):
+            allowed = [200]
+            url = urljoin(url, kwargs['healthcheck'].get('path'))
+            req_timeout = kwargs['healthcheck'].get('timeout')
+        else:
+            allowed = set(range(200, 599))
+            allowed.remove(404)
+            req_timeout = 3
+
+        session = requests.Session()
+        session.headers = {
+            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
+            'User-Agent': user_agent('Deis Controller', deis_version),
+            # set the Host header for the application being checked - not used for actual routing
+            'Host': '{}.{}.nip.io'.format(self.id, settings.ROUTER_HOST)
+        }
+
+        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
+        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
+
+        # Give the router max of 10 tries or max 30 seconds to become healthy
+        # Uses time module to account for the timout value of 3 seconds
+        start = time.time()
+        failed = False
+        for _ in range(10):
+            try:
+                # http://docs.python-requests.org/en/master/user/advanced/#timeouts
+                response = session.get(url, timeout=req_timeout)
+                failed = False
+            except requests.exceptions.RequestException:
+                # In case of a failure where response object is not available
+                failed = True
+                # We are fine with timeouts and request problems, lets keep trying
+                time.sleep(1)  # just a bit of a buffer
+                continue
+
+            # 30 second timeout (timout per request * 10)
+            if (time.time() - start) > (req_timeout * 10):
+                break
+
+            # check response against the allowed pool
+            if response.status_code in allowed:
+                break
+
+            # a small sleep since router usually resolve within 10 seconds
+            time.sleep(1)
+
+        # Endpoint did not report healthy in time
+        if ('response' in locals() and response.status_code == 404) or failed:
+            delta = time.time() - start
+            self.log(
+                'Router was not ready to serve traffic to process type {} in time, waited {} seconds'.format(app_type, delta),  # noqa
+                level=logging.WARNING
+            )
+            return
+
+        self.log(
+            'Router is ready to serve traffic to process type {}'.format(app_type),
+            level=logging.DEBUG
+        )
 
     def logs(self, log_lines=str(settings.LOG_LINES)):
         """Return aggregated log data for this application."""
@@ -380,19 +518,20 @@ class App(UuidAuditedModel):
             r = requests.get(url)
         # Handle HTTP request errors
         except requests.exceptions.RequestException as e:
-            logger.error("Error accessing deis-logger using url '{}': {}".format(url, e))
-            raise e
+            msg = "Error accessing deis-logger using url '{}': {}".format(url, e)
+            logger.error(msg)
+            raise ServiceUnavailable(msg) from e
 
         # Handle logs empty or not found
         if r.status_code == 204 or r.status_code == 404:
             logger.info("GET {} returned a {} status code".format(url, r.status_code))
-            raise EnvironmentError('Could not locate logs')
+            raise NotFound('Could not locate logs')
 
         # Handle unanticipated status codes
         if r.status_code != 200:
             logger.error("Error accessing deis-logger: GET {} returned a {} status code"
                          .format(url, r.status_code))
-            raise EnvironmentError('Error accessing deis-logger')
+            raise ServiceUnavailable('Error accessing deis-logger')
 
         # cast content to string since it comes as bytes via the requests object
         return str(r.content)
@@ -404,7 +543,7 @@ class App(UuidAuditedModel):
         """Run a one-off command in an ephemeral app container."""
         release = self.release_set.latest()
         if release.build is None:
-            raise EnvironmentError('No build associated with this release to run this command')
+            raise DeisException('No build associated with this release to run this command')
 
         # TODO: add support for interactive shell
         # SECURITY: shell-escape user input
@@ -430,7 +569,8 @@ class App(UuidAuditedModel):
             'memory': release.config.memory,
             'cpu': release.config.cpu,
             'tags': release.config.tags,
-            'envs': release.config.values
+            'envs': release.config.values,
+            'version': "v{}".format(release.version),
         }
 
         try:
@@ -447,7 +587,7 @@ class App(UuidAuditedModel):
         except Exception as e:
             err = '{} (run): {}'.format(name, e)
             log_event(self, err, logging.ERROR)
-            raise
+            raise ServiceUnavailable(str(e)) from e
 
     def list_pods(self, *args, **kwargs):
         """Used to list basic information about pods running for a given application"""
@@ -466,9 +606,19 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
+                state = self._scheduler.resolve_state(p)
+
+                # follows kubelete convention - these are hidden unless show-all is set
+                if state in ['down', 'crashed']:
+                    continue
+
+                # hide pod if it is passed the graceful termination period
+                if self._scheduler._pod_deleted(p):
+                    continue
+
                 item = Pod()
                 item['name'] = p['metadata']['name']
-                item['state'] = self._scheduler.resolve_state(p).name
+                item['state'] = state
                 item['release'] = p['metadata']['labels']['version']
                 item['type'] = p['metadata']['labels']['type']
                 if 'startTime' in p['status']:
@@ -488,7 +638,7 @@ class App(UuidAuditedModel):
         except Exception as e:
             err = '(list pods): {}'.format(e)
             log_event(self, err, logging.ERROR)
-            raise
+            raise ServiceUnavailable(err) from e
 
     def _scheduler_filter(self, **kwargs):
         labels = {'app': self.id}

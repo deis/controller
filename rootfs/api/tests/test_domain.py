@@ -3,19 +3,18 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
-import json
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Domain
+from scheduler import KubeException
 
 
-class DomainTest(TestCase):
+class DomainTest(APITestCase):
 
     """Tests creation of domains"""
 
@@ -24,8 +23,10 @@ class DomainTest(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
+
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         self.app_id = response.data['id']  # noqa
 
@@ -37,16 +38,12 @@ class DomainTest(TestCase):
         """Test that the serialized response contains only relevant data."""
         response = self.client.post(
             '/v2/apps',
-            json.dumps({'id': 'test'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'id': 'test'}
         )
 
         response = self.client.post(
             '/v2/apps/test/domains',
-            json.dumps({'domain': 'test-domain.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': 'test-domain.example.com'}
         )
 
         for key in response.data:
@@ -58,6 +55,23 @@ class DomainTest(TestCase):
             'domain': 'test-domain.example.com'
         }
         self.assertDictContainsSubset(expected, response.data)
+
+    def test_strip_dot(self):
+        """Test that a dot on the right side of the domain gets stripped"""
+        domain = 'autotest.127.0.0.1.xip.io.'
+        msg = "failed on '{}'".format(domain)
+        url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+
+        # Create
+        response = self.client.post(url, {'domain': domain})
+        self.assertEqual(response.status_code, 201, msg)
+
+        # Fetch
+        domain = 'autotest.127.0.0.1.xip.io'  # stripped version
+        url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+        response = self.client.get(url)
+        expected = [data['domain'] for data in response.data['results']]
+        self.assertEqual([self.app_id, domain], expected, msg)
 
     def test_manage_domain(self):
         url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
@@ -74,44 +88,27 @@ class DomainTest(TestCase):
         ]
 
         for domain in test_domains:
-            msg = "failed on \"{}\"".format(domain)
+            msg = "failed on '{}'".format(domain)
 
             # Create
-            response = self.client.post(
-                url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 201, msg)
 
             # Fetch
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
-            response = self.client.get(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.get(url)
             expected = [data['domain'] for data in response.data['results']]
             self.assertEqual([self.app_id, domain], expected, msg)
 
             # Delete
             url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=domain,
                                                                 app_id=self.app_id)
-            response = self.client.delete(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.delete(url)
             self.assertEqual(response.status_code, 204, msg)
 
             # Verify removal
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
-            response = self.client.get(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.get(url)
             self.assertEqual(1, response.data['count'], msg)
 
             # verify only app domain is left
@@ -120,12 +117,9 @@ class DomainTest(TestCase):
 
     def test_delete_domain_does_not_exist(self):
         """Remove a domain that does not exist"""
-        url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
-
         url = '/v2/apps/{app_id}/domains/{domain}'.format(domain='test-domain.example.com',
                                                           app_id=self.app_id)
-        response = self.client.delete(url, content_type='application/json',
-                                      HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 404)
 
     def test_delete_domain_does_not_remove_latest(self):
@@ -136,18 +130,12 @@ class DomainTest(TestCase):
             'django.paas-sandbox',
         ]
         for domain in test_domains:
-            response = self.client.post(
-                url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 201)
 
         url = '/v2/apps/{app_id}/domains/{domain}'.format(domain=test_domains[0],
                                                           app_id=self.app_id)
-        response = self.client.delete(url, content_type='application/json',
-                                      HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
         with self.assertRaises(Domain.DoesNotExist):
             Domain.objects.get(domain=test_domains[0])
@@ -160,21 +148,12 @@ class DomainTest(TestCase):
     def test_manage_domain_invalid_app(self):
         # Create domain
         url = '/v2/apps/{app_id}/domains'.format(app_id="this-app-does-not-exist")
-        response = self.client.post(
-            url,
-            json.dumps({'domain': 'test-domain.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.post(url, {'domain': 'test-domain.example.com'})
         self.assertEqual(response.status_code, 404)
 
         # verify
         url = '/v2/apps/{app_id}/domains'.format(app_id='this-app-does-not-exist')
-        response = self.client.get(
-            url,
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
     def test_manage_domain_invalid_domain(self):
@@ -188,16 +167,11 @@ class DomainTest(TestCase):
             'too.looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong',
             'foo.*.bar.com',
             '*',
+            'a' * 300
         ]
         for domain in test_domains:
             msg = "failed on \"{}\"".format(domain)
-
-            response = self.client.post(
-                url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 400, msg)
 
     def test_admin_can_add_domains_to_other_apps(self):
@@ -206,17 +180,15 @@ class DomainTest(TestCase):
         """
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
+
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
 
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         url = '/v2/apps/{}/domains'.format(self.app_id)
-        response = self.client.post(
-            url,
-            json.dumps({'domain': 'example.deis.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.post(url, {'domain': 'example.deis.example.com'})
         self.assertEqual(response.status_code, 201)
 
     def test_unauthorized_user_cannot_modify_domain(self):
@@ -228,20 +200,38 @@ class DomainTest(TestCase):
         """
         app_id = 'autotest'
         url = '/v2/apps'
-        response = self.client.post(
-            url,
-            json.dumps({'id': app_id}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.post(url, {'id': app_id})
 
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
+
         url = '{}/{}/domains'.format(url, app_id)
-        response = self.client.post(
-            url,
-            json.dumps({'domain': 'example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(unauthorized_token)
-        )
+        response = self.client.post(url, {'domain': 'example.com'})
         self.assertEqual(response.status_code, 403)
+
+    def test_kubernetes_service_failure(self):
+        """
+        Cause an Exception in kubernetes services
+        """
+        self.client.post('/v2/apps', {'id': 'test'})
+
+        # scheduler._get_service exception
+        with mock.patch('scheduler.KubeHTTPClient._get_service') as mock_kube:
+            mock_kube.side_effect = KubeException('Boom!')
+            domain = 'foo.com'
+            url = '/v2/apps/test/domains'
+            response = self.client.post(url, {'domain': domain})
+            self.assertEqual(response.status_code, 503)
+
+        # scheduler._update_service exception
+        with mock.patch('scheduler.KubeHTTPClient._update_service') as mock_kube:
+            domain = 'foo.com'
+            url = '/v2/apps/test/domains'
+            response = self.client.post(url, {'domain': domain})
+            self.assertEqual(response.status_code, 201)
+
+            mock_kube.side_effect = KubeException('Boom!')
+            url = '/v2/apps/test/domains/{domain}'.format(domain=domain)
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, 503)

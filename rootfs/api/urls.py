@@ -92,6 +92,8 @@ urlpatterns = [
         views.UserManagementViewSet.as_view({'delete': 'destroy'})),
     url(r'^auth/passwd/?',
         views.UserManagementViewSet.as_view({'post': 'passwd'})),
+    url(r'^auth/whoami/?',
+        views.UserManagementViewSet.as_view({'get': 'list'})),
     url(r'^auth/login/',
         views_obtain_auth_token),
     url(r'^auth/tokens/',

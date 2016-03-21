@@ -13,9 +13,6 @@ echo system information:
 echo "Django Version: $(./manage.py --version)"
 python --version
 
-# spawn confd in the background to update services based on changes
-confd -backend env --confdir /app --log-level error --interval 5 &
-
 mkdir -p /app/data/logs
 chmod -R 777 /app/data/logs
 

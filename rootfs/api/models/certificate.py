@@ -8,13 +8,14 @@ from datetime import datetime
 from django.shortcuts import get_object_or_404
 from django.db import models
 from django.conf import settings
-from django.core.exceptions import ValidationError, SuspiciousOperation
+from django.core.exceptions import SuspiciousOperation
 from django.contrib.postgres.fields import ArrayField
+from rest_framework.exceptions import ValidationError
 
-from api.models import AuditedModel, validate_label, AlreadyExists
+from api.models import AuditedModel, validate_label, AlreadyExists, ServiceUnavailable
 from api.models.domain import Domain
 
-from scheduler import KubeHTTPException
+from scheduler import KubeException
 
 import logging
 logger = logging.getLogger(__name__)
@@ -156,11 +157,6 @@ class Certificate(AuditedModel):
         return super(Certificate, self).delete(*args, **kwargs)
 
     def attach(self, *args, **kwargs):
-        data = {
-            'cert': self.certificate,
-            'key': self.key
-        }
-
         # add the certificate to the domain
         domain = get_object_or_404(Domain, domain=kwargs['domain'])
         if domain.certificate is not None:
@@ -169,14 +165,30 @@ class Certificate(AuditedModel):
         domain.certificate = self
         domain.save()
 
-        name = '%s-cert' % self.name
-        app = domain.app
-        # only create if it exists
+        # create in kubernetes
+        self.attach_in_kubernetes(domain)
+
+    def attach_in_kubernetes(self, domain):
+        """Creates the certificate as a kubernetes secret"""
+        # only create if it exists - We raise an exception when a secret doesn't exist
         try:
-            # We raise an exception when a secret doesn't exist
-            self._scheduler._get_secret(app, name)
-        except KubeHTTPException:
+            name = '%s-cert' % self.name
+            app = domain.app
+            data = {
+                'tls.crt': self.certificate,
+                'tls.key': self.key
+            }
+
+            secret = self._scheduler._get_secret(app, name).json()['data']
+        except KubeException:
             self._scheduler._create_secret(app, name, data)
+        else:
+            # update cert secret to the TLS Ingress format if required
+            if secret != data:
+                try:
+                    self._scheduler._update_secret(app, name, data)
+                except KubeException as e:
+                    raise ServiceUnavailable(str(e)) from e
 
         # get config for the service
         config = self._load_service_config(app, 'router')
@@ -209,9 +221,8 @@ class Certificate(AuditedModel):
                 # We raise an exception when a secret doesn't exist
                 self._scheduler._get_secret(app, name)
                 self._scheduler._delete_secret(app, name)
-            except KubeHTTPException as e:
-                logger.critical(e)
-                raise EnvironmentError("Could not delete certificate secret {} for application {}".format(name, app))  # noqa
+            except KubeException as e:
+                raise ServiceUnavailable("Could not delete certificate secret {} for application {}".format(name, app)) from e  # noqa
 
         # get config for the service
         config = self._load_service_config(app, 'router')

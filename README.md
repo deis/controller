@@ -3,6 +3,7 @@
 [![Build Status](https://travis-ci.org/deis/controller.svg?branch=master)](https://travis-ci.org/deis/controller)
 [![codecov.io](https://codecov.io/github/deis/controller/coverage.svg?branch=master)](https://codecov.io/github/deis/controller?branch=master)
 [![Docker Repository on Quay](https://quay.io/repository/deisci/controller/status "Docker Repository on Quay")](https://quay.io/repository/deisci/controller)
+[![Dependency Status](https://www.versioneye.com/user/projects/5728e1dba0ca350034be67be/badge.svg?style=flat)](https://www.versioneye.com/user/projects/5728e1dba0ca350034be67be)
 
 Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.
 
@@ -42,10 +43,9 @@ The Deis project welcomes contributions from all developers. The high level proc
 
 ### Kubernetes
 
-In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.1 with the following requirements:
+In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.2 and higher with the following requirements:
 
 * Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
-* If you are testing the logger components, you must enable `DaemonSet` experimental APIs via `--runtime-config=extensions/v1beta1/daemonsets=true`
 
 ### Helm
 
@@ -53,9 +53,9 @@ After you have a working Kubernetes cluster, install [helm](http://helm.sh) and 
 
 ```console
 helm repo add deis https://github.com/deis/charts
-helm fetch deis/deis-dev
-helm generate -x manifests deis-dev
-helm install deis-dev
+helm fetch deis/workflow-dev
+helm generate -x manifests workflow-dev
+helm install workflow-dev
 ```
 
 ### Python

@@ -128,7 +128,6 @@ CORS_ALLOW_HEADERS = (
 CORS_EXPOSE_HEADERS = (
     'DEIS_API_VERSION',
     'DEIS_PLATFORM_VERSION',
-    'Deis-Release',
 )
 
 X_FRAME_OPTIONS = 'DENY'
@@ -143,7 +142,7 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # standard datetime format used for logging, model timestamps, etc.
-DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S%Z'
+DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 REST_FRAMEWORK = {
     'DATETIME_FORMAT': DEIS_DATETIME_FORMAT,
@@ -250,11 +249,13 @@ LOG_LINES = 100
 TEMPDIR = tempfile.mkdtemp(prefix='deis')
 
 # names which apps cannot reserve for routing
-DEIS_RESERVED_NAMES = ['deis']
+DEIS_RESERVED_NAMES = os.environ.get('RESERVED_NAMES', '').replace(' ', '').split(',')
 
 # default scheduler settings
 SCHEDULER_MODULE = 'scheduler'
 SCHEDULER_URL = "https://{}:{}".format(
+    # accessing the k8s api server by IP address rather than hostname avoids
+    # intermittent DNS errors
     os.environ.get('KUBERNETES_SERVICE_HOST', 'kubernetes.default.svc.cluster.local'),
     os.environ.get('KUBERNETES_SERVICE_PORT', '443')
 )
@@ -263,8 +264,21 @@ SCHEDULER_URL = "https://{}:{}".format(
 random_secret = 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi*#@&*^'
 SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', random_secret)
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
-defaultImage = "quay.io/deisci/slugrunner:canary"
-SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', defaultImage)
+
+# k8s image policies
+SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugrunner:canary')  # noqa
+SLUG_BUILDER_IMAGE_PULL_POLICY = os.environ.get('SLUG_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
+DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
+
+# Define a global default on how many pods to bring up and then
+# take down sequentially during a deploy
+# Defaults to None, the default is to deploy to as many nodes as
+# the application has been instructed to run on
+# Can also be overwritten on per app basis if desired
+DEIS_DEPLOY_BATCHES = os.environ.get('DEIS_DEPLOY_BATCHES', None)
+
+# How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL
+KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS = int(os.environ.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', 30))  # noqa
 
 # registry settings
 REGISTRY_HOST = os.environ.get('DEIS_REGISTRY_SERVICE_HOST', '127.0.0.1')
@@ -275,28 +289,24 @@ REGISTRY_URL = '{}:{}'.format(REGISTRY_HOST, REGISTRY_PORT)
 LOGGER_HOST = os.environ.get('DEIS_LOGGER_SERVICE_HOST', '127.0.0.1')
 LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 
+# router information
+ROUTER_HOST = os.environ.get('DEIS_ROUTER_SERVICE_HOST', '127.0.0.1')
+ROUTER_PORT = os.environ.get('DEIS_ROUTER_SERVICE_PORT', 80)
+
 # check if we can register users with `deis register`
-REGISTRATION_ENABLED = True
+REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DEIS_DATABASE_NAME', 'deis'),
+        'NAME': os.environ.get('DEIS_DATABASE_NAME', os.environ.get('DEIS_DATABASE_USER', 'deis')),
         'USER': os.environ.get('DEIS_DATABASE_USER', ''),
         'PASSWORD': os.environ.get('DEIS_DATABASE_PASSWORD', ''),
         'HOST': os.environ.get('DEIS_DATABASE_SERVICE_HOST', ''),
         'PORT': os.environ.get('DEIS_DATABASE_SERVICE_PORT', 5432),
+        # https://docs.djangoproject.com/en/1.9/ref/databases/#persistent-connections
+        'CONN_MAX_AGE': 600,
     }
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
-
-# Create a file named "local_settings.py" to contain sensitive settings data
-# such as database configuration, admin email, or passwords and keys. It
-# should also be used for any settings which differ between development
-# and production.
-# The local_settings.py file should *not* be checked in to version control.
-try:
-    from .local_settings import *  # noqa
-except ImportError:
-    pass

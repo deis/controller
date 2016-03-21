@@ -1,15 +1,15 @@
 import os
-import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
+from django.core.exceptions import SuspiciousOperation
 
 from api.models import App, Certificate
 
 
-class CertificateTest(TestCase):
+class CertificateTest(APITestCase):
 
     """Tests creation of domain SSL certificates"""
 
@@ -18,8 +18,8 @@ class CertificateTest(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
-        self.user2 = User.objects.get(username='autotest2')
-        self.token2 = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
+
         self.url = '/v2/certs'
         self.app = App.objects.create(owner=self.user, id='test-app')
         self.domain = 'autotest.example.com'
@@ -39,13 +39,11 @@ class CertificateTest(TestCase):
         """Tests creating a certificate."""
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': 'random-test-cert',
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
@@ -53,13 +51,11 @@ class CertificateTest(TestCase):
         """Tests update of a certificate."""
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': 'random-test-cert',
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
@@ -69,14 +65,12 @@ class CertificateTest(TestCase):
         """
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': 'random-test-cert',
                 'certificate': self.cert,
                 'key': self.key,
                 'common_name': 'foo.example.com'
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['common_name'], 'autotest.example.com')
@@ -88,25 +82,20 @@ class CertificateTest(TestCase):
         """
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': 'random-test-cert',
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
-        response = self.client.get(
-            '{}/{}'.format(self.url, 'random-test-cert'),
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get('{}/{}'.format(self.url, 'random-test-cert'))
         self.assertEqual(response.status_code, 200)
 
         expected = {
             'common_name': 'autotest.example.com',
-            'expires': '2016-03-05T17:14:27UTC',
+            'expires': '2016-03-05T17:14:27Z',
             'fingerprint': '37:24:D8:EB:DC:A4:2C:DA:88:55:C5:19:71:D3:9B:43:BA:AC:3A:CE:33:8E:07:52:1C:51:01:A0:97:43:C9:4D',  # noqa
             'san': [],
             'domains': [],
@@ -116,9 +105,9 @@ class CertificateTest(TestCase):
 
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
-        response = self.client.put(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.put(self.url)
         self.assertEqual(response.status_code, 405)
-        response = self.client.patch(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.patch(self.url)
         self.assertEqual(response.status_code, 405)
 
     def test_delete_certificate(self):
@@ -130,5 +119,30 @@ class CertificateTest(TestCase):
             certificate=self.cert
         )
         url = '/v2/certs/random-test-cert'
-        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
+
+    def test_create_invalid_cert(self):
+        """Upload a cert that can't be loaded by pyopenssl"""
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert',
+                'certificate': 'i am bad data',
+                'key': 'i am bad data as well'
+            }
+        )
+        self.assertEqual(response.status_code, 400)
+        # match partial since right now the rest is pyopenssl errors
+        self.assertIn('Could not load certificate', response.data['certificate'][0])
+
+    def test_load_invalid_cert(self):
+        """Inject a cert that can't be loaded by pyopenssl"""
+
+        with self.assertRaises(SuspiciousOperation):
+            Certificate.objects.create(
+                owner=self.user,
+                name='random-test-cert',
+                certificate='i am bad data',
+                key='i am bad data as well'
+            )

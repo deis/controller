@@ -11,9 +11,11 @@ from rest_framework import serializers
 
 from api import models
 
-PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z]+)')
+# proc type name is alphanumeric
+# https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
+PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+)$')
 MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE)
-CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[0-9.]+[m]{0,1})$')
+CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[-+]?[0-9]*\.?[0-9]+[m]{0,1})$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
 
@@ -124,6 +126,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     memory = JSONFieldSerializer(required=False, binary=True)
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
+    registry = JSONFieldSerializer(required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""
@@ -144,7 +147,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain [a-z]")
+                raise serializers.ValidationError("Process types can only contain alphanumeric")
 
             if not re.match(MEMLIMIT_MATCH, str(value)):
                 raise serializers.ValidationError(
@@ -158,20 +161,11 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain [a-z]")
+                raise serializers.ValidationError("Process types can only contain alphanumeric")
 
             shares = re.match(CPUSHARE_MATCH, str(value))
             if not shares:
                 raise serializers.ValidationError("CPU shares must be a numeric value")
-
-            for share in shares.groupdict().values():
-                try:
-                    if share[-1] == "m":
-                        float(share[:-1])
-                    else:
-                        float(share)
-                except ValueError:
-                    raise serializers.ValidationError("CPU units must be a numeric value")
 
         return data
 
@@ -191,6 +185,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 if len(prefix) > 253:
                     raise serializers.ValidationError(
                         "Tag key prefixes must 253 characters or less.")
+
                 for part in prefix.split('/'):
                     if not re.match(TAGVAL_MATCH, part):
                         raise serializers.ValidationError(
@@ -205,6 +200,15 @@ class ConfigSerializer(serializers.ModelSerializer):
             if value and not re.match(TAGVAL_MATCH, str(value)):
                 raise serializers.ValidationError(
                     "Tag values must be alphanumeric or \"-_.\", and 1-63 characters.")
+
+        return data
+
+    def validate_registry(self, data):
+        for key, value in data.items():
+            if not re.match(CONFIGKEY_MATCH, key):
+                raise serializers.ValidationError(
+                    "Config keys must start with a letter or underscore and "
+                    "only contain [A-z0-9_]")
 
         return data
 

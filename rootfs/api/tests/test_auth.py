@@ -3,18 +3,13 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
-import json
-from urllib.parse import urlencode
-
 from django.contrib.auth.models import User
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
 
 
-class AuthTest(TestCase):
+class AuthTest(APITestCase):
 
     fixtures = ['test_auth.json']
 
@@ -30,7 +25,7 @@ class AuthTest(TestCase):
 
     def test_auth(self):
         """
-        Test that a user can register using the API, login and logout
+        Test that a user can register using the API, login, whoami and logout
         """
         # test registration workflow
         username, password = 'newuser', 'password'
@@ -47,7 +42,7 @@ class AuthTest(TestCase):
             'is_staff': True,
         }
         url = '/v2/auth/register'
-        response = self.client.post(url, json.dumps(submit), content_type='application/json')
+        response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 201)
         for key in response.data:
             self.assertIn(key, ['id', 'last_login', 'is_superuser', 'username', 'first_name',
@@ -63,12 +58,30 @@ class AuthTest(TestCase):
             'is_staff': False
         }
         self.assertDictContainsSubset(expected, response.data)
+
         # test login
-        url = '/v2/auth/login/'
-        payload = urlencode({'username': username, 'password': password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
+        response = self.client.login(username=username, password=password)
+        self.assertEqual(response, True)
+
+        user = User.objects.get(username=username)
+        token = Token.objects.get(user=user).key
+        url = '/v2/auth/whoami'
+        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(token))
         self.assertEqual(response.status_code, 200)
+        for key in response.data:
+            self.assertIn(key, ['id', 'last_login', 'is_superuser', 'username', 'first_name',
+                                'last_name', 'email', 'is_active', 'is_superuser', 'is_staff',
+                                'date_joined', 'groups', 'user_permissions'])
+        expected = {
+            'username': username,
+            'email': email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'is_active': True,
+            'is_superuser': False,
+            'is_staff': False
+        }
+        self.assertDictContainsSubset(expected, response.data)
 
     @override_settings(REGISTRATION_MODE="disabled")
     def test_auth_registration_disabled(self):
@@ -83,7 +96,7 @@ class AuthTest(TestCase):
             'is_superuser': False,
             'is_staff': False,
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json')
+        response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 403)
 
     @override_settings(REGISTRATION_MODE="admin_only")
@@ -99,7 +112,7 @@ class AuthTest(TestCase):
             'is_superuser': False,
             'is_staff': False,
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json')
+        response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 403)
 
     @override_settings(REGISTRATION_MODE="admin_only")
@@ -121,7 +134,7 @@ class AuthTest(TestCase):
             'is_superuser': True,
             'is_staff': True,
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
 
         self.assertEqual(response.status_code, 201)
@@ -139,12 +152,10 @@ class AuthTest(TestCase):
             'is_staff': False
         }
         self.assertDictContainsSubset(expected, response.data)
+
         # test login
-        url = '/v2/auth/login/'
-        payload = urlencode({'username': username, 'password': password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 200)
+        response = self.client.login(username=username, password=password)
+        self.assertEqual(response, True)
 
     @override_settings(REGISTRATION_MODE="not_a_mode")
     def test_auth_registration_fails_with_nonexistant_mode(self):
@@ -161,7 +172,7 @@ class AuthTest(TestCase):
         }
 
         try:
-            self.client.post(url, json.dumps(submit), content_type='application/json')
+            self.client.post(url, submit)
         except Exception as e:
             self.assertEqual(str(e), 'not_a_mode is not a valid registation mode')
 
@@ -191,33 +202,30 @@ class AuthTest(TestCase):
             'is_staff': False,
         }
         url = '/v2/auth/register'
-        response = self.client.post(url, json.dumps(submit), content_type='application/json')
+        response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 201)
 
         # cancel the account
         url = '/v2/auth/cancel'
         user = User.objects.get(username=username)
         token = Token.objects.get(user=user).key
-        response = self.client.delete(url,
-                                      HTTP_AUTHORIZATION='token {}'.format(token))
+        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(token))
         self.assertEqual(response.status_code, 204)
 
         url = '/v2/auth/register'
-        response = self.client.post(url, json.dumps(other_submit), content_type='application/json')
+        response = self.client.post(url, other_submit)
         self.assertEqual(response.status_code, 201)
 
         # normal user can't delete another user
         url = '/v2/auth/cancel'
         other_user = User.objects.get(username=other_username)
         other_token = Token.objects.get(user=other_user).key
-        response = self.client.delete(url, json.dumps({'username': self.admin.username}),
-                                      content_type='application/json',
+        response = self.client.delete(url, {'username': self.admin.username},
                                       HTTP_AUTHORIZATION='token {}'.format(other_token))
         self.assertEqual(response.status_code, 403)
 
         # admin can delete another user
-        response = self.client.delete(url, json.dumps({'username': other_username}),
-                                      content_type='application/json',
+        response = self.client.delete(url, {'username': other_username},
                                       HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
         self.assertEqual(response.status_code, 204)
 
@@ -230,8 +238,7 @@ class AuthTest(TestCase):
         app_id = response.data['id']  # noqa
         self.assertIn('id', response.data)
 
-        response = self.client.delete(url, json.dumps({'username': str(self.admin)}),
-                                      content_type='application/json',
+        response = self.client.delete(url, {'username': str(self.admin)},
                                       HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
         self.assertEqual(response.status_code, 409)
 
@@ -249,7 +256,7 @@ class AuthTest(TestCase):
             'email': email,
         }
         url = '/v2/auth/register'
-        response = self.client.post(url, json.dumps(submit), content_type='application/json')
+        response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 201)
         # change password
         url = '/v2/auth/passwd'
@@ -259,29 +266,26 @@ class AuthTest(TestCase):
             'password': 'password2',
             'new_password': password,
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(token))
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(response.data, {'detail': 'Current password does not match'})
         self.assertEqual(response.get('content-type'), 'application/json')
         submit = {
             'password': password,
             'new_password': 'password2',
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(token))
         self.assertEqual(response.status_code, 200)
+
         # test login with old password
-        url = '/v2/auth/login/'
-        payload = urlencode({'username': username, 'password': password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 400)
+        response = self.client.login(username=username, password=password)
+        self.assertEqual(response, False)
+
         # test login with new password
-        payload = urlencode({'username': username, 'password': 'password2'})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 200)
+        response = self.client.login(username=username, password='password2')
+        self.assertEqual(response, True)
 
     def test_change_user_passwd(self):
         """
@@ -295,63 +299,52 @@ class AuthTest(TestCase):
             'username': self.user1.username,
             'new_password': new_password,
         }
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
         self.assertEqual(response.status_code, 200)
+
         # test login with old password
-        url = '/v2/auth/login/'
-        payload = urlencode({'username': self.user1.username, 'password': old_password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 400)
+        response = self.client.login(username=self.user1.username, password=old_password)
+        self.assertEqual(response, False)
+
         # test login with new password
-        payload = urlencode({'username': self.user1.username, 'password': new_password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 200)
+        response = self.client.login(username=self.user1.username, password=new_password)
+        self.assertEqual(response, True)
+
         # Non-admins can't change another user's password
         submit['password'], submit['new_password'] = submit['new_password'], old_password
         url = '/v2/auth/passwd'
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.user2_token))
         self.assertEqual(response.status_code, 403)
+
         # change back password with a regular user
-        response = self.client.post(url, json.dumps(submit), content_type='application/json',
+        response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.user1_token))
         self.assertEqual(response.status_code, 200)
+
         # test login with new password
-        url = '/v2/auth/login/'
-        payload = urlencode({'username': self.user1.username, 'password': old_password})
-        response = self.client.post(url, data=payload,
-                                    content_type='application/x-www-form-urlencoded')
-        self.assertEqual(response.status_code, 200)
+        response = self.client.login(username=self.user1.username, password=old_password)
+        self.assertEqual(response, True)
 
     def test_regenerate(self):
         """ Test that token regeneration works"""
-
         url = '/v2/auth/tokens/'
 
-        response = self.client.post(url, '{}', content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
-
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_token)
+        response = self.client.post(url, {})
         self.assertEqual(response.status_code, 200)
         self.assertNotEqual(response.data['token'], self.admin_token)
 
-        self.admin_token = Token.objects.get(user=self.admin)
+        self.admin_token = Token.objects.get(user=self.admin).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_token)
 
-        response = self.client.post(url, '{"username" : "autotest2"}',
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
-
+        response = self.client.post(url, {"username": "autotest2"})
         self.assertEqual(response.status_code, 200)
         self.assertNotEqual(response.data['token'], self.user1_token)
 
-        response = self.client.post(url, '{"all" : "true"}',
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
+        response = self.client.post(url, {"all": "true"})
         self.assertEqual(response.status_code, 200)
 
-        response = self.client.post(url, '{}', content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
-
+        response = self.client.post(url, {})
         self.assertEqual(response.status_code, 401)

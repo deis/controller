@@ -4,13 +4,9 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
-import json
-
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Key
@@ -52,7 +48,7 @@ BAD_KEY = (
 )
 
 
-class KeyTest(TestCase):
+class KeyTest(APITestCase):
 
     """Tests cloud provider credentials"""
 
@@ -61,6 +57,7 @@ class KeyTest(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
 
     def tearDown(self):
         # make sure every test has a clean slate for k8s mocking
@@ -72,22 +69,21 @@ class KeyTest(TestCase):
         """
         url = '/v2/keys'
         body = {'id': 'mykey@box.local', 'public': pubkey}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         key_id = response.data['id']
 
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
 
         url = '/v2/keys/{key_id}'.format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(body['id'], response.data['id'])
         self.assertEqual(body['public'], response.data['public'])
 
-        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
 
     def _check_bad_key(self, pubkey):
@@ -96,8 +92,8 @@ class KeyTest(TestCase):
         """
         url = '/v2/keys'
         body = {'id': 'mykey@box.local', 'public': pubkey}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
         return response
 
@@ -117,20 +113,16 @@ class KeyTest(TestCase):
         """
         url = '/v2/keys'
         body = {'id': 'mykey@box.local', 'public': pubkey}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
         # test that adding a key with the same fingerprint fails
         body = {'id': 'mykey2@box.local', 'public': pubkey}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
         body = {'id': 'mykey2@box.local', 'public': pubkey2}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
     def test_rsa_duplicate_key(self):
@@ -150,8 +142,7 @@ class KeyTest(TestCase):
                 'HdQGho20pfJktNu7DxeVkTHn9REMUphf85su7slTgTlWKq++3fASE8PdmFGz'
                 'b6PkOR4c+LS5WWXd2oM6HyBQBxxiwXbA2lSgQxOdgDiM2FzT0GVSFMUklkUH'
                 'MdsaG6/HJDw9QckTS0vN autotest@deis.io'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         key = Key.objects.get(uuid=response.data['uuid'])
         self.assertEqual(str(key), 'ssh-rsa AAAAB3NzaC.../HJDw9QckTS0vN autotest@deis.io')

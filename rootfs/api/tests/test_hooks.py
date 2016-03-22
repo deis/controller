@@ -14,8 +14,6 @@ from django.test import TransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from . import mock_status_ok
-
 RSA_PUBKEY = (
     "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCfQkkUUoxpvcNMkvv7jqnfodgs37M2eBO"
     "APgLK+KNBMaZaaKB4GF1QhTCMfFhoiTW3rqa0J75bHJcdkoobtTHlK8XUrFqsquWyg3XhsT"
@@ -196,7 +194,6 @@ class HookTest(TransactionTestCase):
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 403)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_build_hook(self):
         """Test creating a Build via an API Hook"""
         url = '/v2/apps'
@@ -218,7 +215,6 @@ class HookTest(TransactionTestCase):
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_build_hook_slug_url(self):
         """Test creating a slug_url build via an API Hook"""
         url = '/v2/apps'

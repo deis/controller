@@ -1,7 +1,6 @@
 import logging
 
 from django.test.runner import DiscoverRunner
-import requests
 
 
 class SilentDjangoTestSuiteRunner(DiscoverRunner):
@@ -13,14 +12,3 @@ class SilentDjangoTestSuiteRunner(DiscoverRunner):
         logging.disable(logging.ERROR)
         return super(SilentDjangoTestSuiteRunner, self).run_tests(
             test_labels, extra_tests, **kwargs)
-
-
-def mock_status_ok(*args, **kwargs):
-    resp = requests.Response()
-    resp.status_code = 200
-    resp._content_consumed = True
-    return resp
-
-
-def mock_none(*args, **kwargs):
-    return None

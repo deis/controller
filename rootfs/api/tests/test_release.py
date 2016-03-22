@@ -15,7 +15,6 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import Release
-from . import mock_status_ok
 
 
 @mock.patch('api.models.release.publish_release', lambda *args: None)
@@ -33,7 +32,6 @@ class ReleaseTest(TransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_release(self):
         """
         Test that a release is created when an app is created, and
@@ -110,7 +108,6 @@ class ReleaseTest(TransactionTestCase):
         self.assertEqual(response.status_code, 405)
         return release3
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_response_data(self):
         body = {'id': 'test'}
         response = self.client.post('/v2/apps', json.dumps(body),
@@ -135,7 +132,6 @@ class ReleaseTest(TransactionTestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_release_rollback(self):
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
@@ -233,14 +229,12 @@ class ReleaseTest(TransactionTestCase):
         self.assertIn('NEW_URL1', values)
         self.assertEqual('http://localhost:8080/', values['NEW_URL1'])
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_release_str(self):
         """Test the text representation of a release."""
         release3 = self.test_release()
         release = Release.objects.get(uuid=release3['uuid'])
         self.assertEqual(str(release), "{}-v3".format(release3['app']))
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_release_summary(self):
         """Test the text summary of a release."""
         release3 = self.test_release()
@@ -248,7 +242,6 @@ class ReleaseTest(TransactionTestCase):
         # check that the release has push and env change messages
         self.assertIn('autotest deployed ', release.summary)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_admin_can_create_release(self):
         """If a non-user creates an app, an admin should be able to create releases."""
         user = User.objects.get(username='autotest2')
@@ -272,7 +265,6 @@ class ReleaseTest(TransactionTestCase):
         # account for the config release as well
         self.assertEqual(response.data['count'], 2)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_unauthorized_user_cannot_modify_release(self):
         """
         An unauthorized user should not be able to modify other releases.

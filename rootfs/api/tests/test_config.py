@@ -463,8 +463,9 @@ class ConfigTest(TransactionTestCase):
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
-        url = '/v2/apps/{app_id}/config'.format(**locals())
+
         # check default
+        url = '/v2/apps/{app_id}/config'.format(**locals())
         response = self.client.get(url, content_type='application/json',
                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
@@ -579,3 +580,31 @@ class ConfigTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(unauthorized_token))
         self.assertEqual(response.status_code, 403)
+
+    def test_healthchecks(self):
+        """
+        Test that healthchecks can be applied
+        """
+        url = '/v2/apps'
+        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        # Set healthcheck URL to get defaults set
+        body = {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            json.dumps(body),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='token {}'.format(self.token)
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('HEALTHCHECK_URL', resp.data['values'])
+        self.assertEqual(resp.data['values']['HEALTHCHECK_URL'], '/health')
+
+        # post a new build
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 201)

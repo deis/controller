@@ -565,9 +565,6 @@ class KubeHTTPClient(object):
             data["resources"]["limits"]["cpu"] = cpu
 
     def resolve_state(self, pod):
-        if pod is None:
-            return JobState.destroyed
-
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
         if pod is None:
             return JobState.destroyed

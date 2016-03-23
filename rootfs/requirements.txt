@@ -14,4 +14,5 @@ PyOpenSSL==0.15.1
 pytz==2015.7
 PyYAML==3.11
 requests==2.9.1
+requests-toolbelt==0.6.0
 simpleflock==0.0.3

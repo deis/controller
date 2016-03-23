@@ -15,8 +15,11 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import Release
+from . import adapter
+import requests_mock
 
 
+@requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 class ReleaseTest(APITransactionTestCase):
 
@@ -33,7 +36,7 @@ class ReleaseTest(APITransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_release(self):
+    def test_release(self, mock_requests):
         """
         Test that a release is created when an app is created, and
         that updating config or build or triggers a new release
@@ -105,7 +108,7 @@ class ReleaseTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 405)
         return release3
 
-    def test_response_data(self):
+    def test_response_data(self, mock_requests):
         body = {'id': 'test'}
         response = self.client.post('/v2/apps', body,)
         body = {'values': json.dumps({'NEW_URL': 'http://localhost:8080/'})}
@@ -125,7 +128,7 @@ class ReleaseTest(APITransactionTestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    def test_release_rollback(self):
+    def test_release_rollback(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -208,20 +211,20 @@ class ReleaseTest(APITransactionTestCase):
         self.assertIn('NEW_URL1', values)
         self.assertEqual('http://localhost:8080/', values['NEW_URL1'])
 
-    def test_release_str(self):
+    def test_release_str(self, mock_requests):
         """Test the text representation of a release."""
         release3 = self.test_release()
         release = Release.objects.get(uuid=release3['uuid'])
         self.assertEqual(str(release), "{}-v3".format(release3['app']))
 
-    def test_release_summary(self):
+    def test_release_summary(self, mock_requests):
         """Test the text summary of a release."""
         release3 = self.test_release()
         release = Release.objects.get(uuid=release3['uuid'])
         # check that the release has push and env change messages
         self.assertIn('autotest deployed ', release.summary)
 
-    def test_admin_can_create_release(self):
+    def test_admin_can_create_release(self, mock_requests):
         """If a non-user creates an app, an admin should be able to create releases."""
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
@@ -244,7 +247,7 @@ class ReleaseTest(APITransactionTestCase):
         # account for the config release as well
         self.assertEqual(response.data['count'], 2)
 
-    def test_unauthorized_user_cannot_modify_release(self):
+    def test_unauthorized_user_cannot_modify_release(self, mock_requests):
         """
         An unauthorized user should not be able to modify other releases.
 

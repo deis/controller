@@ -312,6 +312,7 @@ class KubeHTTPClient(object):
             'User-Agent': user_agent('Deis Controller', deis_version)
         }
         # TODO: accessing the k8s api server by IP address rather than hostname avoids
+        # TODO look at https://toolbelt.readthedocs.org/en/latest/adapters.html#fingerprintadapter
         # intermittent DNS errors, but at the price of disabling cert verification.
         # session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         session.verify = False
@@ -320,30 +321,7 @@ class KubeHTTPClient(object):
     def deploy(self, namespace, name, image, command, **kwargs):
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
-
-        # Fetch service
-        service = self._get_service(namespace, namespace).json()
-        old_service = service.copy()  # in case anything fails for rollback
-
-        # Update service information
-        # Make sure the router knows what to do with this
-        # TODO this should potentially be higher up in the flow
-        if app_type in ['web', 'cmd']:
-            # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            service['metadata']['labels']['router.deis.io/routable'] = 'true'
-
-        # Set app type if there is not one available
-        if 'type' not in service['spec']['selector']:
-            service['spec']['selector']['type'] = app_type
-
-        # Find if target port exists already, which it also may not
-        port = self._get_port(image)
-        for pos, item in enumerate(service['spec']['ports']):
-            if item['port'] == 80 and port != item['targetPort']:
-                # port 80 is the only one we care about right now
-                service['spec']['ports'][pos]['targetPort'] = port
-
-        self._update_service(namespace, namespace, data=service)
+        routable = kwargs.get('routable', False)
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
@@ -381,9 +359,6 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Fix service to old port and app type
-            self._update_service(namespace, namespace, data=old_service)
-
             # Remove old release
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
@@ -397,6 +372,39 @@ class KubeHTTPClient(object):
         # New release is live and kicking. Clean up old release
         if old_rc:
             self._delete_rc(namespace, old_rc["metadata"]["name"])
+
+        # Make sure the application is routable and uses the correct port
+        # Done after the fact to let initial deploy settle before routing
+        # traffic to the application
+        self._update_application_service(namespace, name, app_type, image, routable)
+
+    def _update_application_service(self, namespace, name, app_type, image, routable):
+        """Update application service with all the various required information"""
+        try:
+            # Fetch service
+            service = self._get_service(namespace, namespace).json()
+            old_service = service.copy()  # in case anything fails for rollback
+
+            # Update service information
+            if routable:
+                service['metadata']['labels']['router.deis.io/routable'] = 'true'
+
+            # Set app type if there is not one available
+            if 'type' not in service['spec']['selector']:
+                service['spec']['selector']['type'] = app_type
+
+            # Find if target port exists already, update / create as required
+            port = self._get_port(image)
+            for pos, item in enumerate(service['spec']['ports']):
+                if item['port'] == 80 and port != item['targetPort']:
+                    # port 80 is the only one we care about right now
+                    service['spec']['ports'][pos]['targetPort'] = port
+
+            self._update_service(namespace, namespace, data=service)
+        except Exception as e:
+            # Fix service to old port and app type
+            self._update_service(namespace, namespace, data=old_service)
+            raise RuntimeError('{} (scheduler::deploy::service_update): {}'.format(name, e))
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))

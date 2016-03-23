@@ -16,7 +16,11 @@ from rest_framework.authtoken.models import Token
 
 from api.models import App, Config
 
+from . import adapter
+import requests_mock
 
+
+@requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 class ConfigTest(APITransactionTestCase):
 
@@ -38,7 +42,7 @@ class ConfigTest(APITransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_config(self):
+    def test_config(self, mock_requests):
         """
         Test that config is auto-created for a new app and that
         config can be updated using a PATCH
@@ -111,7 +115,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 405)
         return config5
 
-    def test_response_data(self):
+    def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
         body = {'id': 'test'}
         response = self.client.post('/v2/apps', body)
@@ -133,7 +137,7 @@ class ConfigTest(APITransactionTestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    def test_response_data_types_converted(self):
+    def test_response_data_types_converted(self, mock_requests):
         """Test that config data is converted into the correct type."""
         body = {'id': 'test'}
         response = self.client.post('/v2/apps', body)
@@ -160,7 +164,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('CPU shares must be a numeric value', response.data['cpu'])
 
-    def test_config_set_same_key(self):
+    def test_config_set_same_key(self, mock_requests):
         """
         Test that config sets on the same key function properly
         """
@@ -183,7 +187,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertIn('PORT', response.data['values'])
         self.assertEqual(response.data['values']['PORT'], '5001')
 
-    def test_config_set_unicode(self):
+    def test_config_set_unicode(self, mock_requests):
         """
         Test that config sets with unicode values are accepted.
         """
@@ -212,13 +216,13 @@ class ConfigTest(APITransactionTestCase):
         self.assertIn('INTEGER', response.data['values'])
         self.assertEqual(response.data['values']['INTEGER'], '1')
 
-    def test_config_str(self):
+    def test_config_str(self, mock_requests):
         """Test the text representation of a node."""
         config5 = self.test_config()
         config = Config.objects.get(uuid=config5['uuid'])
         self.assertEqual(str(config), "{}-{}".format(config5['app'], str(config5['uuid'])[:7]))
 
-    def test_valid_config_keys(self):
+    def test_valid_config_keys(self, mock_requests):
         """Test that valid config keys are accepted.
         """
         keys = ("FOO", "_foo", "f001", "FOO_BAR_BAZ_")
@@ -233,7 +237,7 @@ class ConfigTest(APITransactionTestCase):
             self.assertEqual(resp.status_code, 201)
             self.assertIn(k, resp.data['values'])
 
-    def test_invalid_config_keys(self):
+    def test_invalid_config_keys(self, mock_requests):
         """Test that invalid config keys are rejected.
         """
         keys = ("123", "../../foo", "FOO/", "FOO-BAR")
@@ -247,7 +251,7 @@ class ConfigTest(APITransactionTestCase):
             resp = self.client.post(url, body)
             self.assertEqual(resp.status_code, 400)
 
-    def test_admin_can_create_config_on_other_apps(self):
+    def test_admin_can_create_config_on_other_apps(self, mock_requests):
         """If a non-admin creates an app, an administrator should be able to set config
         values for that app.
         """
@@ -268,7 +272,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertIn('PORT', response.data['values'])
         return response
 
-    def test_limit_memory(self):
+    def test_limit_memory(self, mock_requests):
         """
         Test that limit is auto-created for a new app and that
         limits can be updated using a PATCH
@@ -358,7 +362,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 405)
         return limit4
 
-    def test_limit_cpu(self):
+    def test_limit_cpu(self, mock_requests):
         """
         Test that CPU limits can be set
         """
@@ -430,7 +434,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 405)
         return limit4
 
-    def test_tags(self):
+    def test_tags(self, mock_requests):
         """
         Test that tags can be set on an application
         """
@@ -531,7 +535,7 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 405)
 
-    def test_config_owner_is_requesting_user(self):
+    def test_config_owner_is_requesting_user(self, mock_requests):
         """
         Ensure that setting the config value is owned by the requesting user
         See https://github.com/deis/deis/issues/2650
@@ -539,7 +543,7 @@ class ConfigTest(APITransactionTestCase):
         response = self.test_admin_can_create_config_on_other_apps()
         self.assertEqual(response.data['owner'], self.user.username)
 
-    def test_unauthorized_user_cannot_modify_config(self):
+    def test_unauthorized_user_cannot_modify_config(self, mock_requests):
         """
         An unauthorized user should not be able to modify other config.
 
@@ -559,7 +563,7 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
-    def test_healthchecks(self):
+    def test_healthchecks(self, mock_requests):
         """
         Test that healthchecks can be applied
         """

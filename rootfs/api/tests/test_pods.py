@@ -15,7 +15,11 @@ from rest_framework.authtoken.models import Token
 
 from api.models import App, Build, Release
 
+from . import adapter
+import requests_mock
 
+
+@requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 class PodTest(APITransactionTestCase):
     """Tests creation of pods on nodes"""
@@ -31,7 +35,7 @@ class PodTest(APITransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_container_api_heroku(self):
+    def test_container_api_heroku(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -127,7 +131,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-    def test_container_api_docker(self):
+    def test_container_api_docker(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -199,7 +203,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
-    def test_release(self):
+    def test_release(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -267,7 +271,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v4')
 
-    def test_container_errors(self):
+    def test_container_errors(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -297,7 +301,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertContains(response, 'Container type invalid', status_code=400)
 
-    def test_container_str(self):
+    def test_container_str(self, mock_requests):
         """Test the text representation of a container."""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -335,7 +339,7 @@ class PodTest(APITransactionTestCase):
             # pod name is auto generated so use regex
             self.assertRegex(pod['name'], app_id + '-v2-(worker|web)-[a-z0-9]{5}')
 
-    def test_pod_command_format(self):
+    def test_pod_command_format(self, mock_requests):
         # regression test for https://github.com/deis/deis/pull/1285
         url = '/v2/apps'
         response = self.client.post(url)
@@ -377,7 +381,7 @@ class PodTest(APITransactionTestCase):
         data = App.objects.get(id=app_id)
         self.assertNotIn('{c_type}', data._get_command('web'))
 
-    def test_container_scale_errors(self):
+    def test_container_scale_errors(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -426,7 +430,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
-    def test_admin_can_manage_other_pods(self):
+    def test_admin_can_manage_other_pods(self, mock_requests):
         """If a non-admin user creates a container, an administrator should be able to
         manage it.
         """
@@ -458,7 +462,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
-    def test_scale_without_build_should_error(self):
+    def test_scale_without_build_should_error(self, mock_requests):
         """A user should not be able to scale processes unless a build is present."""
         app_id = 'autotest'
         url = '/v2/apps'
@@ -471,7 +475,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data, {'detail': 'No build associated with this release'})
 
-    def test_command_good(self):
+    def test_command_good(self, mock_requests):
         """Test the default command for each container workflow"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -529,7 +533,7 @@ class PodTest(APITransactionTestCase):
         build.save()
         self.assertEqual(app._get_command('worker'), 'start worker')
 
-    def test_run_command_good(self):
+    def test_run_command_good(self, mock_requests):
         """Test the run command for each container workflow"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -588,7 +592,7 @@ class PodTest(APITransactionTestCase):
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/runner/init')
 
-    def test_scaling_does_not_add_run_proctypes_to_structure(self):
+    def test_scaling_does_not_add_run_proctypes_to_structure(self, mock_requests):
         """Test that app info doesn't show transient "run" proctypes."""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -637,7 +641,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('run', response.data['structure'])
 
-    def test_scale_with_unauthorized_user_returns_403(self):
+    def test_scale_with_unauthorized_user_returns_403(self, mock_requests):
         """An unauthorized user should not be able to access an app's resources.
 
         If an unauthorized user is trying to scale an app he or she does not have access to, it
@@ -666,7 +670,7 @@ class PodTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
-    def test_modified_procfile_from_build_removes_pods(self):
+    def test_modified_procfile_from_build_removes_pods(self, mock_requests):
         """
         When a new procfile is posted which removes a certain process type, deis should stop the
         existing pods.
@@ -708,7 +712,7 @@ class PodTest(APITransactionTestCase):
         pods = application.list_pods(type='web')
         self.assertEqual(len(pods), 0)
 
-    def test_restart_pods(self):
+    def test_restart_pods(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)

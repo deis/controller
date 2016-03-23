@@ -49,6 +49,21 @@ class CertificateTest(TestCase):
         )
         self.assertEqual(response.status_code, 201)
 
+    def test_create_wildcard_certificate(self):
+        """Tests creating a wildcard certificate, which should be disabled."""
+        response = self.client.post(
+            self.url,
+            json.dumps({
+                'name': 'random-test-cert',
+                'certificate': self.cert,
+                'key': self.key,
+                'common_name': '*.example.com'}),
+            content_type='application/json',
+            HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(json.loads(response.content),
+                         {'common_name': ['Wildcard certificates are not supported']})
+
     def test_update_certificate(self):
         """Tests update of a certificate."""
         response = self.client.post(

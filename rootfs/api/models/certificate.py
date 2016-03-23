@@ -69,6 +69,11 @@ def validate_certificate(value):
         raise ValidationError('Could not load certificate: {}'.format(e))
 
 
+def validate_common_name(value):
+    if '*' in value:
+        raise ValidationError('Wildcard certificates are not supported')
+
+
 class Certificate(AuditedModel):
     """
     Public and private key pair used to secure application traffic at the router.
@@ -79,7 +84,7 @@ class Certificate(AuditedModel):
     certificate = models.TextField(validators=[validate_certificate])
     key = models.TextField()
     # X.509 certificates allow any string of information as the common name.
-    common_name = models.TextField(editable=False, unique=False)
+    common_name = models.TextField(editable=False, unique=False, validators=[validate_common_name])
     # A list of DNS records if certificate has SubjectAltName
     san = ArrayField(models.CharField(max_length=253), null=True)
     # SHA256 fingerprint

@@ -97,7 +97,7 @@ RCD_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -151,7 +151,7 @@ RCB_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -400,19 +400,19 @@ class KubeHTTPClient(object):
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
-        num = kwargs.pop('num')
+        replicas = kwargs.pop('replicas')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
             try:
                 # Create RC with scale as 0 and then scale to get pod monitoring
-                kwargs['num'] = 0
+                kwargs['replicas'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
                 raise RuntimeError('{} (RC): {}'.format(name, e))
 
         try:
-            self._scale_rc(namespace, name, num)
+            self._scale_rc(namespace, name, replicas)
         except KubeException as e:
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
@@ -839,10 +839,10 @@ class KubeHTTPClient(object):
         l = {
             "name": name,
             "id": namespace,
-            "appversion": kwargs.get("version", {}),
+            "appversion": kwargs.get("version"),
             "version": self.apiversion,
             "image": imgurl,
-            "num": kwargs.get("num", {}),
+            "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
             "type": app_type,
         }

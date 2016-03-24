@@ -33,8 +33,8 @@ adduser deis -D -h /app -s /bin/bash
 # create a /app directory for storing application data
 mkdir -p /app && chown -R deis:deis /app
 
-# create directory for confd templates
-mkdir -p /templates && chown -R deis:deis /templates
+# create directory for configurations
+mkdir -p /configs && chown -R deis:deis /configs
 
 # install dependencies
 pip install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt

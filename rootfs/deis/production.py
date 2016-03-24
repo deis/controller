@@ -1,6 +1,4 @@
-import os
-
-from .settings import *
+from deis.settings import *  # noqa
 
 # security keys and auth tokens
 with open('/var/run/secrets/api/builder/auth/builder-key') as f:
@@ -16,9 +14,3 @@ with open('/var/run/secrets/deis/database/creds/password') as f:
     DATABASES['default']['PASSWORD'] = f.read().strip()
 
 DATABASES['default']['NAME'] = DATABASES['default']['USER']
-
-REGISTRATION_MODE = '{{ getv "/deis/controller/registration/mode" "enabled" }}'
-
-{{ if exists "/deis/controller/subdomain" }}
-DEIS_RESERVED_NAMES = ['{{ getv "/deis/controller/subdomain" }}']
-{{ end }}

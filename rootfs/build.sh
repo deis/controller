@@ -25,7 +25,7 @@ apk add --update-cache \
 ln -s /usr/bin/python3 /usr/bin/python
 
 # install pip
-curl -sSL https://raw.githubusercontent.com/pypa/pip/7.1.2/contrib/get-pip.py | python -
+curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.1
 
 # add a deis user
 adduser deis -D -h /app -s /bin/bash

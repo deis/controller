@@ -917,7 +917,8 @@ class KubeHTTPClient(object):
 
     def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
         # FIXME this logic ideally should live higher up
-        if controller['spec']['selector']['type'] not in ['web', 'cmd']:
+        app_type = controller['spec']['selector']['type']
+        if app_type not in ['web', 'cmd']:
             return controller
 
         namespace = controller['spec']['selector']['app']
@@ -956,9 +957,12 @@ class KubeHTTPClient(object):
             },
         }
 
-        # Because it comes from a JSON template, need to hit the first key
-        # FIXME: assumption that container 0 is the app
-        controller['spec']['template']['spec']['containers'][0].update(healthcheck)
+        # Update only the application container with the health check
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(healthcheck)
 
         return controller
 

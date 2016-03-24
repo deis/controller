@@ -3,19 +3,15 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
-import json
-
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Domain
 
 
-class DomainTest(TestCase):
+class DomainTest(APITestCase):
 
     """Tests creation of domains"""
 
@@ -24,8 +20,10 @@ class DomainTest(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
+
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         self.app_id = response.data['id']  # noqa
 
@@ -37,16 +35,12 @@ class DomainTest(TestCase):
         """Test that the serialized response contains only relevant data."""
         response = self.client.post(
             '/v2/apps',
-            json.dumps({'id': 'test'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'id': 'test'}
         )
 
         response = self.client.post(
             '/v2/apps/test/domains',
-            json.dumps({'domain': 'test-domain.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': 'test-domain.example.com'}
         )
 
         for key in response.data:
@@ -79,39 +73,25 @@ class DomainTest(TestCase):
             # Create
             response = self.client.post(
                 url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                {'domain': domain}
             )
             self.assertEqual(response.status_code, 201, msg)
 
             # Fetch
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
-            response = self.client.get(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.get(url)
             expected = [data['domain'] for data in response.data['results']]
             self.assertEqual([self.app_id, domain], expected, msg)
 
             # Delete
             url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=domain,
                                                                 app_id=self.app_id)
-            response = self.client.delete(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.delete(url)
             self.assertEqual(response.status_code, 204, msg)
 
             # Verify removal
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
-            response = self.client.get(
-                url,
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.get(url)
             self.assertEqual(1, response.data['count'], msg)
 
             # verify only app domain is left
@@ -124,8 +104,7 @@ class DomainTest(TestCase):
 
         url = '/v2/apps/{app_id}/domains/{domain}'.format(domain='test-domain.example.com',
                                                           app_id=self.app_id)
-        response = self.client.delete(url, content_type='application/json',
-                                      HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 404)
 
     def test_delete_domain_does_not_remove_latest(self):
@@ -138,16 +117,13 @@ class DomainTest(TestCase):
         for domain in test_domains:
             response = self.client.post(
                 url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                {'domain': domain}
             )
             self.assertEqual(response.status_code, 201)
 
         url = '/v2/apps/{app_id}/domains/{domain}'.format(domain=test_domains[0],
                                                           app_id=self.app_id)
-        response = self.client.delete(url, content_type='application/json',
-                                      HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
         with self.assertRaises(Domain.DoesNotExist):
             Domain.objects.get(domain=test_domains[0])
@@ -162,19 +138,13 @@ class DomainTest(TestCase):
         url = '/v2/apps/{app_id}/domains'.format(app_id="this-app-does-not-exist")
         response = self.client.post(
             url,
-            json.dumps({'domain': 'test-domain.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': 'test-domain.example.com'}
         )
         self.assertEqual(response.status_code, 404)
 
         # verify
         url = '/v2/apps/{app_id}/domains'.format(app_id='this-app-does-not-exist')
-        response = self.client.get(
-            url,
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
     def test_manage_domain_invalid_domain(self):
@@ -194,9 +164,7 @@ class DomainTest(TestCase):
 
             response = self.client.post(
                 url,
-                json.dumps({'domain': domain}),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                {'domain': domain}
             )
             self.assertEqual(response.status_code, 400, msg)
 
@@ -206,16 +174,17 @@ class DomainTest(TestCase):
         """
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
+
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
 
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         url = '/v2/apps/{}/domains'.format(self.app_id)
         response = self.client.post(
             url,
-            json.dumps({'domain': 'example.deis.example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': 'example.deis.example.com'}
         )
         self.assertEqual(response.status_code, 201)
 
@@ -230,18 +199,16 @@ class DomainTest(TestCase):
         url = '/v2/apps'
         response = self.client.post(
             url,
-            json.dumps({'id': app_id}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'id': app_id}
         )
 
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
+
         url = '{}/{}/domains'.format(url, app_id)
         response = self.client.post(
             url,
-            json.dumps({'domain': 'example.com'}),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(unauthorized_token)
+            {'domain': 'example.com'}
         )
         self.assertEqual(response.status_code, 403)

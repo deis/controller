@@ -9,7 +9,7 @@ import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
@@ -17,7 +17,7 @@ from api.models import App, Build, Release
 
 
 @mock.patch('api.models.release.publish_release', lambda *args: None)
-class PodTest(TransactionTestCase):
+class PodTest(APITransactionTestCase):
     """Tests creation of pods on nodes"""
 
     fixtures = ['tests.json']
@@ -25,6 +25,7 @@ class PodTest(TransactionTestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
 
     def tearDown(self):
         # make sure every test has a clean slate for k8s mocking
@@ -32,13 +33,13 @@ class PodTest(TransactionTestCase):
 
     def test_container_api_heroku(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
@@ -52,30 +53,27 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         # test setting one proc type at a time
         body = {'web': 4}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         body = {'worker': 2}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 6)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         # ensure the structure field is up-to-date
         self.assertEqual(response.data['structure']['web'], 4)
@@ -83,14 +81,14 @@ class PodTest(TransactionTestCase):
 
         # test listing/retrieving container info
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['count'], 4)
         self.assertEqual(len(response.data['results']), 4)
 
         name = response.data['results'][0]['name']
         url = "/v2/apps/{app_id}/pods/web/{name}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['name'], name)
@@ -99,17 +97,16 @@ class PodTest(TransactionTestCase):
         url = "/v2/apps/{app_id}/scale".format(**locals())
         # test setting two proc types at a time
         body = {'web': 2, 'worker': 1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 3)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         # ensure the structure field is up-to-date
         self.assertEqual(response.data['structure']['web'], 2)
@@ -118,28 +115,27 @@ class PodTest(TransactionTestCase):
         # scale down to 0
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 0, 'worker': 0}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
     def test_container_api_docker(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
@@ -149,73 +145,69 @@ class PodTest(TransactionTestCase):
             'image': 'autotest/example',
             'dockerfile': "FROM busybox\nCMD /bin/true"
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 6}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 6)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
         # test listing/retrieving container info
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 6)
 
         # scale down
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 3}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 3)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
         # scale down to 0
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 0}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
 
     def test_release(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
@@ -229,19 +221,17 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v2')
@@ -255,13 +245,12 @@ class PodTest(TransactionTestCase):
                 'web': 'echo hi'
             }
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['image'], body['image'])
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v3')
@@ -269,19 +258,18 @@ class PodTest(TransactionTestCase):
         # post new config
         url = "/v2/apps/{app_id}/config".format(**locals())
         body = {'values': json.dumps({'KEY': 'value'})}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v4')
 
     def test_container_errors(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -301,20 +289,18 @@ class PodTest(TransactionTestCase):
 
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 'not_an_int'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data, {'detail': "Invalid scaling format: invalid literal for "
                                                    "int() with base 10: 'not_an_int'"})
         body = {'invalid': 1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertContains(response, 'Container type invalid', status_code=400)
 
     def test_container_str(self):
         """Test the text representation of a container."""
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -328,20 +314,18 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 2}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 6)
         pods = response.data['results']
@@ -354,7 +338,7 @@ class PodTest(TransactionTestCase):
     def test_pod_command_format(self):
         # regression test for https://github.com/deis/deis/pull/1285
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -368,18 +352,16 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
 
         # verify that the app._get_command property got formatted
         self.assertEqual(response.status_code, 200)
@@ -397,13 +379,13 @@ class PodTest(TransactionTestCase):
 
     def test_container_scale_errors(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
 
@@ -417,36 +399,31 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # scale to a negative number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': -1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
 
         # scale to something other than a number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 'one'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
 
         # scale to something other than a number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': [1]}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
 
         # scale up to an integer as a sanity check
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
     def test_admin_can_manage_other_pods(self):
@@ -455,8 +432,10 @@ class PodTest(TransactionTestCase):
         """
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
+
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -470,15 +449,13 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
         # login as admin, scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 2}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
     def test_scale_without_build_should_error(self):
@@ -486,20 +463,18 @@ class PodTest(TransactionTestCase):
         app_id = 'autotest'
         url = '/v2/apps'
         body = {'cluster': 'autotest', 'id': app_id}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
 
         url = '/v2/apps/{app_id}/scale'.format(**locals())
         body = {'web': '1'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data, {'detail': 'No build associated with this release'})
 
     def test_command_good(self):
         """Test the default command for each container workflow"""
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
@@ -557,7 +532,7 @@ class PodTest(TransactionTestCase):
     def test_run_command_good(self):
         """Test the run command for each container workflow"""
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
@@ -587,8 +562,7 @@ class PodTest(TransactionTestCase):
         # create a run pod
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
@@ -599,8 +573,7 @@ class PodTest(TransactionTestCase):
         build.save()
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
@@ -610,8 +583,7 @@ class PodTest(TransactionTestCase):
         build.save()
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/runner/init')
@@ -619,7 +591,7 @@ class PodTest(TransactionTestCase):
     def test_scaling_does_not_add_run_proctypes_to_structure(self):
         """Test that app info doesn't show transient "run" proctypes."""
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
@@ -650,20 +622,18 @@ class PodTest(TransactionTestCase):
         # create a run pod
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 3}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         # test that "run" proctype isn't in the app info returned
         url = "/v2/apps/{app_id}".format(**locals())
-        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('run', response.data['structure'])
 
@@ -674,7 +644,7 @@ class PodTest(TransactionTestCase):
         should return a 403.
         """
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -685,16 +655,15 @@ class PodTest(TransactionTestCase):
             'sha': 'a'*40,
             'procfile': json.dumps({'web': 'node server.js', 'worker': 'node worker.js'})
         }
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
 
         # scale up with unauthorized user
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(unauthorized_token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
     def test_modified_procfile_from_build_removes_pods(self):
@@ -703,7 +672,7 @@ class PodTest(TransactionTestCase):
         existing pods.
         """
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -717,17 +686,11 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(build_url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(build_url, body)
 
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4}
-        response = self.client.post(
-            url,
-            json.dumps(body),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         body = {
@@ -737,12 +700,7 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(
-            build_url,
-            json.dumps(body),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.post(build_url, body)
         self.assertEqual(response.status_code, 201)
 
         # make sure no pods are web
@@ -752,7 +710,7 @@ class PodTest(TransactionTestCase):
 
     def test_restart_pods(self):
         url = '/v2/apps'
-        response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
 
@@ -766,38 +724,30 @@ class PodTest(TransactionTestCase):
                 'worker': 'node worker.js'
             })
         }
-        response = self.client.post(build_url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(build_url, body)
 
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 8}
-        response = self.client.post(url, json.dumps(body), content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
 
         # setup app object
         application = App.objects.get(id=app_id)
 
         # restart all pods
-        response = self.client.post('/v2/apps/{}/pods/restart'.format(app_id),
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post('/v2/apps/{}/pods/restart'.format(app_id))
         self.assertEqual(response.status_code, 200)
         # Compare restarted pods to all pods
         self.assertEqual(len(response.data), 12)
 
         # restart only the workers
-        response = self.client.post('/v2/apps/{}/pods/worker/restart'.format(app_id),
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post('/v2/apps/{}/pods/worker/restart'.format(app_id))
         self.assertEqual(response.status_code, 200)
         # Compare restarted pods to only worker pods
         self.assertEqual(len(response.data), 8)
 
         # restart only the web
-        response = self.client.post('/v2/apps/{}/pods/web/restart'.format(app_id),
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post('/v2/apps/{}/pods/web/restart'.format(app_id))
         self.assertEqual(response.status_code, 200)
         # Compare restarted pods to only worker pods
         self.assertEqual(len(response.data), 4)
@@ -807,18 +757,14 @@ class PodTest(TransactionTestCase):
         self.assertEqual(len(pods), 4)
 
         pod = pods.pop()
-        response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, pod['name']),
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, pod['name']))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['type'], 'web')
 
         # restart only one web port but using the short name of web-asdfg
         name = 'web-' + pod['name'].split('-').pop()
-        response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, name),
-                                    content_type='application/json',
-                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, name))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['type'], 'web')

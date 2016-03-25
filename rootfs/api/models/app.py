@@ -287,7 +287,7 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'version': version,
-                'num': scale_types[scale_type],
+                'replicas': scale_types[scale_type],
                 'app_type': scale_type,
                 'build_type': build_type,
                 'healthcheck': release.config.healthcheck()
@@ -330,7 +330,7 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'num': 0,  # Scaling up happens in a separate operation
+                'replicas': 0,  # Scaling up happens in a separate operation
                 'version': version,
                 'app_type': scale_type,
                 'build_type': build_type,

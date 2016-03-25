@@ -815,3 +815,13 @@ class PodTest(TransactionTestCase):
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['type'], 'web')
+
+        # restart only one web port but using the short name of web-asdfg
+        name = 'web-' + pod['name'].split('-').pop()
+        response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, name),
+                                    content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['type'], 'web')

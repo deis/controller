@@ -67,10 +67,15 @@ class Config(UuidAuditedModel):
             nodes = self._scheduler._get_nodes(labels=self.tags).json()
             if not nodes['items']:
                 labels = ['{}={}'.format(key, value) for key, value in self.tags.items()]
-                raise EnvironmentError(
-                    'These tags do not match labels on kubernetes nodes: {}'.format(
-                        ', '.join(labels)
-                    )
-                )
+                message = 'No nodes matched the provided labels: {}'.format(', '.join(labels))
+
+                # Find out if there are any other tags around
+                old_tags = getattr(previous_config, 'tags')
+                if old_tags:
+                    old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
+                    new = set(labels) - set(old)
+                    message += ' - Addition of {} is the cause'.format(', '.join(new))
+
+                raise EnvironmentError(message)
 
         return super(Config, self).save(**kwargs)

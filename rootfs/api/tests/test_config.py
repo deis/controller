@@ -503,6 +503,14 @@ class ConfigTest(TransactionTestCase):
         response = self.client.post(url, json.dumps(body), content_type='application/json',
                                     HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 201)
+        body = {'tags': json.dumps({'host.the-name.com/does.no.exist': 'valid'})}
+        response = self.client.post(url, json.dumps(body), content_type='application/json',
+                                    HTTP_AUTHORIZATION='token {}'.format(self.token))
+        self.assertContains(
+            response,
+            'Addition of host.the-name.com/does.no.exist=valid is the cause',
+            status_code=400
+        )
         # set invalid values
         body = {'tags': json.dumps({'valid': 'in\nvalid'})}
         response = self.client.post(url, json.dumps(body), content_type='application/json',

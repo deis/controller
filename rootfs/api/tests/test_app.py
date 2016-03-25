@@ -364,6 +364,17 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['owner'], self.user.username)
 
+    def test_app_exists_in_kubernetes(self):
+        """
+        Create an app that has the same namespace as an existing kubernetes namespace
+        """
+        body = {'id': 'duplicate'}
+        response = self.client.post('/v2/apps', body)
+        self.assertContains(
+            response,
+            'duplicate already exists as a namespace in this kuberenetes setup',
+            status_code=409
+        )
 
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

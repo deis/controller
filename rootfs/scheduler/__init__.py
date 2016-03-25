@@ -10,7 +10,10 @@ from django.conf import settings
 from docker import Client
 from .states import JobState
 import requests
+from requests_toolbelt import user_agent
 from .utils import dict_merge
+
+from deis import __version__ as deis_version
 
 
 logger = logging.getLogger(__name__)
@@ -307,6 +310,7 @@ class KubeHTTPClient(object):
         session.headers = {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json',
+            'User-Agent': user_agent('Deis Controller', deis_version)
         }
         # TODO: accessing the k8s api server by IP address rather than hostname avoids
         # intermittent DNS errors, but at the price of disabling cert verification.

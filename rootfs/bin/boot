@@ -13,9 +13,6 @@ echo system information:
 echo "Django Version: $(./manage.py --version)"
 python --version
 
-# spawn confd in the background to update services based on changes
-confd -backend env --confdir /app --log-level error --interval 5 &
-
 mkdir -p /app/data/logs
 chmod -R 777 /app/data/logs
 
@@ -27,18 +24,18 @@ else
 fi
 
 echo "Django checks:"
-python /app/manage.py check --deploy api
+python /app/manage.py check --settings deis.production --deploy api
 
 echo "Health Checks:"
-python /app/manage.py healthchecks
+python /app/manage.py healthchecks --settings deis.production
 
 echo "Database Migrations:"
-sudo -E -u deis python /app/manage.py migrate --noinput
+sudo -E -u deis python /app/manage.py migrate --settings deis.production --noinput
 
 # spawn a gunicorn server in the background
 sudo -E -u deis gunicorn -c /app/deis/gconf.py deis.wsgi &
 
-python /app/manage.py load_db_state_to_k8s
+python /app/manage.py load_db_state_to_k8s --settings deis.production
 
 # smart shutdown on SIGTERM (SIGINT is handled by gunicorn)
 function on_exit() {

@@ -250,7 +250,7 @@ LOG_LINES = 100
 TEMPDIR = tempfile.mkdtemp(prefix='deis')
 
 # names which apps cannot reserve for routing
-DEIS_RESERVED_NAMES = ['deis']
+DEIS_RESERVED_NAMES = [os.environ.get('RESERVED_NAMES', 'deis')]
 
 # default scheduler settings
 SCHEDULER_MODULE = 'scheduler'
@@ -276,7 +276,7 @@ LOGGER_HOST = os.environ.get('DEIS_LOGGER_SERVICE_HOST', '127.0.0.1')
 LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 
 # check if we can register users with `deis register`
-REGISTRATION_ENABLED = True
+REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 
 DATABASES = {
     'default': {
@@ -290,13 +290,3 @@ DATABASES = {
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
-
-# Create a file named "local_settings.py" to contain sensitive settings data
-# such as database configuration, admin email, or passwords and keys. It
-# should also be used for any settings which differ between development
-# and production.
-# The local_settings.py file should *not* be checked in to version control.
-try:
-    from .local_settings import *  # noqa
-except ImportError:
-    pass

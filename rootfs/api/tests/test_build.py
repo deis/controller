@@ -14,7 +14,6 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import Build
-from . import mock_status_ok
 
 
 @mock.patch('api.models.release.publish_release', lambda *args: None)
@@ -32,7 +31,6 @@ class BuildTest(TransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_build(self):
         """
         Test that a null build is created and that users can post new builds
@@ -80,7 +78,6 @@ class BuildTest(TransactionTestCase):
         response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 405)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_response_data(self):
         """Test that the serialized response contains only relevant data."""
         body = {'id': 'test'}
@@ -107,7 +104,6 @@ class BuildTest(TransactionTestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_build_default_containers(self):
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
@@ -208,7 +204,6 @@ class BuildTest(TransactionTestCase):
         # pod name is auto generated so use regex
         self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_build_str(self):
         """Test the text representation of a build."""
         url = '/v2/apps'
@@ -225,7 +220,6 @@ class BuildTest(TransactionTestCase):
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_admin_can_create_builds_on_other_apps(self):
         """If a user creates an application, an administrator should be able
         to push builds.
@@ -249,7 +243,6 @@ class BuildTest(TransactionTestCase):
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_unauthorized_user_cannot_modify_build(self):
         """
         An unauthorized user should not be able to modify other builds.
@@ -270,7 +263,6 @@ class BuildTest(TransactionTestCase):
                                     HTTP_AUTHORIZATION='token {}'.format(unauthorized_token))
         self.assertEqual(response.status_code, 403)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_new_build_does_not_scale_up_automatically(self):
         """
         After the first initial deploy, if the containers are scaled down to zero,

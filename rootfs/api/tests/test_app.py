@@ -16,7 +16,10 @@ from django.test import TestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App
-from . import mock_status_ok, mock_none
+
+
+def mock_none(*args, **kwargs):
+    return None
 
 
 class AppTest(TestCase):
@@ -200,7 +203,6 @@ class AppTest(TestCase):
         self.assertIn('structure', response.data)
         self.assertEqual(response.data['structure'], {"web": 1})
 
-    @mock.patch('requests.post', mock_status_ok)
     @mock.patch('api.models.logger')
     def test_admin_can_manage_other_apps(self, mock_logger):
         """Administrators of Deis should be able to manage all applications.

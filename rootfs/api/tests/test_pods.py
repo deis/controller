@@ -14,7 +14,6 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Build, Release
-from . import mock_status_ok
 
 
 @mock.patch('api.models.release.publish_release', lambda *args: None)
@@ -132,7 +131,6 @@ class PodTest(TransactionTestCase):
         response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_container_api_docker(self):
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
@@ -209,7 +207,6 @@ class PodTest(TransactionTestCase):
         response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
         self.assertEqual(response.status_code, 200)
 
-    @mock.patch('requests.post', mock_status_ok)
     def test_release(self):
         url = '/v2/apps'
         response = self.client.post(url, HTTP_AUTHORIZATION='token {}'.format(self.token))

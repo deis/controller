@@ -33,7 +33,7 @@ echo "Database Migrations:"
 sudo -E -u deis python /app/manage.py migrate --settings deis.production --noinput
 
 # spawn a gunicorn server in the background
-sudo -E -u deis gunicorn -c /app/deis/gconf.py deis.wsgi &
+sudo -E -u deis gunicorn --env DJANGO_SETTINGS_MODULE=deis.production -c /app/deis/gconf.py deis.wsgi &
 
 python /app/manage.py load_db_state_to_k8s --settings deis.production
 

@@ -245,7 +245,6 @@ SERVICE_TEMPLATE = """\
     ],
     "selector": {
       "app": "$name",
-      "type": "web",
       "heritage": "deis"
     }
   }
@@ -333,11 +332,8 @@ class KubeHTTPClient(object):
             # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             service['metadata']['labels']['router.deis.io/routable'] = 'true'
 
-        # Set app type
-        if (
-            'type' not in service['spec']['selector'] or
-            app_type != service['spec']['selector']['type']
-        ):
+        # Set app type if there is not one available
+        if 'type' not in service['spec']['selector']:
             service['spec']['selector']['type'] = app_type
 
         # Find if target port exists already, which it also may not

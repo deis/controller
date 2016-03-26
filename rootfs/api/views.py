@@ -38,6 +38,7 @@ class HealthCheckView(View):
                 c.execute("SELECT 0")
         except django.db.Error as e:
             logger.critical("Database health check failed")
+            # FIXME why is turning on DEBUG=true in env not outputting this error?
             logger.debug(str(e))
 
             return HttpResponse(

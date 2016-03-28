@@ -285,7 +285,7 @@ REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DEIS_DATABASE_NAME', 'deis'),
+        'NAME': os.environ.get('DEIS_DATABASE_NAME', os.environ.get('DEIS_DATABASE_USER', 'deis')),
         'USER': os.environ.get('DEIS_DATABASE_USER', ''),
         'PASSWORD': os.environ.get('DEIS_DATABASE_PASSWORD', ''),
         'HOST': os.environ.get('DEIS_DATABASE_SERVICE_HOST', ''),

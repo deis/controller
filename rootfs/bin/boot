@@ -24,18 +24,18 @@ else
 fi
 
 echo "Django checks:"
-python /app/manage.py check --settings deis.production --deploy api
+python /app/manage.py check --deploy api
 
 echo "Health Checks:"
-python /app/manage.py healthchecks --settings deis.production
+python /app/manage.py healthchecks
 
 echo "Database Migrations:"
-sudo -E -u deis python /app/manage.py migrate --settings deis.production --noinput
+sudo -E -u deis python /app/manage.py migrate --noinput
 
 # spawn a gunicorn server in the background
-sudo -E -u deis gunicorn --env DJANGO_SETTINGS_MODULE=deis.production -c /app/deis/gconf.py deis.wsgi &
+sudo -E -u deis gunicorn -c /app/deis/gconf.py deis.wsgi &
 
-python /app/manage.py load_db_state_to_k8s --settings deis.production
+python /app/manage.py load_db_state_to_k8s
 
 # smart shutdown on SIGTERM (SIGINT is handled by gunicorn)
 function on_exit() {

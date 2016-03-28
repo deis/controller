@@ -421,6 +421,11 @@ class MockSchedulerClient(KubeHTTPClient):
             self._create_secret('deis', 'minio-user', secrets)
 
         try:
+            self._get_namespace('duplicate')
+        except KubeHTTPException:
+            self._create_namespace('duplicate')
+
+        try:
             self._get_node('172.17.8.100')
         except KubeHTTPException:
             data = {

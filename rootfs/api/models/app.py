@@ -11,7 +11,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel, log_event
+from api.models import UuidAuditedModel, log_event, AlreadyExists
 from api.utils import generate_app_name, app_build_type
 from api.models.release import Release
 from api.models.config import Config
@@ -70,6 +70,20 @@ class App(UuidAuditedModel):
             self.id = generate_app_name()
             while App.objects.filter(id=self.id).exists():
                 self.id = generate_app_name()
+
+        # verify the application name doesn't exist as a k8s namespace
+        # only check for it if there have been on releases
+        try:
+            self.release_set.latest()
+        except Release.DoesNotExist:
+            try:
+                if self._scheduler._get_namespace(self.id).status_code == 200:
+                    # Namespace already exists
+                    err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
+                    log_event(self, err, logging.INFO)
+                    raise AlreadyExists(err)
+            except KubeHTTPException:
+                pass
 
         application = super(App, self).save(**kwargs)
 
@@ -310,11 +324,11 @@ class App(UuidAuditedModel):
 
     def deploy(self, user, release):
         """Deploy a new release to this application"""
-        # use create to make sure minimum resources are created
-        self.create()
-
         if release.build is None:
             raise EnvironmentError('No build associated with this release')
+
+        # use create to make sure minimum resources are created
+        self.create()
 
         if self.structure == {}:
             self.structure = self._default_structure(release)

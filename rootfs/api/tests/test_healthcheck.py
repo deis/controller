@@ -1,8 +1,8 @@
 
-from django.test import TestCase
+from rest_framework.test import APITestCase
 
 
-class HealthCheckTest(TestCase):
+class HealthCheckTest(APITestCase):
 
     def setUp(self):
         self.url = '/healthz'

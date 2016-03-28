@@ -9,3 +9,6 @@ codecov==1.6.3
 
 # mock out python-requests, mostly k8s
 requests-mock==0.7.0
+
+# tblib is needed to pickle tracebacks for `make test-unit-quick`
+tblib==1.3.0

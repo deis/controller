@@ -41,14 +41,14 @@ POD_BTEMPLATE = """\
             "value":"$image"
         },
         {
-            "name": "DOCKERIMAGE",
-            "value":"1"
+            "name": "BUILDER_STORAGE",
+            "value":"$storagetype"
         }
         ],
         "volumeMounts":[
         {
-            "name":"minio-user",
-            "mountPath":"/var/run/secrets/object/store",
+            "name":"objectstorage-keyfile",
+            "mountPath":"/var/run/secrets/deis/objectstore/creds",
             "readOnly":true
         }
         ]
@@ -56,9 +56,9 @@ POD_BTEMPLATE = """\
     ],
     "volumes":[
     {
-        "name":"minio-user",
+        "name":"objectstorage-keyfile",
         "secret":{
-        "secretName":"minio-user"
+        "secretName":"objectstorage-keyfile"
         }
     }
     ],
@@ -194,14 +194,22 @@ RCB_TEMPLATE = """\
                 "value":"$appversion"
             },
             {
-                "name": "DOCKERIMAGE",
-                "value":"1"
+                "name": "BUILDER_STORAGE",
+                "value":"$storagetype"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_HOST",
+                "value":"$mHost"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_PORT",
+                "value":"$mPort"
             }
             ],
             "volumeMounts":[
             {
-                "name":"minio-user",
-                "mountPath":"/var/run/secrets/object/store",
+                "name":"objectstorage-keyfile",
+                "mountPath":"/var/run/secrets/deis/objectstore/creds",
                 "readOnly":true
             }
             ]
@@ -210,9 +218,9 @@ RCB_TEMPLATE = """\
         "nodeSelector": {},
         "volumes":[
         {
-            "name":"minio-user",
+            "name":"objectstorage-keyfile",
             "secret":{
-            "secretName":"minio-user"
+            "secretName":"objectstorage-keyfile"
             }
         }
         ]
@@ -438,9 +446,9 @@ class KubeHTTPClient(object):
                 self._create_namespace(namespace)
 
             try:
-                self._get_secret(namespace, 'minio-user')
+                self._get_secret(namespace, 'objectstorage-keyfile')
             except KubeException:
-                self._create_minio_secret(namespace)
+                self._create_objectstore_secret(namespace)
 
             try:
                 self._get_service(namespace, namespace)
@@ -477,6 +485,7 @@ class KubeHTTPClient(object):
             'id': name,
             'version': self.apiversion,
             'image': imgurl,
+            'storagetype': os.getenv("APP_STORAGE")
         }
 
         if image.startswith('http://') or image.startswith('https://'):
@@ -842,6 +851,7 @@ class KubeHTTPClient(object):
         container_name = namespace + '-' + app_type
         args = command.split()
         imgurl = self.registry + "/" + image
+        storageType = os.getenv("APP_STORAGE")
         TEMPLATE = RCD_TEMPLATE
 
         l = {
@@ -853,6 +863,9 @@ class KubeHTTPClient(object):
             "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
             "type": app_type,
+            "storagetype": storageType,
+            "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
+            "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
         }
 
         # Check if it is a slug builder image.
@@ -972,15 +985,12 @@ class KubeHTTPClient(object):
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-
-    def _create_minio_secret(self, namespace):
-        secret = self._get_secret('deis', 'minio-user').json()  # fetch from deis namespace
-
-        data = {
-            'access-key-id': base64.b64decode(secret['data']['access-key-id']),
-            'access-secret-key': base64.b64decode(secret['data']['access-secret-key'])
-        }
-        self._create_secret(namespace, 'minio-user', data)
+    def _create_objectstore_secret(self, namespace):
+        secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+        data = {}
+        for key, value in secret['data'].items():
+            data[key] = base64.b64decode(value)
+        self._create_secret(namespace, 'objectstorage-keyfile', data)
 
     def _get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)

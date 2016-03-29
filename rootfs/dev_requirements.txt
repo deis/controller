@@ -8,7 +8,8 @@ flake8==2.5.4
 codecov==1.6.3
 
 # mock out python-requests, mostly k8s
-requests-mock==0.7.0
+# requests-mock==0.7.0
+-e git+https://github.com/helgi/requests-mock.git@class_adapter#egg=request_mock
 
 # tblib is needed to pickle tracebacks for `make test-unit-quick`
 tblib==1.3.0

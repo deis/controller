@@ -10,6 +10,9 @@ from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
+from . import adapter
+import requests_mock
+
 RSA_PUBKEY = (
     "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCfQkkUUoxpvcNMkvv7jqnfodgs37M2eBO"
     "APgLK+KNBMaZaaKB4GF1QhTCMfFhoiTW3rqa0J75bHJcdkoobtTHlK8XUrFqsquWyg3XhsT"
@@ -29,6 +32,7 @@ RSA_PUBKEY2 = (
 )
 
 
+@requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 class HookTest(APITransactionTestCase):
 
@@ -45,7 +49,7 @@ class HookTest(APITransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_key_hook(self):
+    def test_key_hook(self, mock_requests):
         """Test fetching keys for an app and a user"""
 
         # Create app to use
@@ -123,7 +127,7 @@ class HookTest(APITransactionTestCase):
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 404)
 
-    def test_push_hook(self):
+    def test_push_hook(self, mock_requests):
         """Test creating a Push via the API"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -151,7 +155,7 @@ class HookTest(APITransactionTestCase):
                   'ssh_connection', 'ssh_original_command'):
             self.assertIn(k, response.data)
 
-    def test_push_abuse(self):
+    def test_push_abuse(self, mock_requests):
         """Test a user pushing to an unauthorized application"""
         # create a legit app as "autotest"
         url = '/v2/apps'
@@ -187,7 +191,7 @@ class HookTest(APITransactionTestCase):
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 403)
 
-    def test_build_hook(self):
+    def test_build_hook(self, mock_requests):
         """Test creating a Build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -209,7 +213,7 @@ class HookTest(APITransactionTestCase):
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
 
-    def test_build_hook_slug_url(self):
+    def test_build_hook_slug_url(self, mock_requests):
         """Test creating a slug_url build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -233,7 +237,7 @@ class HookTest(APITransactionTestCase):
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
 
-    def test_build_hook_procfile(self):
+    def test_build_hook_procfile(self, mock_requests):
         """Test creating a Procfile build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -279,7 +283,7 @@ class HookTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 401)
 
-    def test_build_hook_dockerfile(self):
+    def test_build_hook_dockerfile(self, mock_requests):
         """Test creating a Dockerfile build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -326,7 +330,7 @@ class HookTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 401)
 
-    def test_config_hook(self):
+    def test_config_hook(self, mock_requests):
         """Test reading Config via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -353,7 +357,7 @@ class HookTest(APITransactionTestCase):
         self.assertIn('values', response.data)
         self.assertEqual(values, response.data['values'])
 
-    def test_admin_can_hook(self):
+    def test_admin_can_hook(self, mock_requests):
         """Administrator should be able to create build hooks on non-admin apps.
         """
         """Test creating a Push via the API"""

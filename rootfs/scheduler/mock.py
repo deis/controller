@@ -395,12 +395,12 @@ class MockSchedulerClient(KubeHTTPClient):
         self.url = settings.SCHEDULER_URL
         self.registry = settings.REGISTRY_URL
 
-        self.adapter = requests_mock.Adapter()
+        adapter = requests_mock.Adapter()
         self.session = requests.Session()
-        self.session.mount(self.url, self.adapter)
+        self.session.mount(self.url, adapter)
 
         # Lets just listen to everything and sort it out ourselves
-        self.adapter.register_uri(
+        adapter.register_uri(
             requests_mock.ANY, requests_mock.ANY,
             json=mock
         )

@@ -15,7 +15,11 @@ from rest_framework.authtoken.models import Token
 
 from api.models import Build
 
+from . import adapter
+import requests_mock
 
+
+@requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 class BuildTest(APITransactionTestCase):
 
@@ -32,7 +36,7 @@ class BuildTest(APITransactionTestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_build(self):
+    def test_build(self, mock_requests):
         """
         Test that a null build is created and that users can post new builds
         """
@@ -75,7 +79,7 @@ class BuildTest(APITransactionTestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 405)
 
-    def test_response_data(self):
+    def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
         body = {'id': 'test'}
         url = '/v2/apps'
@@ -98,7 +102,7 @@ class BuildTest(APITransactionTestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    def test_build_default_containers(self):
+    def test_build_default_containers(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -192,7 +196,7 @@ class BuildTest(APITransactionTestCase):
         # pod name is auto generated so use regex
         self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
-    def test_build_str(self):
+    def test_build_str(self, mock_requests):
         """Test the text representation of a build."""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -207,7 +211,7 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
 
-    def test_admin_can_create_builds_on_other_apps(self):
+    def test_admin_can_create_builds_on_other_apps(self, mock_requests):
         """If a user creates an application, an administrator should be able
         to push builds.
         """
@@ -232,7 +236,7 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
 
-    def test_unauthorized_user_cannot_modify_build(self):
+    def test_unauthorized_user_cannot_modify_build(self, mock_requests):
         """
         An unauthorized user should not be able to modify other builds.
 
@@ -252,7 +256,7 @@ class BuildTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
-    def test_new_build_does_not_scale_up_automatically(self):
+    def test_new_build_does_not_scale_up_automatically(self, mock_requests):
         """
         After the first initial deploy, if the containers are scaled down to zero,
         they should stay that way on a new release.

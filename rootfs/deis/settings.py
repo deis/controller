@@ -275,6 +275,10 @@ REGISTRY_URL = '{}:{}'.format(REGISTRY_HOST, REGISTRY_PORT)
 LOGGER_HOST = os.environ.get('DEIS_LOGGER_SERVICE_HOST', '127.0.0.1')
 LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 
+# router information
+ROUTER_HOST = os.environ.get('DEIS_ROUTER_SERVICE_HOST', '127.0.0.1')
+ROUTER_PORT = os.environ.get('DEIS_ROUTER_SERVICE_PORT', 80)
+
 # check if we can register users with `deis register`
 REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 

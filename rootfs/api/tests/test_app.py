@@ -14,9 +14,6 @@ from rest_framework.authtoken.models import Token
 
 from api.models import App
 
-from . import adapter
-import requests_mock
-
 
 def mock_none(*args, **kwargs):
     return None
@@ -41,7 +38,7 @@ class AppTest(APITestCase):
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 
-    def test_app(self, mock_requests):
+    def test_app(self):
         """
         Test that a user can create, read, update and delete an application
         """
@@ -62,7 +59,7 @@ class AppTest(APITestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
 
-    def test_response_data(self, mock_requests):
+    def test_response_data(self):
         """Test that the serialized response contains only relevant data."""
         body = {'id': 'test'}
         response = self.client.post('/v2/apps', body)
@@ -75,7 +72,7 @@ class AppTest(APITestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
-    def test_app_override_id(self, mock_requests):
+    def test_app_override_id(self):
         body = {'id': 'myid'}
         response = self.client.post('/v2/apps', body)
         self.assertEqual(response.status_code, 201)
@@ -85,7 +82,7 @@ class AppTest(APITestCase):
         return response
 
     @mock.patch('requests.get')
-    def test_app_actions(self, mock_requests, mock_get):
+    def test_app_actions(self, mock_get):
         url = '/v2/apps'
         body = {'id': 'autotest'}
         response = self.client.post(url, body)
@@ -129,7 +126,7 @@ class AppTest(APITestCase):
         # TODO: test run needs an initial build
 
     @mock.patch('api.models.logger')
-    def test_app_release_notes_in_logs(self, mock_requests, mock_logger):
+    def test_app_release_notes_in_logs(self, mock_logger):
         """Verifies that an app's release summary is dumped into the logs."""
         url = '/v2/apps'
         body = {'id': 'autotest'}
@@ -140,7 +137,7 @@ class AppTest(APITestCase):
         exp_log_call = mock.call(logging.INFO, exp_msg)
         mock_logger.log.has_calls(exp_log_call)
 
-    def test_app_errors(self, mock_requests):
+    def test_app_errors(self):
         app_id = 'autotest-errors'
         url = '/v2/apps'
         body = {'id': 'camelCase'}
@@ -163,7 +160,7 @@ class AppTest(APITestCase):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 404)
 
-    def test_app_reserved_names(self, mock_requests):
+    def test_app_reserved_names(self):
         """Nobody should be able to create applications with names which are reserved."""
         url = '/v2/apps'
         reserved_names = ['foo', 'bar']
@@ -176,7 +173,7 @@ class AppTest(APITestCase):
                     '{} is a reserved name.'.format(name),
                     status_code=400)
 
-    def test_app_structure_is_valid_json(self, mock_requests):
+    def test_app_structure_is_valid_json(self):
         """Application structures should be valid JSON objects."""
         url = '/v2/apps'
         response = self.client.post(url)
@@ -193,7 +190,7 @@ class AppTest(APITestCase):
         self.assertEqual(response.data['structure'], {"web": 1})
 
     @mock.patch('api.models.logger')
-    def test_admin_can_manage_other_apps(self, mock_requests, mock_logger):
+    def test_admin_can_manage_other_apps(self, mock_logger):
         """Administrators of Deis should be able to manage all applications.
         """
         # log in as non-admin user and create an app
@@ -221,7 +218,7 @@ class AppTest(APITestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
 
-    def test_admin_can_see_other_apps(self, mock_requests):
+    def test_admin_can_see_other_apps(self):
         """If a user creates an application, the administrator should be able
         to see it.
         """
@@ -239,7 +236,7 @@ class AppTest(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.data['count'], 1)
 
-    def test_run_without_release_should_error(self, mock_requests):
+    def test_run_without_release_should_error(self):
         """
         A user should not be able to run a one-off command unless a release
         is present.
@@ -258,7 +255,7 @@ class AppTest(APITestCase):
     @mock.patch('api.models.App.run', _mock_run)
     @mock.patch('api.models.App.deploy', mock_none)
     @mock.patch('api.models.Release.publish', mock_none)
-    def test_run(self, mock_requests):
+    def test_run(self):
         """
         A user should be able to run a one off command
         """
@@ -281,7 +278,7 @@ class AppTest(APITestCase):
         self.assertEqual(response.data['rc'], 0)
         self.assertEqual(response.data['output'], 'mock')
 
-    def test_unauthorized_user_cannot_see_app(self, mock_requests):
+    def test_unauthorized_user_cannot_see_app(self):
         """
         An unauthorized user should not be able to access an app's resources.
 
@@ -312,7 +309,7 @@ class AppTest(APITestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 403)
 
-    def test_app_info_not_showing_wrong_app(self, mock_requests):
+    def test_app_info_not_showing_wrong_app(self):
         app_id = 'autotest'
         base_url = '/v2/apps'
         body = {'id': app_id}
@@ -321,7 +318,7 @@ class AppTest(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
 
-    def test_app_transfer(self, mock_requests):
+    def test_app_transfer(self):
         owner = User.objects.get(username='autotest2')
         owner_token = Token.objects.get(user=owner).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
@@ -369,7 +366,7 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['owner'], self.user.username)
 
-    def test_app_exists_in_kubernetes(self, mock_requests):
+    def test_app_exists_in_kubernetes(self):
         """
         Create an app that has the same namespace as an existing kubernetes namespace
         """

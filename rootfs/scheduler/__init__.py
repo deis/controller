@@ -395,7 +395,7 @@ class KubeHTTPClient(object):
         # traffic to the application
         self._update_application_service(namespace, name, app_type, image, routable)
 
-    def _update_application_service(self, namespace, name, app_type, image, routable):
+    def _update_application_service(self, namespace, name, app_type, image, routable=False):
         """Update application service with all the various required information"""
         try:
             # Fetch service
@@ -411,11 +411,12 @@ class KubeHTTPClient(object):
                 service['spec']['selector']['type'] = app_type
 
             # Find if target port exists already, update / create as required
-            port = self._get_port(image)
-            for pos, item in enumerate(service['spec']['ports']):
-                if item['port'] == 80 and port != item['targetPort']:
-                    # port 80 is the only one we care about right now
-                    service['spec']['ports'][pos]['targetPort'] = port
+            if routable:
+                port = self._get_port(image)
+                for pos, item in enumerate(service['spec']['ports']):
+                    if item['port'] == 80 and port != item['targetPort']:
+                        # port 80 is the only one we care about right now
+                        service['spec']['ports'][pos]['targetPort'] = port
 
             self._update_service(namespace, namespace, data=service)
         except Exception as e:

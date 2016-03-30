@@ -19,6 +19,16 @@ def is_app_user(request, obj):
         return False
 
 
+def can_create_app(request):
+    """
+    Return `True` if user can create app, `False` otherwise.
+    """
+    if request.user.is_superuser:
+        return True
+    else:
+        return not settings.DISABLE_APP_CREATION
+
+
 class IsAnonymous(permissions.BasePermission):
     """
     View permission to allow anonymous users.

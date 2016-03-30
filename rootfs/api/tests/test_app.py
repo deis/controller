@@ -10,6 +10,7 @@ import requests
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
+from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
 
 from api.models import App
@@ -380,6 +381,26 @@ class AppTest(APITestCase):
             'duplicate already exists as a namespace in this kuberenetes setup',
             status_code=409
         )
+
+    @override_settings(DISABLE_APP_CREATION=True)
+    def test_disabling_app_creation(self, mock_requests):
+        base_url = '/v2/apps'
+
+        # Normal users cannot create apps
+        owner = User.objects.get(username='autotest2')
+        owner_token = Token.objects.get(user=owner).key
+
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
+        response = self.client.post(base_url)
+        self.assertEqual(response.status_code, 403)
+
+        # Admins users can create apps
+        owner = User.objects.get(username='autotest')
+        owner_token = Token.objects.get(user=owner).key
+
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
+        response = self.client.post(base_url)
+        self.assertEqual(response.status_code, 201)
 
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

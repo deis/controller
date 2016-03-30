@@ -43,6 +43,14 @@ POD_BTEMPLATE = """\
         {
             "name": "BUILDER_STORAGE",
             "value":"$storagetype"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_HOST",
+            "value":"$mHost"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_PORT",
+            "value":"$mPort"
         }
         ],
         "volumeMounts":[
@@ -488,10 +496,12 @@ class KubeHTTPClient(object):
             'storagetype': os.getenv("APP_STORAGE")
         }
 
-        if image.startswith('http://') or image.startswith('https://'):
+        if entrypoint == '/runner/init':
             POD = POD_BTEMPLATE
             l["image"] = image
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
+            l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
 
         template = json.loads(string.Template(POD).substitute(l))
 

@@ -539,9 +539,16 @@ class KubeHTTPClient(object):
                     self._delete_pod(namespace, name)
                     return 0, log
 
-                if pod['status']['phase'] == 'Running':
+                elif pod['status']['phase'] == 'Running':
                     if iteration > 28:
                         duration += 1
+
+                elif pod['status']['phase'] == 'Failed':
+                    pod_state = pod['status']['containerStatuses'][0]['state']
+                    err_code = pod_state['terminated']['exitCode']
+                    self._delete_pod(namespace, name)
+                    return err_code, data
+
             except KubeException:
                 break
 
@@ -551,12 +558,6 @@ class KubeHTTPClient(object):
         if iteration >= duration:
             error(response, 'Pod start took more than 30 seconds', namespace)
             return 0, data
-
-        if pod['status']['phase'] == 'Failed':
-            pod_state = pod['status']['containerStatuses'][0]['state']
-            err_code = pod_state['terminated']['exitCode']
-            self._delete_pod(namespace, name)
-            return err_code, data
 
         return 0, data
 

@@ -377,9 +377,15 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Remove old release
+            # Remove new release
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
+            # remove secret that contains env vars for the release
+            try:
+                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
+                self._delete_secret(namespace, secret_name)
+            except KubeHTTPException:
+                pass
 
             # Bring back old release if available
             if old_rc:
@@ -390,6 +396,12 @@ class KubeHTTPClient(object):
         # New release is live and kicking. Clean up old release
         if old_rc:
             self._delete_rc(namespace, old_rc["metadata"]["name"])
+            # remove secret that contains env vars for the release
+            secret_name = "{}-{}-env".format(namespace, old_rc['metadata']['labels']['version'])
+            try:
+                self._delete_secret(namespace, secret_name)
+            except KubeHTTPException:
+                pass
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
@@ -520,7 +532,7 @@ class KubeHTTPClient(object):
         containers['command'] = [entrypoint]
         containers['args'] = args
 
-        self._set_environment(containers, **kwargs)
+        self._set_environment(containers, namespace, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
@@ -564,7 +576,7 @@ class KubeHTTPClient(object):
 
         return 0, data
 
-    def _set_environment(self, data, **kwargs):
+    def _set_environment(self, data, namespace, **kwargs):
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
@@ -575,10 +587,30 @@ class KubeHTTPClient(object):
             data['env'] = []
 
         if env:
-            for key, value in env.items():
+            # env vars are stored in secrets and mapped to env in k8s
+            try:
+                # secrets use dns labels for keys, map those properly here
+                secrets_env = {}
+                for key, value in env.items():
+                    secrets_env[key.lower().replace('_', '-')] = str(value)
+
+                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
+                self._get_secret(namespace, secret_name)
+            except KubeHTTPException:
+                self._create_secret(namespace, secret_name, secrets_env)
+            else:
+                self._update_secret(namespace, secret_name, secrets_env)
+
+            for key in env.keys():
                 data["env"].append({
                     "name": key,
-                    "value": str(value)
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": secret_name,
+                            # k8s doesn't allow _ so translate to -, see above
+                            "key": key.lower().replace('_', '-')
+                        }
+                    }
                 })
 
         # Inject debugging if workflow is in debug mode
@@ -906,7 +938,7 @@ class KubeHTTPClient(object):
         container = template["spec"]["template"]["spec"]["containers"][0]
         container['args'] = args
 
-        self._set_environment(container, **kwargs)
+        self._set_environment(container, namespace, **kwargs)
 
         # add in healtchecks
         if kwargs.get('healthcheck'):
@@ -1047,7 +1079,26 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets", namespace)
         response = self.session.post(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'failed to create secret "{}" in Namespace "{}"', name, namespace)
+            error(response, 'failed to create Secret "{}" in Namespace "{}"', name, namespace)
+
+        return response
+
+    def _update_secret(self, namespace, name, data):
+        template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
+            "version": self.apiversion,
+            "id": namespace,
+            "name": name
+        }))
+
+        for key, value in data.items():
+            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            item = base64.b64encode(value).decode()
+            template["data"].update({key: item})
+
+        url = self._api("/namespaces/{}/secrets/{}", namespace, name)
+        response = self.session.put(url, json=template)
+        if unhealthy(response.status_code):
+            error(response, 'failed to update Secret "{}" in Namespace "{}"', name, namespace)
 
         return response
 

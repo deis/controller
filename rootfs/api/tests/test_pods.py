@@ -12,6 +12,7 @@ from django.core.cache import cache
 from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
+from test.support import EnvironmentVarGuard
 
 from api.models import App, Build, Release
 
@@ -571,7 +572,7 @@ class PodTest(APITransactionTestCase):
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
 
-        # # docker image workflow
+        # docker image workflow
         build.dockerfile = ''
         build.sha = ''
         build.save()
@@ -582,7 +583,7 @@ class PodTest(APITransactionTestCase):
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
 
-        # # procfile workflow
+        # procfile workflow
         build.sha = 'somereallylongsha'
         build.save()
         url = "/v2/apps/{app_id}/run".format(**locals())
@@ -591,6 +592,49 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 200)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/runner/init')
+
+    def test_run_not_fail_on_debug(self, mock_requests):
+        """
+        do a run with DEBUG on - https://github.com/deis/controller/issues/583
+        """
+        env = EnvironmentVarGuard()
+        env['DEBUG'] = 'true'
+
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+        app = App.objects.get(id=app_id)
+
+        # dockerfile + procfile worflow
+        build = Build.objects.create(
+            owner=self.user,
+            app=app,
+            image="qwerty",
+            procfile={
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            },
+            dockerfile='foo',
+            sha='somereallylongsha'
+        )
+
+        # create an initial release
+        Release.objects.create(
+            version=2,
+            owner=self.user,
+            app=app,
+            config=app.config_set.latest(),
+            build=build
+        )
+
+        # create a run pod
+        url = "/v2/apps/{app_id}/run".format(**locals())
+        body = {'command': 'echo hi'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 200)
+        entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
+        self.assertEqual(entrypoint, '/bin/bash')
 
     def test_scaling_does_not_add_run_proctypes_to_structure(self, mock_requests):
         """Test that app info doesn't show transient "run" proctypes."""

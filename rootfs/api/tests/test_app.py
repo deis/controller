@@ -22,6 +22,10 @@ def mock_none(*args, **kwargs):
     return None
 
 
+def _mock_run(*args, **kwargs):
+    return [0, 'mock']
+
+
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 class AppTest(APITestCase):
     """Tests creation of applications"""
@@ -250,9 +254,6 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data, {'detail': 'No build associated with this '
                                                    'release to run this command'})
-
-    def _mock_run(*args, **kwargs):
-        return [0, 'mock']
 
     @mock.patch('api.models.App.run', _mock_run)
     @mock.patch('api.models.App.deploy', mock_none)

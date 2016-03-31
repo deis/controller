@@ -86,7 +86,8 @@ POD_TEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "$image"
+        "image": "$image",
+        "env": []
       }
     ],
     "restartPolicy": "Never"
@@ -563,6 +564,10 @@ class KubeHTTPClient(object):
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
         env = kwargs.get('envs', {})
+
+        # create env list if missing
+        if 'env' not in data:
+            data['env'] = []
 
         if env:
             for key, value in env.items():

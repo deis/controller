@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from datetime import datetime
 import logging
 import random
@@ -341,17 +342,16 @@ class App(UuidAuditedModel):
             self.save()
 
         # deploy application to k8s. Also handles initial scaling
+        deploys = {}
         build_type = app_build_type(release)
         for scale_type in self.structure.keys():
-            image = release.image
-            version = "v{}".format(release.version)
-            kwargs = {
+            deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'replicas': 0,  # Scaling up happens in a separate operation
-                'version': version,
+                'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': build_type,
                 'healthcheck': release.config.healthcheck(),
@@ -359,13 +359,16 @@ class App(UuidAuditedModel):
                 'routable': True if scale_type in ['web', 'cmd'] else False
             }
 
-            command = self._get_command(scale_type)
+        # Sort deploys so routable comes first
+        deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
+
+        for scale_type, kwargs in deploys.items():
             try:
                 self._scheduler.deploy(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=image,
-                    command=command,
+                    image=release.image,
+                    command=self._get_command(scale_type),
                     **kwargs
                 )
 

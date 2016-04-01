@@ -263,8 +263,11 @@ SCHEDULER_URL = "https://{}:{}".format(
 random_secret = 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi*#@&*^'
 SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', random_secret)
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
-defaultImage = "quay.io/deisci/slugrunner:canary"
-SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', defaultImage)
+
+# k8s image policies
+SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugrunner:canary')  # noqa
+SLUG_BUILDER_IMAGE_PULL_POLICY = os.environ.get('SLUG_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
+DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
 
 # registry settings
 REGISTRY_HOST = os.environ.get('DEIS_REGISTRY_SERVICE_HOST', '127.0.0.1')

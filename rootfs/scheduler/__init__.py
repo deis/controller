@@ -130,6 +130,7 @@ RCD_TEMPLATE = """\
           {
             "name": "$containername",
             "image": "$image",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"DEIS_APP",
@@ -184,7 +185,7 @@ RCB_TEMPLATE = """\
           {
             "name": "$containername",
             "image": "$slugimage",
-            "imagePullPolicy": "Always",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"PORT",
@@ -495,12 +496,14 @@ class KubeHTTPClient(object):
             'id': name,
             'version': self.apiversion,
             'image': imgurl,
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
             'storagetype': os.getenv("APP_STORAGE")
         }
 
         if entrypoint == '/runner/init':
             POD = POD_BTEMPLATE
             l["image"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
             l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
             l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
@@ -876,6 +879,7 @@ class KubeHTTPClient(object):
             "appversion": kwargs.get("version"),
             "version": self.apiversion,
             "image": imgurl,
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
             "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
             "type": app_type,
@@ -887,6 +891,7 @@ class KubeHTTPClient(object):
         # Check if it is a slug builder image.
         if kwargs.get('build_type') == "buildpack":
             l["image"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
             TEMPLATE = RCB_TEMPLATE
 

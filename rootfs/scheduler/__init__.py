@@ -942,7 +942,7 @@ class KubeHTTPClient(object):
 
         # add in healtchecks
         if kwargs.get('healthcheck'):
-            template = self._healthcheck(template, **kwargs['healthcheck'])
+            template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -986,10 +986,8 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
-        # FIXME this logic ideally should live higher up
-        app_type = controller['spec']['selector']['type']
-        if app_type not in ['web', 'cmd']:
+    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5):  # noqa
+        if not routable:
             return controller
 
         namespace = controller['spec']['selector']['app']
@@ -1029,6 +1027,7 @@ class KubeHTTPClient(object):
         }
 
         # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
         container_name = '{}-{}'.format(namespace, app_type)
         containers = controller['spec']['template']['spec']['containers']
         for container in containers:

@@ -27,15 +27,32 @@ class Config(UuidAuditedModel):
         return "{}-{}".format(self.app.id, str(self.uuid)[:7])
 
     def healthcheck(self):
-        # Update healthcheck - Scheduler determines the app type
+        """
+        Get all healthchecks options together for use in scheduler
+        """
+        # return empty dict if no healthcheck is found
         if 'HEALTHCHECK_URL' not in self.values.keys():
             return {}
+
         path = self.values.get('HEALTHCHECK_URL', '/')
         timeout = int(self.values.get('HEALTHCHECK_TIMEOUT', 50))
         delay = int(self.values.get('HEALTHCHECK_INITIAL_DELAY', 50))
-        port = int(self.values.get('HEALTHCHECK_PORT', 8080))
+        port = int(self.values.get('HEALTHCHECK_PORT', 5000))
 
         return {'path': path, 'timeout': timeout, 'delay': delay, 'port': port}
+
+    def set_healthchecks(self):
+        """Defines default values for HTTP healthchecks"""
+        if not {k: v for k, v in self.values.items() if k.startswith('HEALTHCHECK_')}:
+            return
+
+        # fetch set health values and any defaults
+        # this approach allows new health items to be added without issues
+        health = self.healthcheck()
+        self.values['HEALTHCHECK_URL'] = health['path']
+        self.values['HEALTHCHECK_TIMEOUT'] = health['timeout']
+        self.values['HEALTHCHECK_INITIAL_DELAY'] = health['delay']
+        self.values['HEALTHCHECK_PORT'] = health['port']
 
     def save(self, **kwargs):
         """merge the old config with the new"""
@@ -60,6 +77,9 @@ class Config(UuidAuditedModel):
                 setattr(self, attr, data)
         except Config.DoesNotExist:
             pass
+
+        # set any missing HEALTHCHECK_* elements
+        self.set_healthchecks()
 
         # verify the tags exist on any nodes as labels
         if self.tags:

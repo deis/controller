@@ -2,11 +2,13 @@
 """Support the Deis workflow by manipulating and publishing Docker images."""
 
 import logging
+import os
 
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 from simpleflock import SimpleFlock
 import docker
+import docker.constants
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,8 @@ class DockerClient(object):
     FLOCKFILE = '/tmp/controller-pull'
 
     def __init__(self):
-        self.client = docker.Client(version='auto')
+        timeout = os.environ.get('DOCKER_CLIENT_TIMEOUT', docker.constants.DEFAULT_TIMEOUT_SECONDS)
+        self.client = docker.Client(version='auto', timeout=timeout)
         self.registry = settings.REGISTRY_HOST + ':' + str(settings.REGISTRY_PORT)
 
     def publish_release(self, source, target, deis_registry):

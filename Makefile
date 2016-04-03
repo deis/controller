@@ -39,7 +39,7 @@ clean: check-docker
 	docker rmi $(IMAGE)
 
 commit-hook:
-	cp contrib/util/commit-msg .git/hooks/commit-msg
+	cp _scripts/util/commit-msg .git/hooks/commit-msg
 
 full-clean: check-docker
 	docker images -q $(IMAGE_PREFIX)$(COMPONENT) | xargs docker rmi -f

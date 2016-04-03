@@ -1,15 +1,14 @@
 import os
-import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
 
 
-class CertificateUseCase2Test(TestCase):
+class CertificateUseCase2Test(APITestCase):
 
     """
     Tests creation of 2 domains and SSL certificate.
@@ -21,8 +20,8 @@ class CertificateUseCase2Test(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
-        self.user2 = User.objects.get(username='autotest2')
-        self.token2 = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
+
         self.url = '/v2/certs'
         self.app = App.objects.create(owner=self.user, id='test-app-use-case-2')
         self.domains = {
@@ -54,13 +53,11 @@ class CertificateUseCase2Test(TestCase):
         for domain, certificate in self.certificates.items():
             response = self.client.post(
                 self.url,
-                json.dumps({
+                {
                     'name': certificate['name'],
                     'certificate': certificate['cert'],
                     'key': certificate['key']
-                }),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                }
             )
             self.assertEqual(response.status_code, 201)
 
@@ -73,31 +70,24 @@ class CertificateUseCase2Test(TestCase):
             # Create certificate
             response = self.client.post(
                 self.url,
-                json.dumps({
+                {
                     'name': certificate['name'],
                     'certificate': certificate['cert'],
                     'key': certificate['key']
-                }),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                }
             )
             self.assertEqual(response.status_code, 201)
 
             # Attach domain to certificate
             response = self.client.post(
                 '{}/{}/domain/'.format(self.url, certificate['name']),
-                json.dumps({
-                    'domain': domain
-                }),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                {'domain': domain}
             )
             self.assertEqual(response.status_code, 201)
 
             # Assert data
             response = self.client.get(
-                '{}/{}'.format(self.url, certificate['name']),
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                '{}/{}'.format(self.url, certificate['name'])
             )
             self.assertEqual(response.status_code, 200)
 
@@ -118,25 +108,20 @@ class CertificateUseCase2Test(TestCase):
 
             # detach domain to certificate
             response = self.client.delete(
-                '{}/{}/domain/{}'.format(self.url, certificate['name'], domain),
-                content_type='application/json',
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
+                '{}/{}/domain/{}'.format(self.url, certificate['name'], domain)
             )
             self.assertEqual(response.status_code, 204)
 
             # Assert data
-            response = self.client.get(
-                '{}/{}'.format(self.url, certificate['name']),
-                HTTP_AUTHORIZATION='token {}'.format(self.token)
-            )
+            response = self.client.get('{}/{}'.format(self.url, certificate['name']))
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.data['domains'], [])
 
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
-        response = self.client.put(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.put(self.url)
         self.assertEqual(response.status_code, 405)
-        response = self.client.patch(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.patch(self.url)
         self.assertEqual(response.status_code, 405)
 
     def test_delete_certificate(self):
@@ -149,5 +134,5 @@ class CertificateUseCase2Test(TestCase):
                 certificate=certificate['cert']
             )
             url = '/v2/certs/{}'.format(certificate['name'])
-            response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+            response = self.client.delete(url)
             self.assertEqual(response.status_code, 204)

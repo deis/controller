@@ -1,17 +1,22 @@
+from collections import OrderedDict
 from datetime import datetime
 import logging
 import random
 import re
 import requests
+from requests_toolbelt import user_agent
 import string
 import time
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel, log_event
+from deis import __version__ as deis_version
+from api.models import UuidAuditedModel, log_event, AlreadyExists
+
 from api.utils import generate_app_name, app_build_type
 from api.models.release import Release
 from api.models.config import Config
@@ -70,6 +75,20 @@ class App(UuidAuditedModel):
             self.id = generate_app_name()
             while App.objects.filter(id=self.id).exists():
                 self.id = generate_app_name()
+
+        # verify the application name doesn't exist as a k8s namespace
+        # only check for it if there have been on releases
+        try:
+            self.release_set.latest()
+        except Release.DoesNotExist:
+            try:
+                if self._scheduler._get_namespace(self.id).status_code == 200:
+                    # Namespace already exists
+                    err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
+                    log_event(self, err, logging.INFO)
+                    raise AlreadyExists(err)
+            except KubeHTTPException:
+                pass
 
         application = super(App, self).save(**kwargs)
 
@@ -287,10 +306,12 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'version': version,
-                'num': scale_types[scale_type],
+                'replicas': scale_types[scale_type],
                 'app_type': scale_type,
                 'build_type': build_type,
-                'healthcheck': release.config.healthcheck()
+                'healthcheck': release.config.healthcheck(),
+                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+                'routable': True if scale_type in ['web', 'cmd'] else False
             }
 
             command = self._get_command(scale_type)
@@ -310,42 +331,53 @@ class App(UuidAuditedModel):
 
     def deploy(self, user, release):
         """Deploy a new release to this application"""
-        # use create to make sure minimum resources are created
-        self.create()
-
         if release.build is None:
             raise EnvironmentError('No build associated with this release')
+
+        # use create to make sure minimum resources are created
+        self.create()
 
         if self.structure == {}:
             self.structure = self._default_structure(release)
             self.save()
 
         # deploy application to k8s. Also handles initial scaling
+        deploys = {}
         build_type = app_build_type(release)
         for scale_type in self.structure.keys():
-            image = release.image
-            version = "v{}".format(release.version)
-            kwargs = {
+            deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'num': 0,  # Scaling up happens in a separate operation
-                'version': version,
+                'replicas': 0,  # Scaling up happens in a separate operation
+                'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': build_type,
-                'healthcheck': release.config.healthcheck()
+                'healthcheck': release.config.healthcheck(),
+                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+                'routable': True if scale_type in ['web', 'cmd'] else False
             }
 
-            command = self._get_command(scale_type)
+        # Sort deploys so routable comes first
+        deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
+
+        for scale_type, kwargs in deploys.items():
             try:
                 self._scheduler.deploy(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=image,
-                    command=command,
+                    image=release.image,
+                    command=self._get_command(scale_type),
                     **kwargs
                 )
+
+                # Wait until application is available in the router
+                # Only run when there is no previous build / release
+                old = release.previous()
+                if old is None or old.build is None:
+                    self.verify_application_health(**kwargs)
+
             except Exception as e:
                 err = '{} (app::deploy): {}'.format(self._get_job_id(scale_type), e)
                 log_event(self, err, logging.ERROR)
@@ -370,6 +402,79 @@ class App(UuidAuditedModel):
             structure = {'web': 1}
 
         return structure
+
+    def verify_application_health(self, **kwargs):
+        """
+        Verify an application is healthy via the router.
+        This is only used in conjunction with the kubernetes health check system and should
+        only run after kubernetes has reported all pods as healthy
+        """
+        # Bail out early if the application is not routable
+        if not kwargs.get('routable', False):
+            return
+
+        app_type = kwargs.get('app_type')
+        self.log(
+            'Waiting for router to be ready to serve traffic to process type {}'.format(app_type),
+            level=logging.DEBUG
+        )
+
+        # Get the router host and append healthcheck path
+        url = 'http://{}:{}'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+
+        # if a health check url is available then 200 is the only acceptable status code
+        if len(kwargs['healthcheck']):
+            allowed = [200]
+            url = urljoin(url, kwargs['healthcheck'].get('path'))
+            req_timeout = kwargs['healthcheck'].get('timeout')
+        else:
+            allowed = set(range(200, 599))
+            allowed.remove(404)
+            req_timeout = 3
+
+        session = requests.Session()
+        session.headers = {
+            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
+            'User-Agent': user_agent('Deis Controller', deis_version),
+            # set the Host header for the application being checked - not used for actual routing
+            'Host': '{}.{}.nip.io'.format(self.id, settings.ROUTER_HOST)
+        }
+
+        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
+        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
+
+        # Give the router max of 10 tries or max 30 seconds to become healthy
+        # Uses time module to account for the timout value of 3 seconds
+        start = time.time()
+        for _ in range(10):
+            # http://docs.python-requests.org/en/master/user/advanced/#timeouts
+            response = session.get(url, timeout=req_timeout)
+
+            # 1 minute timeout
+            if (time.time() - start) > (req_timeout * 10):
+                break
+
+            # check response against the allowed pool
+            if response.status_code in allowed:
+                break
+
+            # a small sleep since router usually resolve within 10 seconds
+            time.sleep(1)
+
+        # Endpoint did not report healthy in time
+        if response.status_code == 404:
+            self.log(
+                'Router was not ready to serve traffic to process type {} in time'.format(app_type),  # noqa
+                level=logging.WARNING
+            )
+            return
+
+        self.log(
+            'Router is ready to serve traffic to process type {}'.format(app_type),
+            level=logging.DEBUG
+        )
 
     def logs(self, log_lines=str(settings.LOG_LINES)):
         """Return aggregated log data for this application."""

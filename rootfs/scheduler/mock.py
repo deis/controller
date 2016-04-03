@@ -395,12 +395,12 @@ class MockSchedulerClient(KubeHTTPClient):
         self.url = settings.SCHEDULER_URL
         self.registry = settings.REGISTRY_URL
 
-        self.adapter = requests_mock.Adapter()
+        adapter = requests_mock.Adapter()
         self.session = requests.Session()
-        self.session.mount(self.url, self.adapter)
+        self.session.mount(self.url, adapter)
 
         # Lets just listen to everything and sort it out ourselves
-        self.adapter.register_uri(
+        adapter.register_uri(
             requests_mock.ANY, requests_mock.ANY,
             json=mock
         )
@@ -412,13 +412,18 @@ class MockSchedulerClient(KubeHTTPClient):
             self._create_namespace('deis')
 
         try:
-            self._get_secret('deis', 'minio-user')
+            self._get_secret('deis', 'objectstorage-keyfile')
         except KubeHTTPException:
             secrets = {
                 'access-key-id': 'i am a key',
                 'access-secret-key': 'i am a secret'
             }
-            self._create_secret('deis', 'minio-user', secrets)
+            self._create_secret('deis', 'objectstorage-keyfile', secrets)
+
+        try:
+            self._get_namespace('duplicate')
+        except KubeHTTPException:
+            self._create_namespace('duplicate')
 
         try:
             self._get_node('172.17.8.100')

@@ -10,7 +10,10 @@ from django.conf import settings
 from docker import Client
 from .states import JobState
 import requests
+from requests_toolbelt import user_agent
 from .utils import dict_merge
+
+from deis import __version__ as deis_version
 
 
 logger = logging.getLogger(__name__)
@@ -38,14 +41,22 @@ POD_BTEMPLATE = """\
             "value":"$image"
         },
         {
-            "name": "DOCKERIMAGE",
-            "value":"1"
+            "name": "BUILDER_STORAGE",
+            "value":"$storagetype"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_HOST",
+            "value":"$mHost"
+        },
+        {
+            "name": "DEIS_MINIO_SERVICE_PORT",
+            "value":"$mPort"
         }
         ],
         "volumeMounts":[
         {
-            "name":"minio-user",
-            "mountPath":"/var/run/secrets/object/store",
+            "name":"objectstorage-keyfile",
+            "mountPath":"/var/run/secrets/deis/objectstore/creds",
             "readOnly":true
         }
         ]
@@ -53,9 +64,9 @@ POD_BTEMPLATE = """\
     ],
     "volumes":[
     {
-        "name":"minio-user",
+        "name":"objectstorage-keyfile",
         "secret":{
-        "secretName":"minio-user"
+        "secretName":"objectstorage-keyfile"
         }
     }
     ],
@@ -75,7 +86,8 @@ POD_TEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "$image"
+        "image": "$image",
+        "env": []
       }
     ],
     "restartPolicy": "Never"
@@ -97,7 +109,7 @@ RCD_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -118,6 +130,7 @@ RCD_TEMPLATE = """\
           {
             "name": "$containername",
             "image": "$image",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"DEIS_APP",
@@ -151,7 +164,7 @@ RCB_TEMPLATE = """\
     }
   },
   "spec": {
-    "replicas": $num,
+    "replicas": $replicas,
     "selector": {
       "app": "$id",
       "version": "$appversion",
@@ -172,7 +185,7 @@ RCB_TEMPLATE = """\
           {
             "name": "$containername",
             "image": "$slugimage",
-            "imagePullPolicy": "Always",
+            "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
                 "name":"PORT",
@@ -191,14 +204,22 @@ RCB_TEMPLATE = """\
                 "value":"$appversion"
             },
             {
-                "name": "DOCKERIMAGE",
-                "value":"1"
+                "name": "BUILDER_STORAGE",
+                "value":"$storagetype"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_HOST",
+                "value":"$mHost"
+            },
+            {
+                "name": "DEIS_MINIO_SERVICE_PORT",
+                "value":"$mPort"
             }
             ],
             "volumeMounts":[
             {
-                "name":"minio-user",
-                "mountPath":"/var/run/secrets/object/store",
+                "name":"objectstorage-keyfile",
+                "mountPath":"/var/run/secrets/deis/objectstore/creds",
                 "readOnly":true
             }
             ]
@@ -207,9 +228,9 @@ RCB_TEMPLATE = """\
         "nodeSelector": {},
         "volumes":[
         {
-            "name":"minio-user",
+            "name":"objectstorage-keyfile",
             "secret":{
-            "secretName":"minio-user"
+            "secretName":"objectstorage-keyfile"
             }
         }
         ]
@@ -242,7 +263,6 @@ SERVICE_TEMPLATE = """\
     ],
     "selector": {
       "app": "$name",
-      "type": "web",
       "heritage": "deis"
     }
   }
@@ -307,8 +327,10 @@ class KubeHTTPClient(object):
         session.headers = {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json',
+            'User-Agent': user_agent('Deis Controller', deis_version)
         }
         # TODO: accessing the k8s api server by IP address rather than hostname avoids
+        # TODO look at https://toolbelt.readthedocs.org/en/latest/adapters.html#fingerprintadapter
         # intermittent DNS errors, but at the price of disabling cert verification.
         # session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         session.verify = False
@@ -317,33 +339,7 @@ class KubeHTTPClient(object):
     def deploy(self, namespace, name, image, command, **kwargs):
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
-
-        # Fetch service
-        service = self._get_service(namespace, namespace).json()
-        old_service = service.copy()  # in case anything fails for rollback
-
-        # Update service information
-        # Make sure the router knows what to do with this
-        # TODO this should potentially be higher up in the flow
-        if app_type in ['web', 'cmd']:
-            # see http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            service['metadata']['labels']['router.deis.io/routable'] = 'true'
-
-        # Set app type
-        if (
-            'type' not in service['spec']['selector'] or
-            app_type != service['spec']['selector']['type']
-        ):
-            service['spec']['selector']['type'] = app_type
-
-        # Find if target port exists already, which it also may not
-        port = self._get_port(image)
-        for pos, item in enumerate(service['spec']['ports']):
-            if item['port'] == 80 and port != item['targetPort']:
-                # port 80 is the only one we care about right now
-                service['spec']['ports'][pos]['targetPort'] = port
-
-        self._update_service(namespace, namespace, data=service)
+        routable = kwargs.get('routable', False)
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
@@ -381,9 +377,6 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Fix service to old port and app type
-            self._update_service(namespace, namespace, data=old_service)
-
             # Remove old release
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
@@ -398,21 +391,55 @@ class KubeHTTPClient(object):
         if old_rc:
             self._delete_rc(namespace, old_rc["metadata"]["name"])
 
+        # Make sure the application is routable and uses the correct port
+        # Done after the fact to let initial deploy settle before routing
+        # traffic to the application
+        self._update_application_service(namespace, name, app_type, image, routable)
+
+    def _update_application_service(self, namespace, name, app_type, image, routable=False):
+        """Update application service with all the various required information"""
+        try:
+            # Fetch service
+            service = self._get_service(namespace, namespace).json()
+            old_service = service.copy()  # in case anything fails for rollback
+
+            # Update service information
+            if routable:
+                service['metadata']['labels']['router.deis.io/routable'] = 'true'
+
+            # Set app type if there is not one available
+            if 'type' not in service['spec']['selector']:
+                service['spec']['selector']['type'] = app_type
+
+            # Find if target port exists already, update / create as required
+            if routable:
+                port = self._get_port(image)
+                for pos, item in enumerate(service['spec']['ports']):
+                    if item['port'] == 80 and port != item['targetPort']:
+                        # port 80 is the only one we care about right now
+                        service['spec']['ports'][pos]['targetPort'] = port
+
+            self._update_service(namespace, namespace, data=service)
+        except Exception as e:
+            # Fix service to old port and app type
+            self._update_service(namespace, namespace, data=old_service)
+            raise RuntimeError('{} (scheduler::deploy::service_update): {}'.format(name, e))
+
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
-        num = kwargs.pop('num')
+        replicas = kwargs.pop('replicas')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
             try:
                 # Create RC with scale as 0 and then scale to get pod monitoring
-                kwargs['num'] = 0
+                kwargs['replicas'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
                 raise RuntimeError('{} (RC): {}'.format(name, e))
 
         try:
-            self._scale_rc(namespace, name, num)
+            self._scale_rc(namespace, name, replicas)
         except KubeException as e:
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
@@ -430,9 +457,9 @@ class KubeHTTPClient(object):
                 self._create_namespace(namespace)
 
             try:
-                self._get_secret(namespace, 'minio-user')
+                self._get_secret(namespace, 'objectstorage-keyfile')
             except KubeException:
-                self._create_minio_secret(namespace)
+                self._create_objectstore_secret(namespace)
 
             try:
                 self._get_service(namespace, namespace)
@@ -469,12 +496,17 @@ class KubeHTTPClient(object):
             'id': name,
             'version': self.apiversion,
             'image': imgurl,
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
+            'storagetype': os.getenv("APP_STORAGE")
         }
 
-        if image.startswith('http://') or image.startswith('https://'):
+        if entrypoint == '/runner/init':
             POD = POD_BTEMPLATE
             l["image"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
+            l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
 
         template = json.loads(string.Template(POD).substitute(l))
 
@@ -510,9 +542,16 @@ class KubeHTTPClient(object):
                     self._delete_pod(namespace, name)
                     return 0, log
 
-                if pod['status']['phase'] == 'Running':
+                elif pod['status']['phase'] == 'Running':
                     if iteration > 28:
                         duration += 1
+
+                elif pod['status']['phase'] == 'Failed':
+                    pod_state = pod['status']['containerStatuses'][0]['state']
+                    err_code = pod_state['terminated']['exitCode']
+                    self._delete_pod(namespace, name)
+                    return err_code, data
+
             except KubeException:
                 break
 
@@ -523,12 +562,6 @@ class KubeHTTPClient(object):
             error(response, 'Pod start took more than 30 seconds', namespace)
             return 0, data
 
-        if pod['status']['phase'] == 'Failed':
-            pod_state = pod['status']['containerStatuses'][0]['state']
-            err_code = pod_state['terminated']['exitCode']
-            self._delete_pod(namespace, name)
-            return err_code, data
-
         return 0, data
 
     def _set_environment(self, data, **kwargs):
@@ -536,6 +569,10 @@ class KubeHTTPClient(object):
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
         env = kwargs.get('envs', {})
+
+        # create env list if missing
+        if 'env' not in data:
+            data['env'] = []
 
         if env:
             for key, value in env.items():
@@ -565,9 +602,6 @@ class KubeHTTPClient(object):
             data["resources"]["limits"]["cpu"] = cpu
 
     def resolve_state(self, pod):
-        if pod is None:
-            return JobState.destroyed
-
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
         if pod is None:
             return JobState.destroyed
@@ -837,22 +871,28 @@ class KubeHTTPClient(object):
         container_name = namespace + '-' + app_type
         args = command.split()
         imgurl = self.registry + "/" + image
+        storageType = os.getenv("APP_STORAGE")
         TEMPLATE = RCD_TEMPLATE
 
         l = {
             "name": name,
             "id": namespace,
-            "appversion": kwargs.get("version", {}),
+            "appversion": kwargs.get("version"),
             "version": self.apiversion,
             "image": imgurl,
-            "num": kwargs.get("num", {}),
+            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
+            "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
             "type": app_type,
+            "storagetype": storageType,
+            "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
+            "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
         }
 
         # Check if it is a slug builder image.
         if kwargs.get('build_type') == "buildpack":
             l["image"] = image
+            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
             TEMPLATE = RCB_TEMPLATE
 
@@ -916,7 +956,8 @@ class KubeHTTPClient(object):
 
     def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
         # FIXME this logic ideally should live higher up
-        if controller['spec']['selector']['type'] not in ['web', 'cmd']:
+        app_type = controller['spec']['selector']['type']
+        if app_type not in ['web', 'cmd']:
             return controller
 
         namespace = controller['spec']['selector']['app']
@@ -955,23 +996,23 @@ class KubeHTTPClient(object):
             },
         }
 
-        # Because it comes from a JSON template, need to hit the first key
-        # FIXME: assumption that container 0 is the app
-        controller['spec']['template']['spec']['containers'][0].update(healthcheck)
+        # Update only the application container with the health check
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(healthcheck)
 
         return controller
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-
-    def _create_minio_secret(self, namespace):
-        secret = self._get_secret('deis', 'minio-user').json()  # fetch from deis namespace
-
-        data = {
-            'access-key-id': base64.b64decode(secret['data']['access-key-id']),
-            'access-secret-key': base64.b64decode(secret['data']['access-secret-key'])
-        }
-        self._create_secret(namespace, 'minio-user', data)
+    def _create_objectstore_secret(self, namespace):
+        secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+        data = {}
+        for key, value in secret['data'].items():
+            data[key] = base64.b64decode(value)
+        self._create_secret(namespace, 'objectstorage-keyfile', data)
 
     def _get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)

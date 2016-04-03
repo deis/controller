@@ -53,9 +53,9 @@ After you have a working Kubernetes cluster, install [helm](http://helm.sh) and 
 
 ```console
 helm repo add deis https://github.com/deis/charts
-helm fetch deis/deis-dev
-helm generate -x manifests deis-dev
-helm install deis-dev
+helm fetch deis/workflow-dev
+helm generate -x manifests workflow-dev
+helm install workflow-dev
 ```
 
 ### Python

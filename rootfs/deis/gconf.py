@@ -1,6 +1,8 @@
+import os
+
 bind = '0.0.0.0'
 try:
-    workers = int({{ if exists "/deis/controller/workers" }}{{ getv "/deis/controller/workers" }}{{ else }}"not set"{{end}})
+    workers = int(os.environ.get('GUNICORN_WORKERS', 'not set'))
     if workers < 1:
         raise ValueError()
 except (NameError, ValueError):

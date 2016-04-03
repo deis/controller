@@ -1,15 +1,14 @@
 import os
-import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.test import TestCase
+from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
 
 
-class CertificateUseCase1Test(TestCase):
+class CertificateUseCase1Test(APITestCase):
 
     """
     Tests creation of domain SSL certificate and attach the
@@ -21,8 +20,7 @@ class CertificateUseCase1Test(TestCase):
     def setUp(self):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
-        self.user2 = User.objects.get(username='autotest2')
-        self.token2 = Token.objects.get(user=self.user).key
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
 
         self.url = '/v2/certs'
         self.app = App.objects.create(owner=self.user, id='test-app-use-case-1')
@@ -44,13 +42,11 @@ class CertificateUseCase1Test(TestCase):
         """Tests creating a certificate."""
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': self.name,
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
@@ -60,14 +56,12 @@ class CertificateUseCase1Test(TestCase):
         """
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': self.name,
                 'certificate': self.cert,
                 'key': self.key,
                 'common_name': 'foo.example.com'
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['common_name'], 'foo.com')
@@ -79,43 +73,30 @@ class CertificateUseCase1Test(TestCase):
         # Create certificate
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': self.name,
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
         # Attach to domain that does not exist
         response = self.client.post(
             '{}/{}/domain/'.format(self.url, self.name),
-            json.dumps({
-                'domain': 'random.com'
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': 'random.com'}
         )
         self.assertEqual(response.status_code, 404)
 
         # Attach domain to certificate
         response = self.client.post(
             '{}/{}/domain/'.format(self.url, self.name),
-            json.dumps({
-                'domain': str(self.domain)
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': str(self.domain)}
         )
         self.assertEqual(response.status_code, 201)
 
         # Assert data
-        response = self.client.get(
-            '{}/{}'.format(self.url, self.name),
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get('{}/{}'.format(self.url, self.name))
         self.assertEqual(response.status_code, 200)
 
         expected = {
@@ -131,25 +112,20 @@ class CertificateUseCase1Test(TestCase):
 
         # detach domain to certificate
         response = self.client.delete(
-            '{}/{}/domain/{}'.format(self.url, self.name, self.domain),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            '{}/{}/domain/{}'.format(self.url, self.name, self.domain)
         )
         self.assertEqual(response.status_code, 204)
 
         # Assert data
-        response = self.client.get(
-            '{}/{}'.format(self.url, self.name),
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get('{}/{}'.format(self.url, self.name))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['domains'], [])
 
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
-        response = self.client.put(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.put(self.url)
         self.assertEqual(response.status_code, 405)
-        response = self.client.patch(self.url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.patch(self.url)
         self.assertEqual(response.status_code, 405)
 
     def test_delete_certificate(self):
@@ -161,7 +137,7 @@ class CertificateUseCase1Test(TestCase):
         )
 
         url = '/v2/certs/{}'.format(self.name)
-        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
 
     def test_delete_certificate_with_attached_domain(self):
@@ -172,32 +148,23 @@ class CertificateUseCase1Test(TestCase):
         # Create certificate
         response = self.client.post(
             self.url,
-            json.dumps({
+            {
                 'name': self.name,
                 'certificate': self.cert,
                 'key': self.key
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            }
         )
         self.assertEqual(response.status_code, 201)
 
         # Attach domain to certificate
         response = self.client.post(
             '{}/{}/domain/'.format(self.url, self.name),
-            json.dumps({
-                'domain': str(self.domain)
-            }),
-            content_type='application/json',
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
+            {'domain': str(self.domain)}
         )
         self.assertEqual(response.status_code, 201)
 
         # Assert data from cert side
-        response = self.client.get(
-            '{}/{}'.format(self.url, self.name),
-            HTTP_AUTHORIZATION='token {}'.format(self.token)
-        )
+        response = self.client.get('{}/{}'.format(self.url, self.name))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['domains'], [str(self.domain)])
 
@@ -207,7 +174,7 @@ class CertificateUseCase1Test(TestCase):
 
         # Delete certificate
         url = '/v2/certs/{}'.format(self.name)
-        response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(self.token))
+        response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
 
         # verify certificate is not attached to domain anymore

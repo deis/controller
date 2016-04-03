@@ -38,6 +38,7 @@ class HealthCheckView(View):
                 c.execute("SELECT 0")
         except django.db.Error as e:
             logger.critical("Database health check failed")
+            # FIXME why is turning on DEBUG=true in env not outputting this error?
             logger.debug(str(e))
 
             return HttpResponse(
@@ -207,6 +208,14 @@ class AppViewSet(BaseDeisViewSet):
 
     def get_queryset(self, *args, **kwargs):
         return self.model.objects.all(*args, **kwargs)
+
+    def create(self, request, **kwargs):
+        try:
+            return super(AppViewSet, self).create(request, **kwargs)
+        except AlreadyExists as e:
+            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
+        except EnvironmentError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def list(self, request, *args, **kwargs):
         """

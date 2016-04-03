@@ -5,6 +5,8 @@ Unit tests for the Deis api app.
 Run the tests with "./manage.py test api"
 """
 import json
+import os.path
+import tempfile
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
@@ -15,6 +17,7 @@ from api.models import App, Config
 
 from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
+from simpleflock import SimpleFlock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
@@ -119,6 +122,36 @@ class ConfigTest(DeisTransactionTestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 405, response.data)
         return config5
+
+    def test_overlapping_config(self, mock_requests):
+        """
+        Test that config won't be created if a similar operation
+        is in progress for that app.
+        """
+        app_id = self.app.id
+
+        # check to see that an initial/empty config was created
+        url = "/v2/apps/{app_id}/config".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('values', response.data)
+        self.assertEqual(response.data['values'], {})
+        config1 = response.data
+        # create the lockfile as though a "deis config:set" were in progress
+        lockfile = os.path.join(tempfile.gettempdir(), app_id + "-config")
+        with SimpleFlock(lockfile):
+            # set an initial config value
+            body = {'values': {'NEW_URL1': 'http://localhost:8080/'}}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 409)
+            self.assertNotIn('values', response.data)
+            self.assertNotIn('uuid', response.data)
+        # read the config
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        config2 = response.data
+        self.assertEqual(config1, config2)
+        self.assertNotIn('NEW_URL1', response.data['values'])
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""

@@ -535,7 +535,8 @@ class App(UuidAuditedModel):
             'memory': release.config.memory,
             'cpu': release.config.cpu,
             'tags': release.config.tags,
-            'envs': release.config.values
+            'envs': release.config.values,
+            'version': "v{}".format(release.version),
         }
 
         try:

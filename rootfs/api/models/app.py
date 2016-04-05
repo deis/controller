@@ -452,7 +452,7 @@ class App(UuidAuditedModel):
             # http://docs.python-requests.org/en/master/user/advanced/#timeouts
             response = session.get(url, timeout=req_timeout)
 
-            # 1 minute timeout
+            # 30 second timeout (timout per request * 10)
             if (time.time() - start) > (req_timeout * 10):
                 break
 
@@ -465,8 +465,9 @@ class App(UuidAuditedModel):
 
         # Endpoint did not report healthy in time
         if response.status_code == 404:
+            delta = time.time() - start
             self.log(
-                'Router was not ready to serve traffic to process type {} in time'.format(app_type),  # noqa
+                'Router was not ready to serve traffic to process type {} in time, waited {} seconds'.format(app_type, delta),  # noqa
                 level=logging.WARNING
             )
             return

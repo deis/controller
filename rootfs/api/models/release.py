@@ -115,7 +115,7 @@ class Release(UuidAuditedModel):
             if self.build is not None:
                 self.app.deploy(user, new_release)
             return new_release
-        except RuntimeError:
+        except Exception:
             if 'new_release' in locals():
                 new_release.delete()
             raise

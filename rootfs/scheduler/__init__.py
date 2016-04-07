@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import os
@@ -475,7 +476,8 @@ class KubeHTTPClient(object):
                 try:
                     self._get_secret(namespace, 'objectstorage-keyfile')
                 except KubeException:
-                    self._create_objectstore_secret(namespace)
+                    secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+                    self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
 
             try:
                 self._get_service(namespace, namespace)
@@ -1056,20 +1058,20 @@ class KubeHTTPClient(object):
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-    def _create_objectstore_secret(self, namespace):
-        secret = self._get_secret('deis', 'objectstorage-keyfile').json()
-        data = {}
-        for key, value in secret['data'].items():
-            data[key] = base64.b64decode(value)
-        self._create_secret(namespace, 'objectstorage-keyfile', data)
-
     def _get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
             error(response, 'get Secret "{}" in Namespace "{}"', name, namespace)
 
-        # FIXME decode data - can it be done without affecting the response object too much???
+        # decode the base64 data
+        secrets = response.json()
+        for key, value in secrets['data'].items():
+            secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
+
+        # tell python-requests it actually hasn't consumed the data
+        response._content_consumed = False
+        response.raw = io.StringIO(json.dumps(secrets))
 
         return response
 

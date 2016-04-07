@@ -986,7 +986,15 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5):  # noqa
+    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5,
+                     period_seconds=1, success_threshold=1, failure_threshold=3):  # noqa
+        """
+        Apply HTTP GET healthcehck to the application container
+
+        http://kubernetes.io/docs/user-guide/walkthrough/k8s201/#health-checking
+        http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+        http://kubernetes.io/docs/user-guide/liveness/
+        """
         if not routable:
             return controller
 
@@ -1011,7 +1019,10 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
             'readinessProbe': {
                 # an http probe
@@ -1022,7 +1033,10 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
         }
 

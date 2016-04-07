@@ -38,8 +38,19 @@ class Config(UuidAuditedModel):
         timeout = int(self.values.get('HEALTHCHECK_TIMEOUT', 50))
         delay = int(self.values.get('HEALTHCHECK_INITIAL_DELAY', 50))
         port = int(self.values.get('HEALTHCHECK_PORT', 5000))
+        period_seconds = int(self.values.get('HEALTHCHECK_PERIOD_SECONDS', 10))
+        success_threshold = int(self.values.get('HEALTHCHECK_SUCCESS_THRESHOLD', 1))
+        failure_threshold = int(self.values.get('HEALTHCHECK_FAILURE_THRESHOLD', 3))
 
-        return {'path': path, 'timeout': timeout, 'delay': delay, 'port': port}
+        return {
+            'path': path,
+            'timeout': timeout,
+            'delay': delay,
+            'port': port,
+            'period_seconds': period_seconds,
+            'success_threshold': success_threshold,
+            'failure_threshold': failure_threshold,
+        }
 
     def set_healthchecks(self):
         """Defines default values for HTTP healthchecks"""
@@ -49,10 +60,25 @@ class Config(UuidAuditedModel):
         # fetch set health values and any defaults
         # this approach allows new health items to be added without issues
         health = self.healthcheck()
+
+        # HTTP GET related
         self.values['HEALTHCHECK_URL'] = health['path']
-        self.values['HEALTHCHECK_TIMEOUT'] = health['timeout']
-        self.values['HEALTHCHECK_INITIAL_DELAY'] = health['delay']
         self.values['HEALTHCHECK_PORT'] = health['port']
+
+        # Number of seconds after which the probe times out.
+        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
+        self.values['HEALTHCHECK_TIMEOUT'] = health['timeout']
+        # Number of seconds after the container has started before liveness probes are initiated.
+        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
+        self.values['HEALTHCHECK_INITIAL_DELAY'] = health['delay']
+        # How often (in seconds) to perform the probe.
+        self.values['HEALTHCHECK_PERIOD_SECONDS'] = health['period_seconds']
+        # Minimum consecutive successes for the probe to be considered successful
+        # after having failed.
+        self.values['HEALTHCHECK_SUCCESS_THRESHOLD'] = health['success_threshold']
+        # Minimum consecutive failures for the probe to be considered failed after
+        # having succeeded.
+        self.values['HEALTHCHECK_FAILURE_THRESHOLD'] = health['failure_threshold']
 
     def save(self, **kwargs):
         """merge the old config with the new"""

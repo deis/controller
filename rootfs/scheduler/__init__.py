@@ -346,9 +346,11 @@ class KubeHTTPClient(object):
         new_rc = self._create_rc(namespace, name, image, command, **kwargs)
 
         # Get the desired number to scale to
-        desired = 1
         if old_rc:
             desired = int(old_rc["spec"]["replicas"])
+        else:
+            desired = kwargs['replicas']
+            logger.debug('No prior RC could be found for {}-{}'.format(namespace, app_type))
 
         try:
             count = 1

@@ -468,10 +468,12 @@ class KubeHTTPClient(object):
             except KubeException:
                 self._create_namespace(namespace)
 
-            try:
-                self._get_secret(namespace, 'objectstorage-keyfile')
-            except KubeException:
-                self._create_objectstore_secret(namespace)
+            # only buildpack apps need acces to object storage
+            if kwargs.get('build_type') == "buildpack":
+                try:
+                    self._get_secret(namespace, 'objectstorage-keyfile')
+                except KubeException:
+                    self._create_objectstore_secret(namespace)
 
             try:
                 self._get_service(namespace, namespace)

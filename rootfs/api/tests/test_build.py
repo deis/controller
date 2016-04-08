@@ -9,6 +9,7 @@ import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.conf import settings
 from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
@@ -130,9 +131,11 @@ class BuildTest(APITransactionTestCase):
         app_id = response.data['id']
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
-        body = {'image': 'autotest/example',
-                'sha': 'a'*40,
-                'dockerfile': "FROM scratch"}
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'dockerfile': "FROM scratch"
+        }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
@@ -154,10 +157,14 @@ class BuildTest(APITransactionTestCase):
 
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
-        body = {'image': 'autotest/example',
-                'sha': 'a'*40,
-                'dockerfile': "FROM scratch",
-                'procfile': {'worker': 'node worker.js'}}
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'dockerfile': "FROM scratch",
+            'procfile': {
+                'worker': 'node worker.js'
+            }
+        }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
@@ -179,10 +186,14 @@ class BuildTest(APITransactionTestCase):
         # post a new build with procfile
 
         url = "/v2/apps/{app_id}/builds".format(**locals())
-        body = {'image': 'autotest/example',
-                'sha': 'a'*40,
-                'procfile': json.dumps({'web': 'node server.js',
-                                        'worker': 'node worker.js'})}
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': json.dumps({
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            })
+        }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
 
@@ -306,3 +317,33 @@ class BuildTest(APITransactionTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['results']), 0)
+
+    def test_build_image_in_registry(self, mock_requests):
+        """When the image is already in the deis registry no pull/tag/push happens"""
+        body = {'id': 'test'}
+        url = '/v2/apps'
+        response = self.client.post(url, body)
+
+        # post an image as a build using registry hostname
+        url = "/v2/apps/test/builds".format(**locals())
+        image = '{}/autotest/example'.format(settings.REGISTRY_HOST)
+        body = {'image': image}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        build = Build.objects.get(uuid=response.data['uuid'])
+        release = build.app.release_set.latest()
+        # Registry host is internally stripped off
+        self.assertEqual(release.image, 'autotest/example')
+
+        # post an image as a build using registry hostname + port
+        url = "/v2/apps/test/builds".format(**locals())
+        image = '{}/autotest/example'.format(settings.REGISTRY_URL)
+        body = {'image': image}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        build = Build.objects.get(uuid=response.data['uuid'])
+        release = build.app.release_set.latest()
+        # Registry host + port is internally stripped off
+        self.assertEqual(release.image, 'autotest/example')

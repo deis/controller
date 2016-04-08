@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db import models
 
@@ -5,6 +7,8 @@ from registry import publish_release
 from api.utils import dict_diff
 
 from api.models import UuidAuditedModel, log_event
+
+logger = logging.getLogger(__name__)
 
 
 class Release(UuidAuditedModel):
@@ -32,13 +36,22 @@ class Release(UuidAuditedModel):
 
     @property
     def image(self):
+        # return image if it is already in the registry, test host and then host + port
+        if (
+            self.build.image.startswith(settings.REGISTRY_HOST) or
+            self.build.image.startswith(settings.REGISTRY_URL)
+        ):
+            # strip registry information off first
+            image = self.build.image.replace('{}/'.format(settings.REGISTRY_URL), '')
+            return image.replace('{}/'.format(settings.REGISTRY_HOST), '')
+
         if not self.build.dockerfile:
             # Deis Pull
             if not self.build.sha:
                 return '{}:v{}'.format(self.app.id, str(self.version))
-            else:
-                # Build Pack
-                return self.build.image
+
+            # Build Pack
+            return self.build.image
 
         # DockerFile
         return '{}:git-{}'.format(self.app.id, str(self.build.sha))
@@ -72,6 +85,15 @@ class Release(UuidAuditedModel):
             raise EnvironmentError('No build associated with this release to publish')
 
         source_image = self.build.image
+        # return image if it is already in the registry, test host and then host + port
+        if (
+            source_image.startswith(settings.REGISTRY_HOST) or
+            source_image.startswith(settings.REGISTRY_URL)
+        ):
+            logger.debug('{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
+            return
+
+        # add tag if it was not provided
         if ':' not in source_image:
             source_tag = 'git-{}'.format(self.build.sha) if self.build.sha else source_version
             source_image = "{}:{}".format(source_image, source_tag)
@@ -90,6 +112,7 @@ class Release(UuidAuditedModel):
         releases = self.app.release_set
         if self.pk:
             releases = releases.exclude(pk=self.pk)
+
         try:
             # Get the Release previous to this one
             prev_release = releases.latest()

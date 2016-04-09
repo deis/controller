@@ -2,8 +2,9 @@ import logging
 
 from django.conf import settings
 from django.db import models
+from rest_framework.serializers import ValidationError
 
-from registry import publish_release
+from registry import publish_release, RegistryException
 from api.utils import dict_diff
 
 from api.models import UuidAuditedModel, log_event
@@ -77,6 +78,10 @@ class Release(UuidAuditedModel):
             # If we cannot publish this app, just log and carry on
             log_event(self.app, e)
             pass
+        except RegistryException as e:
+            log_event(self.app, e)
+            # Uses ValidationError to get return of 400 up in views
+            raise ValidationError({'detail': str(e)})
 
         return release
 
@@ -99,8 +104,8 @@ class Release(UuidAuditedModel):
             source_image = "{}:{}".format(source_image, source_tag)
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
-        deis_registry = bool(self.build.sha)
         if not self.build.dockerfile and not self.build.sha:
+            deis_registry = bool(self.build.sha)
             publish_release(source_image, self.image, deis_registry)
 
     def previous(self):

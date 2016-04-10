@@ -177,22 +177,10 @@ class AppResourceViewSet(BaseDeisViewSet):
 
 
 class ReleasableViewSet(AppResourceViewSet):
-    """A viewset for application resources which affect the release cycle.
-
-    When a resource is created, a new release is created for the application
-    and it returns some success headers regarding the new release.
-
-    To use it, at minimum you'll need to provide a `release` attribute tied to your class before
-    calling post_save().
-    """
+    """A viewset for application resources which affect the release cycle."""
     def get_object(self):
         """Retrieve the object based on the latest release's value"""
         return getattr(self.get_app().release_set.latest(), self.model.__name__.lower())
-
-    def get_success_headers(self, data, **kwargs):
-        headers = super(ReleasableViewSet, self).get_success_headers(data)
-        headers.update({'Deis-Release': self.release.version})
-        return headers
 
 
 class AppViewSet(BaseDeisViewSet):

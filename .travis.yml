@@ -9,7 +9,7 @@ services:
   - postgresql
 sudo: required
 addons:
-  postgresql: "9.3"
+  postgresql: "9.4"
 before_install:
   - wget "http://ftp.debian.org/debian/pool/main/s/shellcheck/shellcheck_0.3.7-5_amd64.deb"
   - sudo dpkg -i shellcheck_0.3.7-5_amd64.deb

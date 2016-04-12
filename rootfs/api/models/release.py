@@ -6,8 +6,8 @@ from rest_framework.serializers import ValidationError
 
 from registry import publish_release, RegistryException
 from api.utils import dict_diff
-
 from api.models import UuidAuditedModel, log_event
+from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class Release(UuidAuditedModel):
             source_image.startswith(settings.REGISTRY_HOST) or
             source_image.startswith(settings.REGISTRY_URL)
         ):
-            logger.debug('{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
+            log_event(self.app, '{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
             return
 
         # add tag if it was not provided
@@ -147,6 +147,26 @@ class Release(UuidAuditedModel):
             if 'new_release' in locals():
                 new_release.delete()
             raise
+
+    def delete(self, *args, **kwargs):
+        """Delete release DB record and any RCs from the affect release"""
+        try:
+            labels = {
+                'app': self.app.id,
+                'version': self.version
+            }
+            controllers = self._scheduler.get_rcs(self.app.id, labels=labels)
+            for controller in controllers.json()['items']:
+                self._scheduler._delete_rc(self.app.id, controller['metadata']['name'])
+        except KubeHTTPException as e:
+            # 404 means they were already cleaned up
+            if e.status_code is not 404:
+                # Another problem came up
+                message = 'Could not to cleanup RCs for release {}'.format(self.version)
+                log_event(self.app, message)
+                logger.warning(message + ' - ' + str(e))
+        finally:
+            super(Release, self).delete(*args, **kwargs)
 
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:

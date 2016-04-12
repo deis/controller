@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
+from django.core.exceptions import SuspiciousOperation
 
 from api.models import App, Certificate
 
@@ -120,3 +121,28 @@ class CertificateTest(APITestCase):
         url = '/v2/certs/random-test-cert'
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204)
+
+    def test_create_invalid_cert(self):
+        """Upload a cert that can't be loaded by pyopenssl"""
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert',
+                'certificate': 'i am bad data',
+                'key': 'i am bad data as well'
+            }
+        )
+        self.assertEqual(response.status_code, 400)
+        # match partial since right now the rest is pyopenssl errors
+        self.assertIn('Could not load certificate', response.data['certificate'][0])
+
+    def test_load_invalid_cert(self):
+        """Inject a cert that can't be loaded by pyopenssl"""
+
+        with self.assertRaises(SuspiciousOperation):
+            Certificate.objects.create(
+                owner=self.user,
+                name='random-test-cert',
+                certificate='i am bad data',
+                key='i am bad data as well'
+            )

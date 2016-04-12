@@ -1,16 +1,16 @@
 # Deis controller requirements
 #
-Django==1.9.3
+Django==1.9.5
 django-cors-headers==1.1.0
 django-guardian==1.4.1
 djangorestframework==3.3.3
-docker-py==1.7.2
+docker-py==1.8.0
 gunicorn==19.4.5
 jsonfield==1.0.3
 morph==0.1.2
 ndg-httpsclient==0.4.0
 psycopg2==2.6.1
-PyOpenSSL==0.15.1
+pyOpenSSL==16.0.0
 pytz==2016.3
 PyYAML==3.11
 requests==2.9.1

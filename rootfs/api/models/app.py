@@ -213,7 +213,7 @@ class App(UuidAuditedModel):
             while True:
                 # timed out
                 if elapsed >= timeout:
-                    raise RuntimeError('timeout - 5 minutes have passed and pods are not up')
+                    raise KubeException('timeout - 5 minutes have passed and pods are not up')
 
                 # restarting a single pod behaves differently, fetch the *newest* pod
                 # and hope it is the right one. Comes back sorted
@@ -297,7 +297,7 @@ class App(UuidAuditedModel):
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
         build_type = app_build_type(release)
-        for scale_type in scale_types:
+        for scale_type, replicas in scale_types.items():
             image = release.image
             version = "v{}".format(release.version)
             kwargs = {
@@ -306,7 +306,7 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': release.config.values,
                 'version': version,
-                'replicas': scale_types[scale_type],
+                'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': build_type,
                 'healthcheck': release.config.healthcheck(),
@@ -344,13 +344,14 @@ class App(UuidAuditedModel):
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
         build_type = app_build_type(release)
-        for scale_type in self.structure.keys():
+        for scale_type, replicas in self.structure.items():
             deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': release.config.values,
-                'replicas': 0,  # Scaling up happens in a separate operation
+                # only used if there is no previous RC
+                'replicas': replicas,
                 'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': build_type,
@@ -452,7 +453,7 @@ class App(UuidAuditedModel):
             # http://docs.python-requests.org/en/master/user/advanced/#timeouts
             response = session.get(url, timeout=req_timeout)
 
-            # 1 minute timeout
+            # 30 second timeout (timout per request * 10)
             if (time.time() - start) > (req_timeout * 10):
                 break
 
@@ -465,8 +466,9 @@ class App(UuidAuditedModel):
 
         # Endpoint did not report healthy in time
         if response.status_code == 404:
+            delta = time.time() - start
             self.log(
-                'Router was not ready to serve traffic to process type {} in time'.format(app_type),  # noqa
+                'Router was not ready to serve traffic to process type {} in time, waited {} seconds'.format(app_type, delta),  # noqa
                 level=logging.WARNING
             )
             return
@@ -535,7 +537,8 @@ class App(UuidAuditedModel):
             'memory': release.config.memory,
             'cpu': release.config.cpu,
             'tags': release.config.tags,
-            'envs': release.config.values
+            'envs': release.config.values,
+            'version': "v{}".format(release.version),
         }
 
         try:

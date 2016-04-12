@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import os
@@ -346,9 +347,11 @@ class KubeHTTPClient(object):
         new_rc = self._create_rc(namespace, name, image, command, **kwargs)
 
         # Get the desired number to scale to
-        desired = 1
         if old_rc:
             desired = int(old_rc["spec"]["replicas"])
+        else:
+            desired = kwargs['replicas']
+            logger.debug('No prior RC could be found for {}-{}'.format(namespace, app_type))
 
         try:
             count = 1
@@ -377,19 +380,31 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Remove old release
+            # Remove new release
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
+            # remove secret that contains env vars for the release
+            try:
+                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
+                self._delete_secret(namespace, secret_name)
+            except KubeHTTPException:
+                pass
 
             # Bring back old release if available
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise RuntimeError('{} (scheduler::deploy): {}'.format(name, e))
+            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
 
         # New release is live and kicking. Clean up old release
         if old_rc:
             self._delete_rc(namespace, old_rc["metadata"]["name"])
+            # remove secret that contains env vars for the release
+            secret_name = "{}-{}-env".format(namespace, old_rc['metadata']['labels']['version'])
+            try:
+                self._delete_secret(namespace, secret_name)
+            except KubeHTTPException:
+                pass
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
@@ -423,7 +438,7 @@ class KubeHTTPClient(object):
         except Exception as e:
             # Fix service to old port and app type
             self._update_service(namespace, namespace, data=old_service)
-            raise RuntimeError('{} (scheduler::deploy::service_update): {}'.format(name, e))
+            raise KubeException('{} (scheduler::deploy::service_update): {}'.format(name, e))
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
@@ -436,7 +451,7 @@ class KubeHTTPClient(object):
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
-                raise RuntimeError('{} (RC): {}'.format(name, e))
+                raise KubeException('{} (RC): {}'.format(name, e))
 
         try:
             self._scale_rc(namespace, name, replicas)
@@ -444,7 +459,7 @@ class KubeHTTPClient(object):
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
-            raise RuntimeError('{} (Scale): {}'.format(name, e))
+            raise KubeException('{} (Scale): {}'.format(name, e))
 
     def create(self, namespace, **kwargs):
         """Create a basic structure for an application in k8s"""
@@ -456,10 +471,13 @@ class KubeHTTPClient(object):
             except KubeException:
                 self._create_namespace(namespace)
 
-            try:
-                self._get_secret(namespace, 'objectstorage-keyfile')
-            except KubeException:
-                self._create_objectstore_secret(namespace)
+            # only buildpack apps need acces to object storage
+            if kwargs.get('build_type') == "buildpack":
+                try:
+                    self._get_secret(namespace, 'objectstorage-keyfile')
+                except KubeException:
+                    secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+                    self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
 
             try:
                 self._get_service(namespace, namespace)
@@ -520,7 +538,7 @@ class KubeHTTPClient(object):
         containers['command'] = [entrypoint]
         containers['args'] = args
 
-        self._set_environment(containers, **kwargs)
+        self._set_environment(containers, namespace, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
@@ -564,7 +582,7 @@ class KubeHTTPClient(object):
 
         return 0, data
 
-    def _set_environment(self, data, **kwargs):
+    def _set_environment(self, data, namespace, **kwargs):
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
@@ -575,10 +593,30 @@ class KubeHTTPClient(object):
             data['env'] = []
 
         if env:
-            for key, value in env.items():
+            # env vars are stored in secrets and mapped to env in k8s
+            try:
+                # secrets use dns labels for keys, map those properly here
+                secrets_env = {}
+                for key, value in env.items():
+                    secrets_env[key.lower().replace('_', '-')] = str(value)
+
+                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
+                self._get_secret(namespace, secret_name)
+            except KubeHTTPException:
+                self._create_secret(namespace, secret_name, secrets_env)
+            else:
+                self._update_secret(namespace, secret_name, secrets_env)
+
+            for key in env.keys():
                 data["env"].append({
                     "name": key,
-                    "value": str(value)
+                    "valueFrom": {
+                        "secretKeyRef": {
+                            "name": secret_name,
+                            # k8s doesn't allow _ so translate to -, see above
+                            "key": key.lower().replace('_', '-')
+                        }
+                    }
                 })
 
         # Inject debugging if workflow is in debug mode
@@ -906,11 +944,11 @@ class KubeHTTPClient(object):
         container = template["spec"]["template"]["spec"]["containers"][0]
         container['args'] = args
 
-        self._set_environment(container, **kwargs)
+        self._set_environment(container, namespace, **kwargs)
 
         # add in healtchecks
         if kwargs.get('healthcheck'):
-            template = self._healthcheck(template, **kwargs['healthcheck'])
+            template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -954,10 +992,16 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _healthcheck(self, controller, path='/', port=8080, delay=30, timeout=1):
-        # FIXME this logic ideally should live higher up
-        app_type = controller['spec']['selector']['type']
-        if app_type not in ['web', 'cmd']:
+    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5,
+                     period_seconds=1, success_threshold=1, failure_threshold=3):  # noqa
+        """
+        Apply HTTP GET healthcehck to the application container
+
+        http://kubernetes.io/docs/user-guide/walkthrough/k8s201/#health-checking
+        http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+        http://kubernetes.io/docs/user-guide/liveness/
+        """
+        if not routable:
             return controller
 
         namespace = controller['spec']['selector']['app']
@@ -981,7 +1025,10 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
             'readinessProbe': {
                 # an http probe
@@ -992,11 +1039,15 @@ class KubeHTTPClient(object):
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
                 'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
             },
         }
 
         # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
         container_name = '{}-{}'.format(namespace, app_type)
         containers = controller['spec']['template']['spec']['containers']
         for container in containers:
@@ -1007,20 +1058,20 @@ class KubeHTTPClient(object):
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-    def _create_objectstore_secret(self, namespace):
-        secret = self._get_secret('deis', 'objectstorage-keyfile').json()
-        data = {}
-        for key, value in secret['data'].items():
-            data[key] = base64.b64decode(value)
-        self._create_secret(namespace, 'objectstorage-keyfile', data)
-
     def _get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
             error(response, 'get Secret "{}" in Namespace "{}"', name, namespace)
 
-        # FIXME decode data - can it be done without affecting the response object too much???
+        # decode the base64 data
+        secrets = response.json()
+        for key, value in secrets['data'].items():
+            secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
+
+        # tell python-requests it actually hasn't consumed the data
+        response._content_consumed = False
+        response.raw = io.StringIO(json.dumps(secrets))
 
         return response
 
@@ -1047,7 +1098,26 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets", namespace)
         response = self.session.post(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'failed to create secret "{}" in Namespace "{}"', name, namespace)
+            error(response, 'failed to create Secret "{}" in Namespace "{}"', name, namespace)
+
+        return response
+
+    def _update_secret(self, namespace, name, data):
+        template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
+            "version": self.apiversion,
+            "id": namespace,
+            "name": name
+        }))
+
+        for key, value in data.items():
+            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            item = base64.b64encode(value).decode()
+            template["data"].update({key: item})
+
+        url = self._api("/namespaces/{}/secrets/{}", namespace, name)
+        response = self.session.put(url, json=template)
+        if unhealthy(response.status_code):
+            error(response, 'failed to update Secret "{}" in Namespace "{}"', name, namespace)
 
         return response
 

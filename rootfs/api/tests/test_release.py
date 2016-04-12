@@ -144,7 +144,7 @@ class ReleaseTest(APITransactionTestCase):
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
-        #  todo : edge case that fails becasue version 1 has no build object.
+        #  TODO: edge case that fails becasue version 1 has no build object.
         # update the build to roll a new release
         # url = '/v2/apps/{app_id}/builds'.format(**locals())
         # body = {'image': 'autotest/example'}

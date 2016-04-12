@@ -18,6 +18,7 @@ from rest_framework.authtoken.models import Token
 
 from api import authentication, models, permissions, serializers, viewsets
 from api.models import AlreadyExists
+from scheduler import KubeException
 
 import requests
 import logging
@@ -158,7 +159,7 @@ class BaseDeisViewSet(viewsets.OwnerViewSet):
         try:
             return super(BaseDeisViewSet, self).create(request, *args, **kwargs)
         # If the scheduler oopsie'd
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -183,22 +184,10 @@ class AppResourceViewSet(BaseDeisViewSet):
 
 
 class ReleasableViewSet(AppResourceViewSet):
-    """A viewset for application resources which affect the release cycle.
-
-    When a resource is created, a new release is created for the application
-    and it returns some success headers regarding the new release.
-
-    To use it, at minimum you'll need to provide a `release` attribute tied to your class before
-    calling post_save().
-    """
+    """A viewset for application resources which affect the release cycle."""
     def get_object(self):
         """Retrieve the object based on the latest release's value"""
         return getattr(self.get_app().release_set.latest(), self.model.__name__.lower())
-
-    def get_success_headers(self, data, **kwargs):
-        headers = super(ReleasableViewSet, self).get_success_headers(data)
-        headers.update({'Deis-Release': self.release.version})
-        return headers
 
 
 class AppViewSet(BaseDeisViewSet):
@@ -248,7 +237,7 @@ class AppViewSet(BaseDeisViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         except (EnvironmentError, ValidationError) as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -278,7 +267,7 @@ class AppViewSet(BaseDeisViewSet):
             rc, output = app.run(self.request.user, request.data['command'])
         except EnvironmentError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({'rc': rc, 'output': str(output)})
 
@@ -322,7 +311,7 @@ class ConfigViewSet(ReleasableViewSet):
             # It's possible to set config values before a build
             if self.release.build is not None:
                 config.app.deploy(self.request.user, self.release)
-        except RuntimeError:
+        except Exception:
             self.release.delete()
             raise
 
@@ -340,7 +329,7 @@ class PodViewSet(AppResourceViewSet):
             # fake out pagination for now
             pagination = {'results': data, 'count': len(data)}
             return Response(pagination, status=status.HTTP_200_OK)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     def restart(self, *args, **kwargs):
@@ -353,7 +342,7 @@ class PodViewSet(AppResourceViewSet):
             # pagination = {'results': data, 'count': len(data)}
             pagination = data
             return Response(pagination, status=status.HTTP_200_OK)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -386,7 +375,7 @@ class CertificateViewSet(BaseDeisViewSet):
             raise
         except AlreadyExists as e:
             return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_201_CREATED)
@@ -396,7 +385,7 @@ class CertificateViewSet(BaseDeisViewSet):
             self.get_object().detach(*args, **kwargs)
         except Http404:
             raise
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -435,7 +424,7 @@ class ReleaseViewSet(AppResourceViewSet):
             return Response(response, status=status.HTTP_201_CREATED)
         except EnvironmentError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError:
+        except Exception:
             if 'new_release' in locals():
                 new_release.delete()
             raise

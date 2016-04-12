@@ -7,10 +7,16 @@ import os
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 from simpleflock import SimpleFlock
+
 import docker
 import docker.constants
+from docker.errors import APIError
 
 logger = logging.getLogger(__name__)
+
+
+class RegistryException(Exception):
+    pass
 
 
 class DockerClient(object):
@@ -40,35 +46,41 @@ class DockerClient(object):
             repo = "{}/{}".format(self.registry, src_name)
         else:
             repo = src_name
-        self.pull(repo, src_tag)
 
-        # tag the image locally without the repository URL
-        image = "{}:{}".format(src_name, src_tag)
-        self.tag(image, "{}/{}".format(self.registry, name), tag=tag)
+        try:
+            self.pull(repo, src_tag)
 
-        # push the image to deis-registry
-        self.push("{}/{}".format(self.registry, name), tag)
+            # tag the image locally without the repository URL
+            image = "{}:{}".format(src_name, src_tag)
+            self.tag(image, "{}/{}".format(self.registry, name), tag=tag)
+
+            # push the image to deis-registry
+            self.push("{}/{}".format(self.registry, name), tag)
+        except APIError as e:
+            raise RegistryException(str(e))
 
     def pull(self, repo, tag):
         """Pull a Docker image into the local storage graph."""
         check_blacklist(repo)
         logger.info("Pulling Docker image {}:{}".format(repo, tag))
         with SimpleFlock(self.FLOCKFILE, timeout=1200):
-            stream = self.client.pull(repo, tag=tag, stream=True, insecure_registry=True)
-            log_output(stream)
+            stream = self.client.pull(repo, tag=tag, stream=True,
+                                      decode=True, insecure_registry=True)
+            log_output(stream, 'pull', repo, tag)
 
     def push(self, repo, tag):
         """Push a local Docker image to a registry."""
         logger.info("Pushing Docker image {}:{}".format(repo, tag))
-        stream = self.client.push(repo, tag=tag, stream=True, insecure_registry=True)
-        log_output(stream)
+        stream = self.client.push(repo, tag=tag, stream=True, decode=True,
+                                  insecure_registry=True)
+        log_output(stream, 'push', repo, tag)
 
     def tag(self, image, repo, tag):
         """Tag a local Docker image with a new name and tag."""
         check_blacklist(repo)
         logger.info("Tagging Docker image {} as {}:{}".format(image, repo, tag))
         if not self.client.tag(image, repo, tag=tag, force=True):
-            raise docker.errors.DockerException("tagging failed")
+            raise RegistryException('Tagging {} as {}:{} failed'.format(image, repo, tag))
 
 
 def check_blacklist(repo):
@@ -81,13 +93,26 @@ def check_blacklist(repo):
         raise PermissionDenied("Repository name {} is not allowed".format(repo))
 
 
-def log_output(stream):
-    """Log a stream at DEBUG level, and raise DockerException if it contains "error"."""
+def log_output(stream, operation, repo, tag):
+    """Log a stream at DEBUG level, and raise RegistryException if it contains an error"""
     for chunk in stream:
-        logger.debug(chunk)
         # error handling requires looking at the response body
-        if b'"error"' in chunk.lower():
-            raise docker.errors.DockerException(chunk)
+        if 'error' in chunk:
+            stream_error(chunk, operation, repo, tag)
+
+
+def stream_error(chunk, operation, repo, tag):
+    """Translate docker stream errors into a more digestable format"""
+    # not all errors provide the code
+    if 'code' in chunk['errorDetail']:
+        # permission denied on the repo
+        if chunk['errorDetail']['code'] == 403:
+            message = 'Permission Denied attempting to {} image {}:{}'.format(operation, repo, tag)
+    else:
+        # grab the generic error and strip the useless Error: portion
+        message = chunk['error'].replace('Error: ', '')
+
+    raise RegistryException(message)
 
 
 def strip_prefix(name):
@@ -97,5 +122,4 @@ def strip_prefix(name):
 
 
 def publish_release(source, target, deis_registry):
-    client = DockerClient()
-    return client.publish_release(source, target, deis_registry)
+    return DockerClient().publish_release(source, target, deis_registry)

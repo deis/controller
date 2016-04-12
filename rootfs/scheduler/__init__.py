@@ -768,27 +768,15 @@ class KubeHTTPClient(object):
     # REPLICATION CONTROLLER #
 
     def _get_old_rc(self, namespace, app_type):
-        url = self._api("/namespaces/{}/replicationcontrollers", namespace)
-        resp = self.session.get(url)
-        if unhealthy(resp.status_code):
-            error(resp, 'get ReplicationControllers in Namespace "{}"', namespace)
+        labels = {
+            'app': namespace,
+            'type': app_type
+        }
+        controllers = self._get_rcs(namespace, labels=labels).json()
+        if len(controllers['items']) == 0:
+            return False
 
-        exists = False
-        prev_rc = []
-        for rc in resp.json()['items']:
-            if (
-                'app' in rc['spec']['selector'] and
-                namespace == rc['metadata']['labels']['app'] and
-                'type' in rc['spec']['selector'] and
-                app_type == rc['spec']['selector']['type']
-            ):
-                exists = True
-                prev_rc = rc
-                break
-        if exists:
-            return prev_rc
-
-        return 0
+        return controllers['items'][0]
 
     def _get_rc_status(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)

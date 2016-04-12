@@ -1,3 +1,229 @@
+### 2.0.0-alpha -> v2.0.0-beta1
+
+#### Features
+
+ - [`47dd869`](https://github.com/deis/controller/commit/47dd869bc5f4a92b1f141ca0ca0054a425ed9209) Makefile: add test-unit-quick target
+ - [`745f7e1`](https://github.com/deis/controller/commit/745f7e1504ae6cb9374a94d77f37eabe48578788) slugrunner: make slugrunner configurable via env variables
+ - [`e17cdfa`](https://github.com/deis/controller/commit/e17cdfa58c7cc3e16fd5ac0b941ad562568b8944) controllers: give RCs the same labels as their pods. Label selectors are easier that way
+ - [`a29affe`](https://github.com/deis/controller/commit/a29affe40e6060d366ebc0aabfa8d892b682e5b9) tests: use codecov.io for visual code coverage reporting
+ - [`1c28a80`](https://github.com/deis/controller/commit/1c28a809d698637d23dd09b6b18949201115d723) Makefile: enable immutable (git-based
+ - [`916fe94`](https://github.com/deis/controller/commit/916fe94eee5208e865c6c22d3605bc5838333bb5) certs_test: add unit tests around errors stemming from certs commands
+ - [`35a4d73`](https://github.com/deis/controller/commit/35a4d7384f912d0f94df3e7870a3e5e9fb91a614) client Makefile: add build version to dist binary via ldflags
+ - [`7ba6255`](https://github.com/deis/controller/commit/7ba6255c43ca3682c63f066267ea9e55f2d8d3dc) make: make deploy to apply the latest RC image for workflow
+ - [`0efdcaf`](https://github.com/deis/controller/commit/0efdcaf4fa89a01302c01334d5c97cd001885ea3) version: add build version to deis -v output
+ - [`b3662b0`](https://github.com/deis/controller/commit/b3662b0557022982e72c3fe835ba480cf84b0811) scheduler: add more functions to fetch on the global endpoints for various resources
+ - [`0ff0d22`](https://github.com/deis/controller/commit/0ff0d226bd9e7debf677cedb130e4978c920b476) config: add pipe suport to config:pull
+ - [`e7a908b`](https://github.com/deis/controller/commit/e7a908b1e61f43e3f752f7f509afae069e217c37) pods: wait until pod / container has reported success on readiness / liveness probe during scale event
+ - [`d36ba7a`](https://github.com/deis/controller/commit/d36ba7a0cf1704d3f567e5a372e3bde5406cd1c4) run: implement deis run
+ - [`bb9562a`](https://github.com/deis/controller/commit/bb9562a781ded672aa872fd8320008648ae7aa74) .travis.yml: have this job notify its sister job in Jenkins
+ - [`e90e671`](https://github.com/deis/controller/commit/e90e67142b3914a252dc1b832118f5eb7456491f) settings: read database credentials from k8s secret
+ - [`df9835f`](https://github.com/deis/controller/commit/df9835f32b40d31181f148f57f3e7c3078160dda) Makefile: move prep-bintray-json and _scripts/ci into client directory
+ - [`41d3236`](https://github.com/deis/controller/commit/41d32360e0d7e6a15eea2f2201abfa3c9535f396) healthcheck: remove default healthcheck for apps
+ - [`600f888`](https://github.com/deis/controller/commit/600f888b27a19d96d4598ec22263474074a555c8) Makefile: organize Makefiles to simplify/unify VERSION
+ - [`98ce6ff`](https://github.com/deis/controller/commit/98ce6fffdea72de69957ef67a9e1cf9358e84253) tz: add pytz as a requirement to get better timezone data (Olsen DB
+ - [`8629d83`](https://github.com/deis/controller/commit/8629d83331a0bf259c61350158289fb4a703e471) ps: query k8s to get the ps:list information instead of db
+ - [`2c93028`](https://github.com/deis/controller/commit/2c9302836018ae6301e8bb1b6dd6251d1794dd90) hooks: expose a ssh public key hook for builder to interact with
+ - [`4b8b388`](https://github.com/deis/controller/commit/4b8b388c5d72a30cd90ca04d2e7d060349f0117e) client: use unix pipes with config:push
+ - [`34ff500`](https://github.com/deis/controller/commit/34ff500564254a1f010f39e60bd7e4dd29967143) certs: add support for wildcard certificates and domains with new cert cli commands
+ - [`72b7367`](https://github.com/deis/controller/commit/72b7367173e11669b07a76b9660061925ff8f8b2) builder: add the ability to optionally pass in slug_url in build hook
+ - [`9640a22`](https://github.com/deis/controller/commit/9640a221ce76734de2303072b7a933bd8b3ca634) workflow: log the template used in case of an error
+ - [`f4c7da5`](https://github.com/deis/controller/commit/f4c7da5b1eb2464b87580fb9a02c5d471e6e062e) hooks: add fingerprint to key hooks API response
+ - [`bd63f4e`](https://github.com/deis/controller/commit/bd63f4e6d7f70e2580e81628214f461bc815b1e2) tests: enable branch coverage information
+ - [`926af04`](https://github.com/deis/controller/commit/926af04a2e0faed2c97f907caca262a93e238d0f) builder hooks: app and user hooks for builder to get public keys
+ - [`802718d`](https://github.com/deis/controller/commit/802718dfe5c3bf2f51e5a6c6dd572909b2f4bf04) logger: Support logger v2
+ - [`3398ac3`](https://github.com/deis/controller/commit/3398ac3332075599c23ad957e264d51a21ca615c) healthchecks: add DB health check to /healthz
+ - [`3dd0e57`](https://github.com/deis/controller/commit/3dd0e57e73a2918ad766575cd1b0091a15c39e68) client: document deis version
+ - [`b09101e`](https://github.com/deis/controller/commit/b09101ed042894357acccf03cc6b9719fa30398e) tags: implement tags as k8s node selectors
+ - [`0beddda`](https://github.com/deis/controller/commit/0beddda720805b2f81518e3f90b71dd285d34e7e) workflow: add build_type in extra args to differentiate build t…
+ - [`dd659a7`](https://github.com/deis/controller/commit/dd659a7812879a64a3af45d5179d8b0108e1c7d0) manifests: sync with deis-dev charts. Assumes secrets already exist from a helm install
+ - [`1049c39`](https://github.com/deis/controller/commit/1049c39a09c4fafbad2da4f5a882d63eba9fe546) workflow: add support for floating point cpus and milli cpu units
+ - [`934d84f`](https://github.com/deis/controller/commit/934d84f9220debd7b1acd4810e2b6d613c671d99) (all): use latest python (3.5 right now
+ - [`f29b72e`](https://github.com/deis/controller/commit/f29b72eed41f36b818d623826abfe9d401d6e75d) registry: stop adding last mile ENV Vars into slugs as k8s handles that
+ - [`8686b8b`](https://github.com/deis/controller/commit/8686b8b4ec40e9a07bb407ab501edc48b69c44e1) healthcheck: use k8s liveness and readiness probes for app healthchecks
+ - [`e6ab870`](https://github.com/deis/controller/commit/e6ab870f0084fb89de61b672f2e9fa4e5042a7ad) workflow: add support to set memory and cpu configs
+ - [`75b420f`](https://github.com/deis/controller/commit/75b420f530c0513a4754d5833a4e2849f4ae014e) manifests: Make the workflow service routable
+ - [`97e62c0`](https://github.com/deis/controller/commit/97e62c0674cea35ba31992160687f73e11355472) k8s: use dotted format instead of JSON for router domain configuration
+ - [`e422469`](https://github.com/deis/controller/commit/e422469d474279ab36a961aae21ebaa0410518bf) (all): update django from 1.8 to 1.9
+ - [`e404eaa`](https://github.com/deis/controller/commit/e404eaac7dc241dcfdffb0f9bccc433586b6328c) (all): update django from 1.7 to 1.8
+ - [`e639e2a`](https://github.com/deis/controller/commit/e639e2a97251f996b0bcf8ce0c0b1fb92ef491c9) (all): update from django 1.6 to 1.7
+
+#### Fixes
+
+ - [`92e440a`](https://github.com/deis/controller/commit/92e440a62509b580f2a6b6a1c7928a459c4fde55) confd: Fix user registration disabling
+ - [`ca32f94`](https://github.com/deis/controller/commit/ca32f948da165a697589b9aaa1117a6bf4833d29) README: revert template changes
+ - [`0fab17e`](https://github.com/deis/controller/commit/0fab17ef2207fec0f4d409fe0aa49c7f2582868d) travis: update secure URL
+ - [`60046cd`](https://github.com/deis/controller/commit/60046cd240f31e51ec14673b3c2aa7eaf37a7686) scheduler: create RC with scale 0 and then use scale function to have pod monitoring
+ - [`081b8f7`](https://github.com/deis/controller/commit/081b8f7c46e756ab6988aa26ef3dffd5ffb6413b) scheduler: scheduler stops a scale operation early if desired is the same as current number of pods
+ - [`be8934f`](https://github.com/deis/controller/commit/be8934f8afda94fa096f93b058a6525c51c4b97c) certificates: make sure domains are 0 for a cert before removing the secret
+ - [`d8dc4df`](https://github.com/deis/controller/commit/d8dc4df3b1450c24413ec062b5f2a3bb22d94f56) .travis.yml: return to original dir after success
+ - [`2d12a07`](https://github.com/deis/controller/commit/2d12a0777429e5974f2992c19893d4adcdf58d82) certificates: only delete k8s secrets for certs when last domain associated is detached
+ - [`9d5cf2f`](https://github.com/deis/controller/commit/9d5cf2fbbfdd57d47b9560b3030eda3dc8d778fe) client: remove the client code from deis/workflow
+ - [`39eef5d`](https://github.com/deis/controller/commit/39eef5d3d2a25f96d00a415c8475e70da3425817) scheduler: stop relying on namespace events in k8s for scale information
+ - [`a675233`](https://github.com/deis/controller/commit/a6752339c5108d44de6b806cb439e981a8041c97) serializers: validate tags properly as k8s labels
+ - [`67e536f`](https://github.com/deis/controller/commit/67e536f9ad9d1aacea23adc0b39ee867a7176ae1) k8s: recreate basic k8s resource required for apps if they are missing
+ - [`2af939e`](https://github.com/deis/controller/commit/2af939eb21fc73e4eee152f16d99520d1f472645) scheduler: handle pod log response as utf-8
+ - [`86ee484`](https://github.com/deis/controller/commit/86ee4843f045f764c090b51822657eee9620721b) cmd/apps: simplify URL prefixing
+ - [`de21562`](https://github.com/deis/controller/commit/de2156243426e8d4f0ec0aa0568b01aeb08a4650) scheduler: set env, limits, tags for run containers
+ - [`63f859d`](https://github.com/deis/controller/commit/63f859d31509da3ba9bb30dc123991de8f78b967) logger: Update the port that workflow uses to find logger
+ - [`2d933d7`](https://github.com/deis/controller/commit/2d933d73777327c93260508017269f1039e8e12e) client/Makefile: don't export GOOS when running gox
+ - [`4484818`](https://github.com/deis/controller/commit/4484818562f5611adf519b193b75bb19a6816d30) certs: propogate err in certs:attach/detach/remove
+ - [`0c94c8b`](https://github.com/deis/controller/commit/0c94c8b62694a040ce0e4ba708baf946b9fe0423) make: determine host OS for supplying to (container-ized
+ - [`16fda1f`](https://github.com/deis/controller/commit/16fda1f1b7deb6688a10649101e2d6ac1537ee2a) pagination: use the proper limit pagination style from DRF
+ - [`90c0dd1`](https://github.com/deis/controller/commit/90c0dd1862ef875fd9e663e5fa4632e4c3bc02ff) views: return a 404 when trying to query on an object that does not exist
+ - [`9c2ae1a`](https://github.com/deis/controller/commit/9c2ae1abbba230c42cbd1d8aa33e998fef06791c) requirements: latest crypography is out now with official fix
+ - [`56117e3`](https://github.com/deis/controller/commit/56117e3018e16fe9fa232bbbc9c48566d37b7e8c) models: catch proper kube exceptions in certficates so secrets get created
+ - [`f25534a`](https://github.com/deis/controller/commit/f25534a51fdfbfcfd41e08c60f11859edbd8490f) certificates: type fix, it is detach not deatch
+ - [`2ae1702`](https://github.com/deis/controller/commit/2ae17026eabefc9ade89b772632259293060ea15) requirements: pull in the the fix branch of cryptography until official release happens
+ - [`ce6a88e`](https://github.com/deis/controller/commit/ce6a88e95c17c9415a417647ef6ced25952520bd) views: config:set on an unreleased app should not call app::deploy
+ - [`a378b09`](https://github.com/deis/controller/commit/a378b0947cb247171d4528172652166842d1ded7) scale: add more state information to make scale smarter
+ - [`b8d36bc`](https://github.com/deis/controller/commit/b8d36bcdd8ffb2ac3e014556c75e9ebdf8ecf74d) scheduler: if a pod is in pending there is no start time, instead use now(
+ - [`80df531`](https://github.com/deis/controller/commit/80df53106d506ba637db17fe2be9e20c85ec3534) git: strip controller port when parsing git remotes
+ - [`797fbd9`](https://github.com/deis/controller/commit/797fbd9eae90ee0b51e6ed5e5519e8a309c5e16b) client: exit 1 with malformed config:set input
+ - [`e14502a`](https://github.com/deis/controller/commit/e14502ab515db6c48630fba1a9f5464bc10fbbf7) logs: Update the array index for determining the color category
+ - [`0d95dd1`](https://github.com/deis/controller/commit/0d95dd1e348f109bc736bdb9764210f5c73e0774) ps:restart: make ps:restart work with kubernetes
+ - [`792cbcc`](https://github.com/deis/controller/commit/792cbcc1dd67dab0f658c5ca24df9110034796f2) logger: Return non-zero exit code when deis logs fails
+ - [`0f37d00`](https://github.com/deis/controller/commit/0f37d00f2b7f3cc09fb991cb245ef766313dd67e) auth: return a 409 if a user is cancelled that has apps
+ - [`356a999`](https://github.com/deis/controller/commit/356a99977af8baf261b63ad994f1b97c9ea69da7) client: only delete local ~/.deis/client.json if cancelling logged in user
+ - [`36f87a7`](https://github.com/deis/controller/commit/36f87a7970d756eeeec7d499d4a1e21a845d314c) local_settings: infer database name from username
+ - [`b0b24e6`](https://github.com/deis/controller/commit/b0b24e6035c3c0526b9aa4b37453b03cb06f28fb) scheduler: use scale scheduling waits for create RC
+ - [`7ae35bc`](https://github.com/deis/controller/commit/7ae35bcf45c397f75e869d95900703b7dd0c57a2) local_settings.py: read DATABASES from settings.py
+ - [`751b8a9`](https://github.com/deis/controller/commit/751b8a914b423790a2edd4c79f697551c1ece89e) .travis.yml: update bintray-ci.json location
+ - [`f4f35d8`](https://github.com/deis/controller/commit/f4f35d82f39a0eeb611ff18e7f6c4ecdf70a38c9) debug,docs: fix a couple of typos
+ - [`e496bcf`](https://github.com/deis/controller/commit/e496bcf7bc9b9095bbf142e93f606ee88db9816d) certificates: accidental critical logging in the certificate model
+ - [`5e08df4`](https://github.com/deis/controller/commit/5e08df4908bf003f6efe8a68b10141d497a8ba9e) bintray: assign each binary a name using unique version
+ - [`f8044e1`](https://github.com/deis/controller/commit/f8044e1ff25c7083a66781841efde6f32a9b10aa) docs: add .md extension to v2.0 API docs
+ - [`c4b7dfe`](https://github.com/deis/controller/commit/c4b7dfef5d315bb996a479be15d5a54a563df478) scheduler: remove debug env var for slugrunner apps
+ - [`786f3eb`](https://github.com/deis/controller/commit/786f3eb02c4329a85a25b7efdffac3cb122dbcb2) make: get gox during bootstrap for use in build-all""
+ - [`5378a7a`](https://github.com/deis/controller/commit/5378a7a3490a487d096bb18858b3fb7f3a1b5997) make: get gox during bootstrap for use in build-all"
+ - [`89c2f73`](https://github.com/deis/controller/commit/89c2f73568233ea947d0bfb6b2ed9479913be4bf) make: get gox during bootstrap for use in build-all
+ - [`77638be`](https://github.com/deis/controller/commit/77638bed641f9a4d1077b67b2cadfd2d09603354) bintray: add unique version to bin name
+ - [`511c8ea`](https://github.com/deis/controller/commit/511c8eaf1ea3a1510de4ada5abbcd695485fa5e6) client: Fix logger URL in logger help msg
+ - [`05f40e3`](https://github.com/deis/controller/commit/05f40e3a42f2125a104a4a4820854246fe464479) logger: Try not to fail so hard when issuing deis logs command
+ - [`caf3ddf`](https://github.com/deis/controller/commit/caf3ddf573cee4b1aef19a8f1abbabe6502602ea) Makefile: Restore local build/install capability
+ - [`1e765a8`](https://github.com/deis/controller/commit/1e765a80ba9dc0196534cb04633657ec0f4bc9f3) Makefile,glide.yaml,glide.lock: build client code inside a Docker container
+ - [`fa708c2`](https://github.com/deis/controller/commit/fa708c28067d72f1d9e960599cb69dde7a93625f) controller: do not require slash at the end of `GET /v2/users`
+ - [`75e1d57`](https://github.com/deis/controller/commit/75e1d574157be82b4f4df030df0588c07cdca9b2) dockerpull: fix logic for image pull for dockerfile apps
+ - [`d083964`](https://github.com/deis/controller/commit/d083964a26d1cdc3591046dc20544a2d07bb226c) docs: use extra_javascript to fix navigation
+ - [`0cf2167`](https://github.com/deis/controller/commit/0cf21671bdf0674a93072e8c3ffeb3e9f7b998c2) manifests: Make the manifests look like those in the deis-dev chart
+ - [`026f3c4`](https://github.com/deis/controller/commit/026f3c4d8408d1c9625f3b1000d665c21d8ab56e) secrets: strip whitespaces / newlines from k8s secrets when reading the files
+ - [`91d62cb`](https://github.com/deis/controller/commit/91d62cbf5ff12cc9e5325d03b00205098db20405) migrations: add certificate and key migrations
+ - [`501207b`](https://github.com/deis/controller/commit/501207bff23c276e0e10635662595c7535a0acd5) client: replace port in git remote creation
+ - [`d88e6f8`](https://github.com/deis/controller/commit/d88e6f8df6bac82aa81e8ffbe065e7624db5121c) logger: requests object returns bytes from logger, convert to string
+ - [`3c4c26e`](https://github.com/deis/controller/commit/3c4c26eae5555555029a94e8d36d4f278b1835ee) scheduler: slug url was replacing : with -, which is not accurate
+ - [`3119035`](https://github.com/deis/controller/commit/31190355dbc5b4e7b1477791f0c1f997af19f5c4) scheduler: not all images sent to create_rc will have a dash in them
+ - [`b4eee63`](https://github.com/deis/controller/commit/b4eee63b7d17ad4df0424e1f346c75d36ae9a56d) secrets: base64 needs decode(
+ - [`c2d3716`](https://github.com/deis/controller/commit/c2d371664f936e172923b72999a32ab0c2bc62b6) scheduler: support both long and short sha being passed in for builds
+ - [`1210376`](https://github.com/deis/controller/commit/1210376dcb225ee3e6f490a4596770290fbb5161) scheduler: python 3 b64 needs bytes but k8s api needs string passed
+ - [`aed2b2d`](https://github.com/deis/controller/commit/aed2b2d52a72077f1e1ebb1055197484791b9aef) serializer: JSON is already translated in some cases so pass through
+ - [`15df775`](https://github.com/deis/controller/commit/15df775432a4d7f87c8d69805e7bab6ce857b838) client: fix URLs used by deis open
+ - [`d7e2a60`](https://github.com/deis/controller/commit/d7e2a601716d5d6ccd973660cf8512d26ae474e2) _tests,Makefile: remove integration tests
+
+#### Documentation
+
+ - [`e82ed43`](https://github.com/deis/controller/commit/e82ed436fd18dc002d623d8c117a1f49c1a597e1) README: update component information
+ - [`ba6ed29`](https://github.com/deis/controller/commit/ba6ed298a18f69caf8f7fea61d2ad16018c87d24) README: fix up language about merging PRs
+ - [`2afa281`](https://github.com/deis/controller/commit/2afa281bb476108846b5b661ba78b9f3d8c71a38) understanding-deis: document database lifecycle
+
+#### Maintenance
+
+ - [`fbf45db`](https://github.com/deis/controller/commit/fbf45db68fd097531c3d0b90edcfe0a8f974a371) tests: verify that deleting a certificate detaches it from connected domains
+ - [`e527d17`](https://github.com/deis/controller/commit/e527d176af7a058f8121e802559cefb229cedd18) README: use pyenv (built into recent Python
+ - [`2131870`](https://github.com/deis/controller/commit/21318703b7140b83c80405c8adeed90143421b45) README.md: update badges to point to controller
+ - [`4f6b31b`](https://github.com/deis/controller/commit/4f6b31b83d9cf0f0938d5afbac5863e0012cd0dd) travis: move travis to Python only testing
+ - [`56deb5f`](https://github.com/deis/controller/commit/56deb5fe802abbe439fc555594708875a3e17b5b) manifests: remove manifests as now helm install works + make deploy for development needs
+ - [`60041c5`](https://github.com/deis/controller/commit/60041c52681a3de879079c80e3dfd25420f4cc85) scheduler: remove dead code. loc is used in v1 to get mem/cpu etc
+ - [`d4bfe55`](https://github.com/deis/controller/commit/d4bfe555780c9b8c2997b8bad7ccf47abb63c3f1) django: bump to django 1.9.3
+ - [`80cfc5b`](https://github.com/deis/controller/commit/80cfc5bf84048ca06b98f98863d4145a2a242a51) dev_reqs: pin coverage and update flake8
+ - [`b543527`](https://github.com/deis/controller/commit/b543527ae080bc76332e924801305a94937e535e) reqs: update docker-py to 1.7.2
+ - [`412f432`](https://github.com/deis/controller/commit/412f432c773f89d8953ac876cc7e5efc60ae3ef7) glide: glide is now inside the containerized image
+ - [`95796d7`](https://github.com/deis/controller/commit/95796d7f34fd45dcdaae8cb48aa416dd28cbda87) go-dev: bump go-dev
+ - [`9d5822c`](https://github.com/deis/controller/commit/9d5822ca0f4209e94e2791038d71e0f79370fc59) glide: update to glide 0.9 and use the resolved import lock file
+ - [`756e353`](https://github.com/deis/controller/commit/756e353248bcae2bc5d240b4892f6f1f70b496df) requirements: update docker-py to 1.7.0
+ - [`9a6b6dc`](https://github.com/deis/controller/commit/9a6b6dcea962f53fee2362443035bb2186ecf747) docs/requirements: update MkDocs to 0.15.2
+ - [`9663e35`](https://github.com/deis/controller/commit/9663e35add634465ba9e9c309a7a2c12e6b82754) scheduler: remove second param in get(
+ - [`e06d198`](https://github.com/deis/controller/commit/e06d198506f96dbde7ae3beaf3918f2b42e396c3) django: remove the use of site framework
+ - [`ba6b951`](https://github.com/deis/controller/commit/ba6b9517a63fda1583b582c5e4bc73a60f795904) django: update Django to 1.9.2
+ - [`3198b80`](https://github.com/deis/controller/commit/3198b807f76f391801fdfb67a9cb0f6f555ebd93) requirements.txt: update gunicorn to 19.4.5
+ - [`958a2b8`](https://github.com/deis/controller/commit/958a2b8143db06ec16ad3ced7c052a2918690c5f) requirements.txt: update django-guardian to 1.4.1
+ - [`6c37d2e`](https://github.com/deis/controller/commit/6c37d2ea35d4969a0f72737b402a79bae06d45f1) requirements.txt: update mkdocs to 0.15.0
+ - [`eb0d8fe`](https://github.com/deis/controller/commit/eb0d8fe9bc0c79fa7bd41a0d54b5048eb7422bab) logs: Update logger endpoint URL
+ - [`2ed90ca`](https://github.com/deis/controller/commit/2ed90caf24eaaf7652a73699d814e07695468c5a) pip: update simpleflock to 0.0.3
+ - [`5afae01`](https://github.com/deis/controller/commit/5afae01afe549dddf52d0b9c429a2946c26f394c) migrations: Django 1.9 is a little more verbose with UUIDField migration
+ - [`8d5068a`](https://github.com/deis/controller/commit/8d5068a6c0b228c759640f698d561e91f63d3098) requirements.txt: update Django to 1.9.1
+ - [`beddeec`](https://github.com/deis/controller/commit/beddeecdff6ba451e7e930317c06178f1d4c62a3) image: bump alpine to 3.3
+ - [`8efaf49`](https://github.com/deis/controller/commit/8efaf497845c75a57362d827bd3163bf4ebb8360) glide: bump glide to 0.8.3 and with it update lock file
+ - [`c938c91`](https://github.com/deis/controller/commit/c938c917ec092ded982328a635bac77b89d69ee0) models: move from django-json-field to jsonfield for Django 1.9 compatibility
+ - [`bb12aa9`](https://github.com/deis/controller/commit/bb12aa99cff66b1a6a888d4242805f39e8644b05) release: bump version to v2-beta
+
+### v1.12.2 -> 2.0.0-alpha
+
+#### Features
+
+ - [`b15669f`](https://github.com/deis/controller/commit/b15669fbf6a52b4133c91a2e621e5ff127a20cf0) test: add deis build integration test that supports v2-alpha
+ - [`555afee`](https://github.com/deis/controller/commit/555afee31958f6990829ccce964ea4d5c486aa2d) manifests: add k8s readiness check
+ - [`2a551a6`](https://github.com/deis/controller/commit/2a551a690c5875376869d0f4eba92bf5e9fed668) ci: compile and upload darwin release
+ - [`05d9c4a`](https://github.com/deis/controller/commit/05d9c4af05c72eb44112c640e720d4af189a4c8d) secrets: add support for deis minio secrets
+ - [`3a6cd62`](https://github.com/deis/controller/commit/3a6cd62b9b823177bb1870d14a011f52828fafcb) _tests: add config tests
+ - [`5502cf5`](https://github.com/deis/controller/commit/5502cf50a68ff17ecef9da25c27a3d265831cb8f) travis: deploy client builds to bintray
+ - [`2753dc6`](https://github.com/deis/controller/commit/2753dc6da124bf4a51e0dd5999b2208077d5872d) glide: add glide.lock
+ - [`0d94379`](https://github.com/deis/controller/commit/0d9437972f5cdf6e87fdf07dffe686469b33a5cf) _tests: re-enabling the app tests
+ - [`226cbc9`](https://github.com/deis/controller/commit/226cbc94d204570b5f862e2f28c1dcbf09eaddc7) workflow: identify app type and move envs to rc templates
+ - [`5a4174c`](https://github.com/deis/controller/commit/5a4174cccb2368b58055cd6f660ae2b35dfe861b) travis: upload docs and client to S3
+ - [`0738c13`](https://github.com/deis/controller/commit/0738c13949187a6d444a693193585aed7e44304a) database: supports HTTPs as S3 endpoint
+
+#### Fixes
+
+ - [`82d6eb3`](https://github.com/deis/controller/commit/82d6eb3f1df742c67e9414888624573a06328fff) releases_test.go: uncomment integration tests for releases
+ - [`c6977ba`](https://github.com/deis/controller/commit/c6977ba77413d31f2f649242d04fb4be09f87a6d) tests_suite_test.go: seed the rng, use true random numbers for users, passwords and emails
+ - [`702d79d`](https://github.com/deis/controller/commit/702d79da2becc75668ac89810d9825fa918a5253) tests_suite_test.go: cancel accounts gracefully in the AfterSuite block
+ - [`0a5259e`](https://github.com/deis/controller/commit/0a5259e6d7c43517353cf022302a9c4262b12272) docs: hotfix oneliner
+ - [`c9a829d`](https://github.com/deis/controller/commit/c9a829d1071d17935150d1ffc324d92db54ff6ec) Makefile/travis: use standard vars
+ - [`28e38c5`](https://github.com/deis/controller/commit/28e38c5deda59f6f5e26189d8d8ab24d19e8aabe) scheduler: terminate all pods from previous release on deploy
+ - [`d91209d`](https://github.com/deis/controller/commit/d91209d58282addc1b1499c4c20cdede6948a5d8) makefile: Update makefile and deploy.sh to work like the other repos
+ - [`767431b`](https://github.com/deis/controller/commit/767431b29d1b9167154a6f92325a26950d27a347) bintray: add uploadPattern to bintray json
+ - [`44663a7`](https://github.com/deis/controller/commit/44663a72e0e7f1bd7dc9e10791ea538d9b628b92) travis: deploy client on every push to master
+ - [`4214e04`](https://github.com/deis/controller/commit/4214e04225b848dbd8e895edf72bcc71c95fd9e3) k8s: pull image from private registry and inspect image
+ - [`efd4d1d`](https://github.com/deis/controller/commit/efd4d1dfc730f6295a5ee1bb9e9de3228e15c687) _tests: add admin user check tests
+ - [`5ca102d`](https://github.com/deis/controller/commit/5ca102d1adb69561f6305d9c40d84032b0f5228c) api: delete new_release only if it exists
+ - [`8a637c6`](https://github.com/deis/controller/commit/8a637c62c4e70d7f5f84617c016aad30433564bc) _tests: help setup testing environment
+ - [`872a250`](https://github.com/deis/controller/commit/872a250b4154f473d5a91d338eceb6ecd6441cd1) _tests: correct parameters for account cancel
+ - [`3a859c9`](https://github.com/deis/controller/commit/3a859c99d36add7e1ef4bf96e8e1855f5d588cb8) tests: exclude /usr/local/lib from converge report
+ - [`698e2ee`](https://github.com/deis/controller/commit/698e2ee46172c8dbe950509676f25a1c41e89420) tests: make tests show CRITICAL errors
+ - [`bd447b8`](https://github.com/deis/controller/commit/bd447b89b5d08102d4a35251062c0fa555aac6e8) k8s.py: access API server by IP address
+ - [`3498099`](https://github.com/deis/controller/commit/34980992c27497735b9155ce7ff8786c048e1f41) router: fix router common prefix app publishing
+ - [`27eab71`](https://github.com/deis/controller/commit/27eab713f9dd1c2a4f3bc5b8152b43df7bec66b5) contrib: Add drop-in to make docker require flannel
+ - [`42d00af`](https://github.com/deis/controller/commit/42d00af18390745da4bebf6b3f70c11d40e09884) deisctl: don't panic when config key/value is malformed
+ - [`293d657`](https://github.com/deis/controller/commit/293d6572d2d0da73595bd7e178e438e83115c2e6) registry: fix create_bucket s3 compatability
+ - [`7410fb7`](https://github.com/deis/controller/commit/7410fb74c7fe5c85a9df1765d5b18ea836e68f8d) buidler: Fix problem with missed git repos after builder restart
+ - [`b07db69`](https://github.com/deis/controller/commit/b07db69e9b3ad197d869fec4cb0b5a7051a0ef16) user-data: always start flannel on boot
+ - [`d9ef023`](https://github.com/deis/controller/commit/d9ef0234f4cbab8f806f7970d71d883da1261e52) contrib: re-introduce data dir mapping for etcd
+ - [`070d081`](https://github.com/deis/controller/commit/070d081838e262256b7987fd2e9e6c44aff48dd1) create_bucket: check for existence of None
+
+#### Documentation
+
+ - [`696ca26`](https://github.com/deis/controller/commit/696ca26047ba651db1f9952cb550c656726d123e) quickstart: document how to configure deis client
+ - [`4404e08`](https://github.com/deis/controller/commit/4404e08b7c9debac38191f93d138217ed38b8d9a) README: update client dev build instructions
+ - [`e7a7fd6`](https://github.com/deis/controller/commit/e7a7fd6381dd826532fb47701a08bc054a5532af) install: remove duplicate `describe pod` text
+ - [`e5aa933`](https://github.com/deis/controller/commit/e5aa933433609c838283194fc66575678a375d04) quickstart: remove untested providers
+ - [`e31dc71`](https://github.com/deis/controller/commit/e31dc71f77910e2147851c09a19fecb931003cea) readme: note that travis only builds linux clients
+ - [`6d2a53d`](https://github.com/deis/controller/commit/6d2a53d602229638524a73d0acf8255ffc3b0442) installing-deis: add domain configuration
+ - [`e4a3134`](https://github.com/deis/controller/commit/e4a313429f552af031d0ba80ae8d789a1ab2d748) system-requirements: k8s only requires 10.0.0.0 address space
+ - [`c2a3de7`](https://github.com/deis/controller/commit/c2a3de7585f2b299dc5b66f6eac381c0cede5caa) readme: update client installation docs
+ - [`6d8b69b`](https://github.com/deis/controller/commit/6d8b69b372d858de7410522e18fe557a2dc9e146) installing-deis: add helm target usage
+ - [`4803940`](https://github.com/deis/controller/commit/4803940ef84851963c4936fe8956bd0485ec90db) using-deis: add admonition to install deis cli
+ - [`a19caaf`](https://github.com/deis/controller/commit/a19caaf61ad7e3f718570b93f9fe11aa0665fa2f) managing_deis: change swift3 link.
+ - [`82732b4`](https://github.com/deis/controller/commit/82732b486f4531242b41b44493c7f69da3aa2425) hacking: add docs to show how to use the docker-machine env
+
+#### Maintenance
+
+ - [`4c3e830`](https://github.com/deis/controller/commit/4c3e8309baffa224eb59d461793c0c1b6e27d0b2) release: set version and lock to deis registry
+ - [`3488ec3`](https://github.com/deis/controller/commit/3488ec3113d0c2b87eec5f741931a2b2e9fbbf82) (all): remove settings for private SSH key, no longer used
+ - [`70f6529`](https://github.com/deis/controller/commit/70f6529643f5178c0186f2d595b4660b8e7bbd68) README: add pointer to docs
+ - [`74b3c7a`](https://github.com/deis/controller/commit/74b3c7a4c7a1fedd16811c7b9fb04a247506720e) version: bump version to 2.0.0-dev
+ - [`0f96abe`](https://github.com/deis/controller/commit/0f96abea0a7d28257f8c87e89eb6453fec21fa79) contrib/coreos: remove debug-etcd service
+ - [`e1e3927`](https://github.com/deis/controller/commit/e1e39274cbed8e5fc04dfa5b6a42dc74ae1b61f7) MAINTAINERS: don't enumerate maintainers
+ - [`3eb277a`](https://github.com/deis/controller/commit/3eb277a4f90c2bd2733764e49b9ce70e7c3567e9) (all): bump CoreOS to 766.5.0
+
 ### v1.12.1 -> v1.12.2
 
 #### Fixes

@@ -394,7 +394,7 @@ class KubeHTTPClient(object):
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise RuntimeError('{} (scheduler::deploy): {}'.format(name, e))
+            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
 
         # New release is live and kicking. Clean up old release
         if old_rc:
@@ -438,7 +438,7 @@ class KubeHTTPClient(object):
         except Exception as e:
             # Fix service to old port and app type
             self._update_service(namespace, namespace, data=old_service)
-            raise RuntimeError('{} (scheduler::deploy::service_update): {}'.format(name, e))
+            raise KubeException('{} (scheduler::deploy::service_update): {}'.format(name, e))
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
@@ -451,7 +451,7 @@ class KubeHTTPClient(object):
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
                 logger.debug("Creating RC failed because of: {}".format(str(e)))
-                raise RuntimeError('{} (RC): {}'.format(name, e))
+                raise KubeException('{} (RC): {}'.format(name, e))
 
         try:
             self._scale_rc(namespace, name, replicas)
@@ -459,7 +459,7 @@ class KubeHTTPClient(object):
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
-            raise RuntimeError('{} (Scale): {}'.format(name, e))
+            raise KubeException('{} (Scale): {}'.format(name, e))
 
     def create(self, namespace, **kwargs):
         """Create a basic structure for an application in k8s"""

@@ -18,6 +18,7 @@ from rest_framework.authtoken.models import Token
 
 from api import authentication, models, permissions, serializers, viewsets
 from api.models import AlreadyExists
+from scheduler import KubeException
 
 import requests
 import logging
@@ -152,7 +153,7 @@ class BaseDeisViewSet(viewsets.OwnerViewSet):
         try:
             return super(BaseDeisViewSet, self).create(request, *args, **kwargs)
         # If the scheduler oopsie'd
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -230,7 +231,7 @@ class AppViewSet(BaseDeisViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         except (EnvironmentError, ValidationError) as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -260,7 +261,7 @@ class AppViewSet(BaseDeisViewSet):
             rc, output = app.run(self.request.user, request.data['command'])
         except EnvironmentError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({'rc': rc, 'output': str(output)})
 
@@ -322,7 +323,7 @@ class PodViewSet(AppResourceViewSet):
             # fake out pagination for now
             pagination = {'results': data, 'count': len(data)}
             return Response(pagination, status=status.HTTP_200_OK)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
     def restart(self, *args, **kwargs):
@@ -335,7 +336,7 @@ class PodViewSet(AppResourceViewSet):
             # pagination = {'results': data, 'count': len(data)}
             pagination = data
             return Response(pagination, status=status.HTTP_200_OK)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
@@ -368,7 +369,7 @@ class CertificateViewSet(BaseDeisViewSet):
             raise
         except AlreadyExists as e:
             return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_201_CREATED)
@@ -378,7 +379,7 @@ class CertificateViewSet(BaseDeisViewSet):
             self.get_object().detach(*args, **kwargs)
         except Http404:
             raise
-        except Exception as e:
+        except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -417,7 +418,7 @@ class ReleaseViewSet(AppResourceViewSet):
             return Response(response, status=status.HTTP_201_CREATED)
         except EnvironmentError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RuntimeError:
+        except Exception:
             if 'new_release' in locals():
                 new_release.delete()
             raise

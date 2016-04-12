@@ -213,7 +213,7 @@ class App(UuidAuditedModel):
             while True:
                 # timed out
                 if elapsed >= timeout:
-                    raise RuntimeError('timeout - 5 minutes have passed and pods are not up')
+                    raise KubeException('timeout - 5 minutes have passed and pods are not up')
 
                 # restarting a single pod behaves differently, fetch the *newest* pod
                 # and hope it is the right one. Comes back sorted

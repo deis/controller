@@ -153,7 +153,7 @@ class Release(UuidAuditedModel):
         try:
             labels = {
                 'app': self.app.id,
-                'version': self.version
+                'version': 'v{}'.format(self.version)
             }
             controllers = self._scheduler.get_rcs(self.app.id, labels=labels)
             for controller in controllers.json()['items']:

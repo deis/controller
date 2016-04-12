@@ -9,8 +9,8 @@ class Command(BaseCommand):
     to k8s.
     """
     def handle(self, *args, **options):
-        """Publishes Deis platform state from the database to etcd."""
-        print("Publishing DB state to k8s...")
+        """Publishes Deis platform state from the database to kubernetes."""
+        print("Publishing DB state to kubernetes...")
         for model in (Key, App, Domain, Certificate, Config):
             for obj in model.objects.all():
                 obj.save()
@@ -21,4 +21,10 @@ class Command(BaseCommand):
                 domain = get_object_or_404(Domain, domain=domain)
                 cert.attach_in_kubernetes(domain)
 
-        print("Done Publishing DB state to k8s.")
+        # deploy applications
+        print("Deploying available applications")
+        for application in App.objects.all():
+            rel = application.release_set.latest()
+            application.deploy(rel)
+
+        print("Done Publishing DB state to kubernetes.")

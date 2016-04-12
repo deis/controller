@@ -304,7 +304,7 @@ class ConfigViewSet(ReleasableViewSet):
         try:
             # It's possible to set config values before a build
             if self.release.build is not None:
-                config.app.deploy(self.request.user, self.release)
+                config.app.deploy(self.release)
         except Exception:
             self.release.delete()
             raise

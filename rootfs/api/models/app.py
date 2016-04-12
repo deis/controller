@@ -329,7 +329,7 @@ class App(UuidAuditedModel):
                 log_event(self, err, logging.ERROR)
                 raise
 
-    def deploy(self, user, release):
+    def deploy(self, release):
         """Deploy a new release to this application"""
         if release.build is None:
             raise EnvironmentError('No build associated with this release')

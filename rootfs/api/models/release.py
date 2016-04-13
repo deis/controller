@@ -155,7 +155,7 @@ class Release(UuidAuditedModel):
                 'app': self.app.id,
                 'version': 'v{}'.format(self.version)
             }
-            controllers = self._scheduler.get_rcs(self.app.id, labels=labels)
+            controllers = self._scheduler._get_rcs(self.app.id, labels=labels)
             for controller in controllers.json()['items']:
                 self._scheduler._delete_rc(self.app.id, controller['metadata']['name'])
         except KubeHTTPException as e:

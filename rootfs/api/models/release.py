@@ -151,13 +151,7 @@ class Release(UuidAuditedModel):
     def delete(self, *args, **kwargs):
         """Delete release DB record and any RCs from the affect release"""
         try:
-            labels = {
-                'app': self.app.id,
-                'version': 'v{}'.format(self.version)
-            }
-            controllers = self._scheduler._get_rcs(self.app.id, labels=labels)
-            for controller in controllers.json()['items']:
-                self._scheduler._delete_rc(self.app.id, controller['metadata']['name'])
+            self._delete_release_in_scheduler(self.app.id, self.version)
         except KubeHTTPException as e:
             # 404 means they were already cleaned up
             if e.status_code is not 404:
@@ -167,6 +161,68 @@ class Release(UuidAuditedModel):
                 logger.warning(message + ' - ' + str(e))
         finally:
             super(Release, self).delete(*args, **kwargs)
+
+    def cleanup_old(self):
+        """Cleanup all but the latest release from Kubernetes"""
+        latest_version = 'v{}'.format(self.version)
+        log_event(self.app, 'Cleaning up RCS for releases older than {} (latest)'.format(latest_version))  # noqa
+
+        # Cleanup controllers
+        controller_removal = []
+        controllers = self._scheduler._get_rcs(self.app.id).json()
+        for controller in controllers['items']:
+            current_version = controller['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            # aggregate versions together to removal all at once
+            if current_version not in controller_removal:
+                controller_removal.append(current_version)
+
+        if controller_removal:
+            log_event(self.app, 'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)))  # noqa
+
+        for version in controller_removal:
+            self._delete_release_in_scheduler(self.app.id, version)
+
+        # find stray env secrets to remove that may have been missed
+        log_event(self.app, 'Cleaning up orphaned environment var secrets')
+        labels = {
+            'app': self.app.id,
+            'type': 'env'
+        }
+        secrets = self._scheduler._get_secrets(self.app.id, labels=labels).json()
+        for secret in secrets['items']:
+            current_version = secret['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            self._scheduler._delete_secret(self.app.id, secret['metadata']['name'])
+
+    def _delete_release_in_scheduler(self, namespace, version):
+        """
+        Deletes a specific release in k8s
+
+        Scale RCs to 0 then delete RCs and the version specific
+        secret that container the env var
+        """
+        labels = {
+            'app': namespace,
+            'version': 'v{}'.format(version)
+        }
+        controllers = self._scheduler._get_rcs(namespace, labels=labels)
+        for controller in controllers.json()['items']:
+            self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0)
+            self._scheduler._delete_rc(namespace, controller['metadata']['name'])
+
+        # remove secret that contains env vars for the release
+        try:
+            secret_name = "{}-{}-env".format(namespace, version)
+            self._scheduler._delete_secret(namespace, secret_name)
+        except KubeHTTPException:
+            pass
 
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:

@@ -2,7 +2,7 @@
 #
 Django==1.9.5
 django-cors-headers==1.1.0
-django-guardian==1.4.1
+django-guardian==1.4.4
 djangorestframework==3.3.3
 docker-py==1.8.0
 gunicorn==19.4.5

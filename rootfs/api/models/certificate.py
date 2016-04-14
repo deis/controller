@@ -156,11 +156,6 @@ class Certificate(AuditedModel):
         return super(Certificate, self).delete(*args, **kwargs)
 
     def attach(self, *args, **kwargs):
-        data = {
-            'cert': self.certificate,
-            'key': self.key
-        }
-
         # add the certificate to the domain
         domain = get_object_or_404(Domain, domain=kwargs['domain'])
         if domain.certificate is not None:
@@ -169,14 +164,30 @@ class Certificate(AuditedModel):
         domain.certificate = self
         domain.save()
 
-        name = '%s-cert' % self.name
-        app = domain.app
-        # only create if it exists
+        # create in kubernetes
+        self.attach_in_kubernetes(domain)
+
+    def attach_in_kubernetes(self, domain):
+        """Creates the certificate as a kubernetes secret"""
+        # only create if it exists - We raise an exception when a secret doesn't exist
         try:
-            # We raise an exception when a secret doesn't exist
-            self._scheduler._get_secret(app, name)
+            name = '%s-cert' % self.name
+            app = domain.app
+            data = {
+                'tls.crt': self.certificate,
+                'tls.key': self.key
+            }
+
+            secret = self._scheduler._get_secret(app, name).json()['data']
         except KubeHTTPException:
             self._scheduler._create_secret(app, name, data)
+        else:
+            # update cert secret to the TLS Ingress format if required
+            if secret != data:
+                try:
+                    self._scheduler._update_secret(app, name, data)
+                except KubeHTTPException:
+                    raise
 
         # get config for the service
         config = self._load_service_config(app, 'router')

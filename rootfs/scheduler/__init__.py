@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import os
@@ -1057,8 +1056,7 @@ class KubeHTTPClient(object):
             secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
 
         # tell python-requests it actually hasn't consumed the data
-        response._content_consumed = False
-        response.raw = io.StringIO(json.dumps(secrets))
+        response._content = bytes(json.dumps(secrets), 'UTF-8')
 
         return response
 
@@ -1079,7 +1077,7 @@ class KubeHTTPClient(object):
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode()
+            item = base64.b64encode(value).decode(encoding='UTF-8')
             template["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets", namespace)
@@ -1098,7 +1096,7 @@ class KubeHTTPClient(object):
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode()
+            item = base64.b64encode(value).decode(encoding='UTF-8')
             template["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)

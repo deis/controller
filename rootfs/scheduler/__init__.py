@@ -471,14 +471,6 @@ class KubeHTTPClient(object):
             except KubeException:
                 self._create_namespace(namespace)
 
-            # only buildpack apps need acces to object storage
-            if kwargs.get('build_type') == "buildpack":
-                try:
-                    self._get_secret(namespace, 'objectstorage-keyfile')
-                except KubeException:
-                    secret = self._get_secret('deis', 'objectstorage-keyfile').json()
-                    self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
-
             try:
                 self._get_service(namespace, namespace)
             except KubeException:
@@ -917,6 +909,13 @@ class KubeHTTPClient(object):
 
         # Check if it is a slug builder image.
         if kwargs.get('build_type') == "buildpack":
+            # only buildpack apps need access to object storage
+            try:
+                self._get_secret(namespace, 'objectstorage-keyfile')
+            except KubeException:
+                secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+                self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+
             l["image"] = image
             l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE

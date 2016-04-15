@@ -142,7 +142,7 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # standard datetime format used for logging, model timestamps, etc.
-DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S%Z'
+DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 REST_FRAMEWORK = {
     'DATETIME_FORMAT': DEIS_DATETIME_FORMAT,

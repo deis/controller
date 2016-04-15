@@ -47,12 +47,12 @@ class CertificateUseCase5Test(APITestCase):
                 self.certificates[domain]['cert'] = f.read()
 
         # add expires, common_name and fingerprints
-        self.certificates['*.foo.com']['expires'] = '2017-01-21T21:56:15UTC'
+        self.certificates['*.foo.com']['expires'] = '2017-01-21T21:56:15Z'
         self.certificates['*.foo.com']['fingerprint'] = '8F:8E:5F:F6:7A:78:07:5B:75:3E:10:D5:91:AE:30:4A:48:F4:40:39:90:12:88:B3:41:C6:68:7F:62:F5:CD:EB'  # noqa
         self.certificates['*.foo.com']['common_name'] = '*.foo.com'
         self.certificates['*.foo.com']['san'] = ['foo.com']
 
-        self.certificates['bar.com']['expires'] = '2017-01-14T23:57:57UTC'
+        self.certificates['bar.com']['expires'] = '2017-01-14T23:57:57Z'
         self.certificates['bar.com']['fingerprint'] = '7A:CA:B8:50:FF:8D:EB:03:3D:AC:AD:13:4F:EE:03:D5:5D:EB:5E:37:51:8C:E0:98:F8:1B:36:2B:20:83:0D:C0'  # noqa
         self.certificates['bar.com']['common_name'] = 'bar.com'
         self.certificates['bar.com']['san'] = []

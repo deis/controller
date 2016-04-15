@@ -582,9 +582,28 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
+                state = self._scheduler.resolve_state(p).name
+
+                # follows kubelete convention - these are hidden unless show-all is set
+                if state in ['down', 'crashed']:
+                    continue
+
+                # hide pods that are past their graceful termination
+                # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+                # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
+                if 'deletionTimestamp' in p['metadata']:
+                    deletion = datetime.strptime(
+                        p['metadata']['deletionTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    # past the graceful deletion period
+                    if deletion < datetime.utcnow():
+                        continue
+
                 item = Pod()
                 item['name'] = p['metadata']['name']
-                item['state'] = self._scheduler.resolve_state(p).name
+                item['state'] = state
                 item['release'] = p['metadata']['labels']['version']
                 item['type'] = p['metadata']['labels']['type']
                 if 'startTime' in p['status']:

@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import logging
 import os
@@ -63,13 +64,14 @@ POD_BTEMPLATE = """\
       }
     ],
     "volumes":[
-    {
+      {
         "name":"objectstorage-keyfile",
         "secret":{
         "secretName":"objectstorage-keyfile"
         }
-    }
+      }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -90,6 +92,7 @@ POD_TEMPLATE = """\
         "env": []
       }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -126,6 +129,7 @@ RCD_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
@@ -181,6 +185,7 @@ RCB_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
@@ -217,11 +222,11 @@ RCB_TEMPLATE = """\
             }
             ],
             "volumeMounts":[
-            {
+              {
                 "name":"objectstorage-keyfile",
                 "mountPath":"/var/run/secrets/deis/objectstore/creds",
                 "readOnly":true
-            }
+              }
             ]
           }
         ],
@@ -508,7 +513,8 @@ class KubeHTTPClient(object):
             'version': self.apiversion,
             'image': imgurl,
             'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
-            'storagetype': os.getenv("APP_STORAGE")
+            'storagetype': os.getenv("APP_STORAGE"),
+            'terminationGracePeriodSeconds': settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
         if entrypoint == '/runner/init':
@@ -796,12 +802,32 @@ class KubeHTTPClient(object):
         return response
 
     def _wait_until_pods_terminate(self, namespace, labels, current, desired):
-        delta = current - desired
+        """Wait until all the desired pods are terminated"""
+        # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_podspec
+        # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+        # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
 
-        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(delta, namespace))  # noqa
-        for waited in range(120):
+        timeout = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
+        delta = current - desired
+        logger.debug("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
+        for waited in range(timeout):
             pods = self._get_pods(namespace, labels=labels).json()
             count = len(pods['items'])
+
+            # see if any pods are past their terminationGracePeriodsSeconds (as in stuck)
+            # seems to be a problem in k8s around that:
+            # https://github.com/kubernetes/kubernetes/search?q=terminating&type=Issues
+            # these will be eventually GC'ed by k8s, ignoring them for now
+            for pod in pods['items']:
+                if 'deletionTimestamp' in pod['metadata']:
+                    deletion = datetime.strptime(
+                        pod['metadata']['deletionTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    # past the graceful deletion period
+                    if deletion < datetime.utcnow():
+                        count -= 1
 
             # stop when all pods are terminated as expected
             if count == desired:
@@ -909,6 +935,7 @@ class KubeHTTPClient(object):
             "storagetype": storageType,
             "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
             "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
+            "terminationGracePeriodSeconds": settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
         # Check if it is a slug builder image.
@@ -1313,9 +1340,16 @@ class KubeHTTPClient(object):
                 if not container['ready']:
                     if 'running' in container['state'].keys():
                         return 'Starting'
-                    elif 'terminated' in container['state'].keys():
+                    elif (
+                        'terminated' in container['state'].keys() or
+                        'deletionTimestamp' in pod['metadata']
+                    ):
                         return 'Terminating'
                 else:
+                    # See if k8s is in Terminating state
+                    if 'deletionTimestamp' in pod['metadata']:
+                        return 'Terminating'
+
                     return 'Running'
 
         # Seems like the most sensible default

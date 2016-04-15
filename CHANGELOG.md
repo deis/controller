@@ -1,3 +1,68 @@
+### v2.0.0-beta1 -> v2.0.0-beta2
+
+#### Features
+
+ - [`304e641`](https://github.com/deis/controller/commit/304e6415247eadc2894e55bb25da342c0d0387e9) k8s: match cert data structure to the TLS one for Ingress
+ - [`70a4c93`](https://github.com/deis/controller/commit/70a4c93004980035b65d258cee374930e48be76d) database: persist DB connection for 10 minutes
+ - [`ee51b17`](https://github.com/deis/controller/commit/ee51b17fcf833fac161b7559bb3e86788ce667d3) github: add pull request template
+ - [`2d6e074`](https://github.com/deis/controller/commit/2d6e0745d84e8abadcef6741a015a0150a0f9a4f) _scripts: update CHANGELOG.md and generator script
+ - [`b8c2d90`](https://github.com/deis/controller/commit/b8c2d9042245d4a4b6bf36b12ed9616967be2672) release: re-use image source if Build is called with an image that is already in the deis registry
+ - [`8c364ab`](https://github.com/deis/controller/commit/8c364ab8edef75f662bf542cc728e076f76a4d79) k8s: base64 decode secrets on the fly and insert into response
+ - [`a3ddea7`](https://github.com/deis/controller/commit/a3ddea74c2eda008f2143723c15476f75ecc22bf) health checks: implement new kubernetes 1.2 health check features
+ - [`0702285`](https://github.com/deis/controller/commit/0702285f803f38574fc6ff9bfb75c8b5fd2df045) config: setting one healthcheck value now results in all defaults for health to be saved
+ - [`f86f595`](https://github.com/deis/controller/commit/f86f5955bde16614e886cd6047412b634999005d) scheduler: store env vars as secrets in k8s and map them in the RC
+ - [`6dada11`](https://github.com/deis/controller/commit/6dada11fc11bbb27c8123929aa15e856328c89d2) scheduler: make the image fetching policy for slugs and docker images configurable via ENV vars
+ - [`4cf1761`](https://github.com/deis/controller/commit/4cf1761836e950c712debab98d8688d55f27422c) settings: use k8s 1.2 secrets as env vars to configure production settings
+ - [`00900e3`](https://github.com/deis/controller/commit/00900e31c715ba2d89eee25474543dac726f0850) registry: add the ability to specify a custom timeout for docker client
+ - [`125d499`](https://github.com/deis/controller/commit/125d499ec164b8d1b54c3aadc9c837b3fd540dd4) slugrunner: pass storage parameters to slugrunner
+ - [`0bc8ae7`](https://github.com/deis/controller/commit/0bc8ae7391be192f88452fa89fc58e55f06ed210) apps: validate routeability through deis-router upon application creation
+ - [`4cb7dae`](https://github.com/deis/controller/commit/4cb7daea939808840820af34f2c0577d263bfa3f) scheduler: send the Deis Controller and version as the User-Agent to k8s api requests
+
+#### Fixes
+
+ - [`72f97bc`](https://github.com/deis/controller/commit/72f97bc74c892df9ec8f807d9360782776b2f7ad) secrets: supply python-requests with the changed response differnetly in get_secret
+ - [`471ec57`](https://github.com/deis/controller/commit/471ec575b9ce480f78cc2e9d96ca9008cea0c936) scheduler: copy object-storage creds during RC creation instead …
+ - [`eb44d0f`](https://github.com/deis/controller/commit/eb44d0f3fc485b61c0b73a0daf771c41edeb61ea) release: fix function call to scheduler, missing _
+ - [`28a13cb`](https://github.com/deis/controller/commit/28a13cb8f59749228dcce87d1949817d1484038e) release: versions are stored with v appended in the RC version
+ - [`e3450e4`](https://github.com/deis/controller/commit/e3450e4eb09bcf8fa40c6c310763347a7d9f27db) release: attempt to delete stray RCs when Release DB model does a delete
+ - [`121cc86`](https://github.com/deis/controller/commit/121cc868ad6121bfb5d2e823fd39dd3c486d1b64) views: use Exception instead of RuntimeError in view around rollbacks
+ - [`145ef31`](https://github.com/deis/controller/commit/145ef310b6f3a81dedaf8fc810f0bb80f2f81dda) docker: bubble up docker errors from the internal docker client
+ - [`60e500a`](https://github.com/deis/controller/commit/60e500ada61b221e0185f47466b9910ad4369190) deploy: use the passed in scale of a proc type for deploy
+ - [`8ce2036`](https://github.com/deis/controller/commit/8ce20360b8ee979730c0d671c7c430e2b0208cc5) k8s: only buildpack apps need acces to object storage
+ - [`b0ec07e`](https://github.com/deis/controller/commit/b0ec07e142f993045d01bdb2e0f7d0e3be54714f) deploy: catch Exception instead of RuntimeError
+ - [`eb4fde6`](https://github.com/deis/controller/commit/eb4fde6dfbf4515f5b412d56ffe827dc7babb04f) app: include timeout time for application health verification warning message
+ - [`3fe88f8`](https://github.com/deis/controller/commit/3fe88f8495bf5a17a66aff39e2f5e68d7a1acac1) scheduler: deis run could never reach the failed state
+ - [`aea5fb3`](https://github.com/deis/controller/commit/aea5fb39b7a04039bd0aaf30528dbf22b3abb2ee) scheduler: only update port on routable services
+ - [`559aff3`](https://github.com/deis/controller/commit/559aff3c570347ed670cbf31f2e806ab848a15e9) scheduler: deis run can fail under some conditions when DEBUG is set
+ - [`d12fdf4`](https://github.com/deis/controller/commit/d12fdf46b5975217c006fbbd45fd00b253c9260c) slugrunner: pass minio details to slugrunner during run command
+ - [`87b6c9b`](https://github.com/deis/controller/commit/87b6c9b69bdcf6225b908a3653c5fd3a9ee30b6e) app: check if app name already exists in kubernetes during app creation
+ - [`9b8d133`](https://github.com/deis/controller/commit/9b8d133af4c75a6ff6946dc0805cf55bd673c569) dev_requirements: add tblib for multiprocessing tracebacks
+ - [`8c26ca6`](https://github.com/deis/controller/commit/8c26ca6a61fd015334c89c1b542e31e0f5ff6bc8) scheduler: only update application service definition once
+ - [`577693d`](https://github.com/deis/controller/commit/577693d85f61f654a27ed788f3b9a49323fcf558) Makefile: fix commit-msg task
+ - [`4a525ac`](https://github.com/deis/controller/commit/4a525ac36be0a101e6d727c6cd98648e4c6baaf2) tags: improve the error message when the combination of tags match no node labels
+ - [`14b8527`](https://github.com/deis/controller/commit/14b85276da34c36ac9600f88b12cff44d145c28d) scheduler: apply healthcheck to the right application container instead of assuming
+ - [`e670499`](https://github.com/deis/controller/commit/e67049968cda113a5fc7f0e050aff07ec081b19d) boot: make wsgi aware of what settings file to use (production
+ - [`b23afda`](https://github.com/deis/controller/commit/b23afdaf9ebf7a2a57f5d7289163317e25a43036) README: update charts to use workflow-dev instead of deis-dev
+
+#### Maintenance
+
+ - [`557cdd0`](https://github.com/deis/controller/commit/557cdd08f2239bc99f8153e9a07dbf7625f4ac9d) requirements: update django-guardian to 1.4.4
+ - [`f1ee725`](https://github.com/deis/controller/commit/f1ee725031cbc037b52511add9c1f356b9fa4aeb) .travis.yml: update test PostgreSQL to 9.4
+ - [`130f099`](https://github.com/deis/controller/commit/130f0997859cc06198e64990c160e46491793e74) requirements: update pyOpenSSL to 16.0.0
+ - [`0768d66`](https://github.com/deis/controller/commit/0768d66028253499bfc1531b98308aba6f96e032) requirements: update docker-py to 1.8.0
+ - [`4393d48`](https://github.com/deis/controller/commit/4393d48e90447fa4a6116ec22fda0ead1ed1531f) tests: increase coverage of certs, test bad keys
+ - [`326f08c`](https://github.com/deis/controller/commit/326f08c00642f382a77cec9101da3c35eddd90bb) requirements: update Django to 1.9.5
+ - [`b1e21bb`](https://github.com/deis/controller/commit/b1e21bbc5eb3c89b63ba6acc794032ec107b8398) tests: ignore migrations in coverage information
+ - [`e9ee330`](https://github.com/deis/controller/commit/e9ee33044f071db1f75f488115530f09a6c40374) requirements: update DRF to 3.3.3
+ - [`bc3ba36`](https://github.com/deis/controller/commit/bc3ba36139d6a29c7d01d2ed3dd06cd5e97bcad9) requirements: update pytz to 2016.3
+ - [`a959ded`](https://github.com/deis/controller/commit/a959ded247ba141aea1151c987a750e30896593c) makefile: create immutable tag last so make deploy uses it
+ - [`5f2ee41`](https://github.com/deis/controller/commit/5f2ee41041d9b83a10ba468b5575d497ba4d8249) tests: remove various redundant python-request mocks
+ - [`807ee50`](https://github.com/deis/controller/commit/807ee501ba2bac242d315c12b47b4bc0e2aa0ac7) app::restart: improve test coverage on single pod restarts
+ - [`ca7dcc6`](https://github.com/deis/controller/commit/ca7dcc6661726cf55085612642aac432dedd069a) scheduler: remove dup code in resolve_state
+ - [`3ae505a`](https://github.com/deis/controller/commit/3ae505a39b56f0ed5f2048faba4b064f1b66df46) confd: remove confd in favor env vars that can configure things
+ - [`c3bc5a5`](https://github.com/deis/controller/commit/c3bc5a5202b79b8caa51b3e1267578f6dda7c409) pip: update pip to 8.1.1 and use the new bootscript
+ - [`e5f4732`](https://github.com/deis/controller/commit/e5f4732671818d0bb5f85863ed999fdff15d9e79) tests: a simple k8s healthchecks test
+
 ### 2.0.0-alpha -> v2.0.0-beta1
 
 #### Features

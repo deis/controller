@@ -141,7 +141,7 @@ class Release(UuidAuditedModel):
 
         try:
             if self.build is not None:
-                self.app.deploy(user, new_release)
+                self.app.deploy(new_release)
             return new_release
         except Exception:
             if 'new_release' in locals():

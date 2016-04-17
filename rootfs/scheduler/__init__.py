@@ -336,14 +336,21 @@ class KubeHTTPClient(object):
         session.verify = False
         self.session = session
 
-    def deploy(self, namespace, name, image, command, **kwargs):
+    def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
-        new_rc = self._create_rc(namespace, name, image, command, **kwargs)
+
+        # If an RC already exists then stop processing of the deploy
+        try:
+            self._get_rc(namespace, name)
+            logger.debug('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
+            return
+        except KubeHTTPException:
+            new_rc = self._create_rc(namespace, name, image, command, **kwargs)
 
         # Get the desired number to scale to
         if old_rc:

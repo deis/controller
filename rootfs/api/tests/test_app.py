@@ -108,21 +108,18 @@ class AppTest(APITestCase):
         # test logs - unanticipated status code from deis-logger
         mock_response.status_code = 400
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 500)
-        self.assertContains(response, "Error accessing logs for {}".format(app_id))
+        self.assertContains(response, "Error accessing logs for {}".format(app_id), status_code=500)
 
         # test logs - success accessing deis-logger
         mock_response.status_code = 200
         mock_response.content = FAKE_LOG_DATA
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, FAKE_LOG_DATA)
+        self.assertContains(response, FAKE_LOG_DATA, status_code=200)
 
         # test logs - HTTP request error while accessing deis-logger
         mock_get.side_effect = requests.exceptions.RequestException('Boom!')
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 500)
-        self.assertContains(response, "Error accessing logs for {}".format(app_id))
+        self.assertContains(response, "Error accessing logs for {}".format(app_id), status_code=500)
 
         # TODO: test run needs an initial build
 

@@ -275,7 +275,10 @@ SECRET_TEMPLATE = """\
   "apiVersion": "$version",
   "metadata": {
     "name": "$name",
-    "namespace": "$id"
+    "namespace": "$id",
+    "labels": {
+      "app": "$id"
+    }
   },
   "type": "Opaque",
   "data": {}
@@ -386,17 +389,11 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Remove new release
+            # Remove new release of the RC
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
-            # remove secret that contains env vars for the release
-            try:
-                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
-                self._delete_secret(namespace, secret_name)
-            except KubeHTTPException:
-                pass
 
-            # Bring back old release if available
+            # Bring back old release if available of the RC
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
@@ -404,13 +401,8 @@ class KubeHTTPClient(object):
 
         # New release is live and kicking. Clean up old release
         if old_rc:
+            self._scale_rc(namespace, old_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, old_rc["metadata"]["name"])
-            # remove secret that contains env vars for the release
-            secret_name = "{}-{}-env".format(namespace, old_rc['metadata']['labels']['version'])
-            try:
-                self._delete_secret(namespace, secret_name)
-            except KubeHTTPException:
-                pass
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
@@ -601,7 +593,11 @@ class KubeHTTPClient(object):
                 secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
                 self._get_secret(namespace, secret_name)
             except KubeHTTPException:
-                self._create_secret(namespace, secret_name, secrets_env)
+                labels = {
+                    'version': kwargs.get('version'),
+                    'type': 'env'
+                }
+                self._create_secret(namespace, secret_name, secrets_env, labels)
             else:
                 self._update_secret(namespace, secret_name, secrets_env)
 
@@ -1075,12 +1071,15 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_secret(self, namespace, name, data):
+    def _create_secret(self, namespace, name, data, labels={}):
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
             "id": namespace,
             "name": name
         }))
+
+        # add in any additional label info
+        template['metadata']['labels'].update(labels)
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')

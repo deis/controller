@@ -384,6 +384,9 @@ class App(UuidAuditedModel):
                 log_event(self, err, logging.ERROR)
                 raise
 
+        # cleanup old releases from kubernetes
+        release.cleanup_old()
+
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
         # if there is no SHA, assume a docker image is being promoted

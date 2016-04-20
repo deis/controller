@@ -13,7 +13,6 @@ except ImportError:
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 from registry.dockerclient import DockerClient
-from registry.dockerclient import strip_prefix
 
 
 @mock.patch('docker.Client')
@@ -73,9 +72,3 @@ class DockerClientTest(unittest.TestCase):
             self.client.tag('deis/controller:v1.11.1', 'deis/controller', 'v1.11.1')
         with self.assertRaises(PermissionDenied):
             self.client.tag('localhost:5000/deis/controller:v1.11.1', 'deis/controller', 'v1.11.1')
-
-    def test_strip_prefix(self, mock_client):
-        self.assertEqual(strip_prefix('quay.io/boris/riotsugar'), 'boris/riotsugar')
-        self.assertEqual(strip_prefix('127.0.0.1:5000/boris/galaxians'), 'boris/galaxians')
-        self.assertEqual(strip_prefix('boris/jacksonhead'), 'boris/jacksonhead')
-        self.assertEqual(strip_prefix(':8888/boris/pink'), 'boris/pink')

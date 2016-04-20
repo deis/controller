@@ -393,13 +393,18 @@ class App(UuidAuditedModel):
         if not release.build.sha:
             structure = {'cmd': 1}
 
-        # if a dockerfile exists without a procfile, assume docker workflow
-        elif release.build.dockerfile and not release.build.procfile:
+        elif release.build.procfile and 'web' in release.build.procfile:
+            structure = {'web': 1}
+
+        # if a dockerfile, assume docker workflow
+        elif release.build.dockerfile:
             structure = {'cmd': 1}
 
-        # if a procfile exists without a web entry, assume docker workflow
+        # if a procfile exists without a web entry and dockerfile, assume heroku workflow
+        # and return empty structure as only web type needs to be created by default and
+        # other types have to be manually scaled
         elif release.build.procfile and 'web' not in release.build.procfile:
-            structure = {'cmd': 1}
+            structure = {}
 
         # default to heroku workflow
         else:

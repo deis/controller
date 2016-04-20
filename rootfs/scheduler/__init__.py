@@ -935,9 +935,11 @@ class KubeHTTPClient(object):
 
         self._set_environment(container, namespace, **kwargs)
 
-        # add in healtchecks
+        # add in healthchecks
         if kwargs.get('healthcheck'):
             template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
+        elif kwargs.get('build_type') == "buildpack":
+            template = self._buildpack_readiness_probe(template)
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1042,6 +1044,53 @@ class KubeHTTPClient(object):
         for container in containers:
             if container['name'] == container_name:
                 container.update(healthcheck)
+
+        return controller
+
+    '''
+    Applies exec readiness probe to the slugrunner container.
+    http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+
+    /runner/init is the entry point of the slugrunner.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/Dockerfile#L20
+    Once it downloads the slug it starts running using `exec` which means the pid 1
+    will point to the slug/application command instead of entry point once the application has
+    started.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/runner/init#L90
+
+    This should be added only for the build pack apps when a custom liveness probe is not set to
+    make sure that the pod is ready only when the slug is downloaded and started running.
+    '''
+    def _buildpack_readiness_probe(self, controller, delay=30, timeout=5, period_seconds=5,
+                                   success_threshold=1, failure_threshold=1):
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'exec': {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "[[ '$(ps -p 1 -o args)' != *'bash /runner/init'* ]]"
+                    ]
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        namespace = controller['spec']['selector']['app']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(readinessprobe)
 
         return controller
 

@@ -10,6 +10,7 @@ from simpleflock import SimpleFlock
 
 import docker
 import docker.constants
+from docker.auth import auth
 from docker.errors import APIError
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class DockerClient(object):
         name, tag = docker.utils.parse_repository_tag(target)
         # strip any "http://host.domain:port" prefix from the target repository name,
         # since we always publish to the Deis registry
-        name = strip_prefix(name)
+        repo, name = auth.split_repo_name(name)
 
         # pull the source image from the registry
         # NOTE: this relies on an implementation detail of deis-builder, that
@@ -113,12 +114,6 @@ def stream_error(chunk, operation, repo, tag):
         message = chunk['error'].replace('Error: ', '')
 
     raise RegistryException(message)
-
-
-def strip_prefix(name):
-    """Strip the schema and host:port from a Docker repository name."""
-    paths = name.split('/')
-    return '/'.join(p for p in paths if p and '.' not in p and ':' not in p)
 
 
 def publish_release(source, target, deis_registry):

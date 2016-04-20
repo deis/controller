@@ -24,7 +24,14 @@ class Command(BaseCommand):
         # deploy applications
         print("Deploying available applications")
         for application in App.objects.all():
-            rel = application.release_set.latest()
-            application.deploy(rel)
+            try:
+                rel = application.release_set.latest()
+                application.deploy(rel)
+            except EnvironmentError as e:
+                if str(e) != 'No build associated with this release':
+                    raise
+                print('WARNING: {} has no build associated with '
+                      'its latest release. Skipping deployment...'.format(application))
+                pass
 
         print("Done Publishing DB state to kubernetes.")

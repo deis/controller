@@ -30,7 +30,36 @@ class DockerClient(object):
         self.client = docker.Client(version='auto', timeout=timeout)
         self.registry = settings.REGISTRY_HOST + ':' + str(settings.REGISTRY_PORT)
 
-    def publish_release(self, source, target, deis_registry):
+    def login(self, repository, creds=None):
+        """Log into a registry if auth is provided"""
+        if not creds:
+            return
+
+        # parse out the hostname since repo variable is hostname + path
+        registry, _ = auth.resolve_repository_name(repository)
+
+        registry_auth = {
+            'username': None,
+            'password': None,
+            'email': None,
+            'registry': registry
+        }
+        registry_auth.update(creds)
+
+        if not registry_auth['username'] or not registry_auth['password']:
+            msg = 'Registry auth requires a username and a password'
+            logger.error(msg)
+            raise PermissionDenied(msg)
+
+        logger.info('Logging into Registry {} with username {}'.format(repository, registry_auth['username']))  # noqa
+        response = self.client.login(**registry_auth)
+        success = response.get('Status') == 'Login Succeeded' or response.get('username') == registry_auth['username']  # noqa
+        if not success:
+            raise PermissionDenied('Could not log into {} with username {}'.format(repository, registry_auth['username']))  # noqa
+
+        logger.info('Successfully logged into {} with {}'.format(repository, registry_auth['username']))  # noqa
+
+    def publish_release(self, source, target, deis_registry=False, creds=None):
         """Update a source Docker image with environment config and publish it to deis-registry."""
         # get the source repository name and tag
         src_name, src_tag = docker.utils.parse_repository_tag(source)
@@ -49,7 +78,12 @@ class DockerClient(object):
             repo = src_name
 
         try:
-            self.pull(repo, src_tag)
+            # log into pull repo
+            if not deis_registry:
+                self.login(repo, creds)
+
+            # pull image from source repository
+            self.pull(repo, src_tag, deis_registry)
 
             # tag the image locally without the repository URL
             image = "{}:{}".format(src_name, src_tag)
@@ -60,20 +94,24 @@ class DockerClient(object):
         except APIError as e:
             raise RegistryException(str(e))
 
-    def pull(self, repo, tag):
+    def pull(self, repo, tag, insecure_registry=True):
         """Pull a Docker image into the local storage graph."""
         check_blacklist(repo)
         logger.info("Pulling Docker image {}:{}".format(repo, tag))
         with SimpleFlock(self.FLOCKFILE, timeout=1200):
-            stream = self.client.pull(repo, tag=tag, stream=True,
-                                      decode=True, insecure_registry=True)
+            stream = self.client.pull(
+                repo, tag=tag, stream=True, decode=True,
+                insecure_registry=insecure_registry
+            )
             log_output(stream, 'pull', repo, tag)
 
     def push(self, repo, tag):
         """Push a local Docker image to a registry."""
         logger.info("Pushing Docker image {}:{}".format(repo, tag))
-        stream = self.client.push(repo, tag=tag, stream=True, decode=True,
-                                  insecure_registry=True)
+        stream = self.client.push(
+            repo, tag=tag, stream=True, decode=True,
+            insecure_registry=True
+        )
         log_output(stream, 'push', repo, tag)
 
     def tag(self, image, repo, tag):
@@ -91,7 +129,7 @@ def check_blacklist(repo):
         'router', 'slugbuilder', 'slugrunner', 'workflow',
     ]
     if any("deis/{}".format(c) in repo for c in blacklisted):
-        raise PermissionDenied("Repository name {} is not allowed".format(repo))
+        raise PermissionDenied("Repository name {} is not allowed, as it is reserved by Deis".format(repo))  # noqa
 
 
 def log_output(stream, operation, repo, tag):
@@ -116,5 +154,5 @@ def stream_error(chunk, operation, repo, tag):
     raise RegistryException(message)
 
 
-def publish_release(source, target, deis_registry):
-    return DockerClient().publish_release(source, target, deis_registry)
+def publish_release(source, target, deis_registry, creds=None):
+    return DockerClient().publish_release(source, target, deis_registry, creds)

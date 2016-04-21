@@ -105,8 +105,17 @@ class Release(UuidAuditedModel):
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         if not self.build.dockerfile and not self.build.sha:
+            # gather custom login information for registry if needed
+            auth = None
+            if self.config.values.get('IMAGE_AUTH_USER', None):
+                auth = {
+                    'username': self.config.values.get('IMAGE_AUTH_USER', None),
+                    'password': self.config.values.get('IMAGE_AUTH_PASSWORD', None),
+                    'email': self.owner.email
+                }
+
             deis_registry = bool(self.build.sha)
-            publish_release(source_image, self.image, deis_registry)
+            publish_release(source_image, self.image, deis_registry, auth)
 
     def previous(self):
         """

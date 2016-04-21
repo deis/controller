@@ -142,7 +142,7 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # standard datetime format used for logging, model timestamps, etc.
-DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S%Z'
+DEIS_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 REST_FRAMEWORK = {
     'DATETIME_FORMAT': DEIS_DATETIME_FORMAT,
@@ -292,6 +292,8 @@ DATABASES = {
         'PASSWORD': os.environ.get('DEIS_DATABASE_PASSWORD', ''),
         'HOST': os.environ.get('DEIS_DATABASE_SERVICE_HOST', ''),
         'PORT': os.environ.get('DEIS_DATABASE_SERVICE_PORT', 5432),
+        # https://docs.djangoproject.com/en/1.9/ref/databases/#persistent-connections
+        'CONN_MAX_AGE': 600,
     }
 }
 

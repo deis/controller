@@ -43,10 +43,10 @@ class CertificateUseCase3Test(APITestCase):
                 self.certificates[domain]['cert'] = f.read()
 
         # add expires and fingerprints
-        self.certificates['foo.com']['expires'] = '2017-01-14T23:55:59UTC'
+        self.certificates['foo.com']['expires'] = '2017-01-14T23:55:59Z'
         self.certificates['foo.com']['fingerprint'] = 'AC:82:58:80:EA:C4:B9:75:C1:1C:52:48:40:28:15:1D:47:AC:ED:88:4B:D4:72:95:B2:C0:A0:DF:4A:A7:60:B6'  # noqa
 
-        self.certificates['bar.com']['expires'] = '2017-01-14T23:57:57UTC'
+        self.certificates['bar.com']['expires'] = '2017-01-14T23:57:57Z'
         self.certificates['bar.com']['fingerprint'] = '7A:CA:B8:50:FF:8D:EB:03:3D:AC:AD:13:4F:EE:03:D5:5D:EB:5E:37:51:8C:E0:98:F8:1B:36:2B:20:83:0D:C0'  # noqa
 
     def tearDown(self):

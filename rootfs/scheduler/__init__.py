@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import os
@@ -276,7 +275,10 @@ SECRET_TEMPLATE = """\
   "apiVersion": "$version",
   "metadata": {
     "name": "$name",
-    "namespace": "$id"
+    "namespace": "$id",
+    "labels": {
+      "app": "$id"
+    }
   },
   "type": "Opaque",
   "data": {}
@@ -337,14 +339,21 @@ class KubeHTTPClient(object):
         session.verify = False
         self.session = session
 
-    def deploy(self, namespace, name, image, command, **kwargs):
+    def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
-        new_rc = self._create_rc(namespace, name, image, command, **kwargs)
+
+        # If an RC already exists then stop processing of the deploy
+        try:
+            self._get_rc(namespace, name)
+            logger.debug('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
+            return
+        except KubeHTTPException:
+            new_rc = self._create_rc(namespace, name, image, command, **kwargs)
 
         # Get the desired number to scale to
         if old_rc:
@@ -380,17 +389,11 @@ class KubeHTTPClient(object):
                 new_rc["metadata"]["name"], desired)
             )
 
-            # Remove new release
+            # Remove new release of the RC
             self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, new_rc["metadata"]["name"])
-            # remove secret that contains env vars for the release
-            try:
-                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
-                self._delete_secret(namespace, secret_name)
-            except KubeHTTPException:
-                pass
 
-            # Bring back old release if available
+            # Bring back old release if available of the RC
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
@@ -398,13 +401,8 @@ class KubeHTTPClient(object):
 
         # New release is live and kicking. Clean up old release
         if old_rc:
+            self._scale_rc(namespace, old_rc["metadata"]["name"], 0)
             self._delete_rc(namespace, old_rc["metadata"]["name"])
-            # remove secret that contains env vars for the release
-            secret_name = "{}-{}-env".format(namespace, old_rc['metadata']['labels']['version'])
-            try:
-                self._delete_secret(namespace, secret_name)
-            except KubeHTTPException:
-                pass
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
@@ -470,14 +468,6 @@ class KubeHTTPClient(object):
                 self._get_namespace(namespace)
             except KubeException:
                 self._create_namespace(namespace)
-
-            # only buildpack apps need acces to object storage
-            if kwargs.get('build_type') == "buildpack":
-                try:
-                    self._get_secret(namespace, 'objectstorage-keyfile')
-                except KubeException:
-                    secret = self._get_secret('deis', 'objectstorage-keyfile').json()
-                    self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
 
             try:
                 self._get_service(namespace, namespace)
@@ -603,7 +593,11 @@ class KubeHTTPClient(object):
                 secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
                 self._get_secret(namespace, secret_name)
             except KubeHTTPException:
-                self._create_secret(namespace, secret_name, secrets_env)
+                labels = {
+                    'version': kwargs.get('version'),
+                    'type': 'env'
+                }
+                self._create_secret(namespace, secret_name, secrets_env, labels)
             else:
                 self._update_secret(namespace, secret_name, secrets_env)
 
@@ -768,27 +762,15 @@ class KubeHTTPClient(object):
     # REPLICATION CONTROLLER #
 
     def _get_old_rc(self, namespace, app_type):
-        url = self._api("/namespaces/{}/replicationcontrollers", namespace)
-        resp = self.session.get(url)
-        if unhealthy(resp.status_code):
-            error(resp, 'get ReplicationControllers in Namespace "{}"', namespace)
+        labels = {
+            'app': namespace,
+            'type': app_type
+        }
+        controllers = self._get_rcs(namespace, labels=labels).json()
+        if len(controllers['items']) == 0:
+            return False
 
-        exists = False
-        prev_rc = []
-        for rc in resp.json()['items']:
-            if (
-                'app' in rc['spec']['selector'] and
-                namespace == rc['metadata']['labels']['app'] and
-                'type' in rc['spec']['selector'] and
-                app_type == rc['spec']['selector']['type']
-            ):
-                exists = True
-                prev_rc = rc
-                break
-        if exists:
-            return prev_rc
-
-        return 0
+        return controllers['items'][0]
 
     def _get_rc_status(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
@@ -929,6 +911,13 @@ class KubeHTTPClient(object):
 
         # Check if it is a slug builder image.
         if kwargs.get('build_type') == "buildpack":
+            # only buildpack apps need access to object storage
+            try:
+                self._get_secret(namespace, 'objectstorage-keyfile')
+            except KubeException:
+                secret = self._get_secret('deis', 'objectstorage-keyfile').json()
+                self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+
             l["image"] = image
             l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
             l["slugimage"] = settings.SLUGRUNNER_IMAGE
@@ -946,9 +935,11 @@ class KubeHTTPClient(object):
 
         self._set_environment(container, namespace, **kwargs)
 
-        # add in healtchecks
+        # add in healthchecks
         if kwargs.get('healthcheck'):
             template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
+        elif kwargs.get('build_type') == "buildpack":
+            template = self._buildpack_readiness_probe(template)
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1056,6 +1047,53 @@ class KubeHTTPClient(object):
 
         return controller
 
+    '''
+    Applies exec readiness probe to the slugrunner container.
+    http://kubernetes.io/docs/user-guide/pod-states/#container-probes
+
+    /runner/init is the entry point of the slugrunner.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/Dockerfile#L20
+    Once it downloads the slug it starts running using `exec` which means the pid 1
+    will point to the slug/application command instead of entry point once the application has
+    started.
+    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/runner/init#L90
+
+    This should be added only for the build pack apps when a custom liveness probe is not set to
+    make sure that the pod is ready only when the slug is downloaded and started running.
+    '''
+    def _buildpack_readiness_probe(self, controller, delay=30, timeout=5, period_seconds=5,
+                                   success_threshold=1, failure_threshold=1):
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'exec': {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "[[ '$(ps -p 1 -o args)' != *'bash /runner/init'* ]]"
+                    ]
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        namespace = controller['spec']['selector']['app']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(readinessprobe)
+
+        return controller
+
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
     def _get_secret(self, namespace, name):
@@ -1070,8 +1108,7 @@ class KubeHTTPClient(object):
             secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
 
         # tell python-requests it actually hasn't consumed the data
-        response._content_consumed = False
-        response.raw = io.StringIO(json.dumps(secrets))
+        response._content = bytes(json.dumps(secrets), 'UTF-8')
 
         return response
 
@@ -1083,16 +1120,19 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_secret(self, namespace, name, data):
+    def _create_secret(self, namespace, name, data, labels={}):
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
             "id": namespace,
             "name": name
         }))
 
+        # add in any additional label info
+        template['metadata']['labels'].update(labels)
+
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode()
+            item = base64.b64encode(value).decode(encoding='UTF-8')
             template["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets", namespace)
@@ -1111,7 +1151,7 @@ class KubeHTTPClient(object):
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode()
+            item = base64.b64encode(value).decode(encoding='UTF-8')
             template["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)

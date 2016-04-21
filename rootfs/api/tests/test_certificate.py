@@ -95,7 +95,7 @@ class CertificateTest(APITestCase):
 
         expected = {
             'common_name': 'autotest.example.com',
-            'expires': '2016-03-05T17:14:27UTC',
+            'expires': '2016-03-05T17:14:27Z',
             'fingerprint': '37:24:D8:EB:DC:A4:2C:DA:88:55:C5:19:71:D3:9B:43:BA:AC:3A:CE:33:8E:07:52:1C:51:01:A0:97:43:C9:4D',  # noqa
             'san': [],
             'domains': [],

@@ -6,8 +6,8 @@ from rest_framework.serializers import ValidationError
 
 from registry import publish_release, RegistryException
 from api.utils import dict_diff
-
 from api.models import UuidAuditedModel, log_event
+from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class Release(UuidAuditedModel):
             source_image.startswith(settings.REGISTRY_HOST) or
             source_image.startswith(settings.REGISTRY_URL)
         ):
-            logger.debug('{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
+            log_event(self.app, '{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
             return
 
         # add tag if it was not provided
@@ -105,8 +105,17 @@ class Release(UuidAuditedModel):
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         if not self.build.dockerfile and not self.build.sha:
+            # gather custom login information for registry if needed
+            auth = None
+            if self.config.values.get('IMAGE_AUTH_USER', None):
+                auth = {
+                    'username': self.config.values.get('IMAGE_AUTH_USER', None),
+                    'password': self.config.values.get('IMAGE_AUTH_PASSWORD', None),
+                    'email': self.owner.email
+                }
+
             deis_registry = bool(self.build.sha)
-            publish_release(source_image, self.image, deis_registry)
+            publish_release(source_image, self.image, deis_registry, auth)
 
     def previous(self):
         """
@@ -141,12 +150,88 @@ class Release(UuidAuditedModel):
 
         try:
             if self.build is not None:
-                self.app.deploy(user, new_release)
+                self.app.deploy(new_release)
             return new_release
         except Exception:
             if 'new_release' in locals():
                 new_release.delete()
             raise
+
+    def delete(self, *args, **kwargs):
+        """Delete release DB record and any RCs from the affect release"""
+        try:
+            self._delete_release_in_scheduler(self.app.id, self.version)
+        except KubeHTTPException as e:
+            # 404 means they were already cleaned up
+            if e.status_code is not 404:
+                # Another problem came up
+                message = 'Could not to cleanup RCs for release {}'.format(self.version)
+                log_event(self.app, message)
+                logger.warning(message + ' - ' + str(e))
+        finally:
+            super(Release, self).delete(*args, **kwargs)
+
+    def cleanup_old(self):
+        """Cleanup all but the latest release from Kubernetes"""
+        latest_version = 'v{}'.format(self.version)
+        log_event(self.app, 'Cleaning up RCS for releases older than {} (latest)'.format(latest_version))  # noqa
+
+        # Cleanup controllers
+        controller_removal = []
+        controllers = self._scheduler._get_rcs(self.app.id).json()
+        for controller in controllers['items']:
+            current_version = controller['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            # aggregate versions together to removal all at once
+            if current_version not in controller_removal:
+                controller_removal.append(current_version)
+
+        if controller_removal:
+            log_event(self.app, 'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)))  # noqa
+
+        for version in controller_removal:
+            self._delete_release_in_scheduler(self.app.id, version)
+
+        # find stray env secrets to remove that may have been missed
+        log_event(self.app, 'Cleaning up orphaned environment var secrets')
+        labels = {
+            'app': self.app.id,
+            'type': 'env'
+        }
+        secrets = self._scheduler._get_secrets(self.app.id, labels=labels).json()
+        for secret in secrets['items']:
+            current_version = secret['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            self._scheduler._delete_secret(self.app.id, secret['metadata']['name'])
+
+    def _delete_release_in_scheduler(self, namespace, version):
+        """
+        Deletes a specific release in k8s
+
+        Scale RCs to 0 then delete RCs and the version specific
+        secret that container the env var
+        """
+        labels = {
+            'app': namespace,
+            'version': 'v{}'.format(version)
+        }
+        controllers = self._scheduler._get_rcs(namespace, labels=labels)
+        for controller in controllers.json()['items']:
+            self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0)
+            self._scheduler._delete_rc(namespace, controller['metadata']['name'])
+
+        # remove secret that contains env vars for the release
+        try:
+            secret_name = "{}-{}-env".format(namespace, version)
+            self._scheduler._delete_secret(namespace, secret_name)
+        except KubeHTTPException:
+            pass
 
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:

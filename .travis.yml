@@ -5,7 +5,6 @@ branches:
   only:
     - master
 services:
-  - docker
   - postgresql
 sudo: required
 addons:
@@ -21,18 +20,3 @@ script:
   - make test
 after_success:
   - pushd rootfs/ && codecov && popd
-deploy:
-  - provider: script
-    # ensure client/doc builds aren't removed
-    # see https://docs.travis-ci.com/user/deployment/#Uploading-Files
-    skip_cleanup: true
-    script: _scripts/deploy.sh
-    on:
-      branch: master
-notifications:
-  webhooks:
-    urls:
-      - secure: "FnxmxLYI0JNavYOma3ZZamaY8cTCjaMDPz5RoWu1NG9l3k3xTkkXpHT5qcnQHycyCtVb8rNIoVMzdtyrs3BlVTaWdrzP/J2sJoc8/1NvuOZCTS0D1EbjS7DGV3xENDdSdTylOUWeFzti8dD3ORZ/bbdCHkMiVi3MIxlAQANWq8k="
-    on_success: always
-    on_failure: never
-    on_start: never

@@ -158,6 +158,10 @@ class BaseDeisViewSet(viewsets.OwnerViewSet):
     def create(self, request, *args, **kwargs):
         try:
             return super(BaseDeisViewSet, self).create(request, *args, **kwargs)
+        except AlreadyExists as e:
+            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
+        except EnvironmentError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         # If the scheduler oopsie'd
         except KubeException as e:
             return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -197,14 +201,6 @@ class AppViewSet(BaseDeisViewSet):
 
     def get_queryset(self, *args, **kwargs):
         return self.model.objects.all(*args, **kwargs)
-
-    def create(self, request, **kwargs):
-        try:
-            return super(AppViewSet, self).create(request, **kwargs)
-        except AlreadyExists as e:
-            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
-        except EnvironmentError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def list(self, request, *args, **kwargs):
         """
@@ -298,19 +294,13 @@ class ConfigViewSet(ReleasableViewSet):
     model = models.Config
     serializer_class = serializers.ConfigSerializer
 
-    def create(self, request, **kwargs):
-        try:
-            return super(ConfigViewSet, self).create(request, **kwargs)
-        except EnvironmentError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
     def post_save(self, config):
         release = config.app.release_set.latest()
         self.release = release.new(self.request.user, config=config, build=release.build)
         try:
             # It's possible to set config values before a build
             if self.release.build is not None:
-                config.app.deploy(self.request.user, self.release)
+                config.app.deploy(self.release)
         except Exception:
             self.release.delete()
             raise

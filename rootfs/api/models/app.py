@@ -329,7 +329,7 @@ class App(UuidAuditedModel):
                 log_event(self, err, logging.ERROR)
                 raise
 
-    def deploy(self, user, release):
+    def deploy(self, release):
         """Deploy a new release to this application"""
         if release.build is None:
             raise EnvironmentError('No build associated with this release')
@@ -384,19 +384,27 @@ class App(UuidAuditedModel):
                 log_event(self, err, logging.ERROR)
                 raise
 
+        # cleanup old releases from kubernetes
+        release.cleanup_old()
+
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
         # if there is no SHA, assume a docker image is being promoted
         if not release.build.sha:
             structure = {'cmd': 1}
 
-        # if a dockerfile exists without a procfile, assume docker workflow
-        elif release.build.dockerfile and not release.build.procfile:
+        elif release.build.procfile and 'web' in release.build.procfile:
+            structure = {'web': 1}
+
+        # if a dockerfile, assume docker workflow
+        elif release.build.dockerfile:
             structure = {'cmd': 1}
 
-        # if a procfile exists without a web entry, assume docker workflow
+        # if a procfile exists without a web entry and dockerfile, assume heroku workflow
+        # and return empty structure as only web type needs to be created by default and
+        # other types have to be manually scaled
         elif release.build.procfile and 'web' not in release.build.procfile:
-            structure = {'cmd': 1}
+            structure = {}
 
         # default to heroku workflow
         else:

@@ -107,10 +107,10 @@ class Release(UuidAuditedModel):
         if not self.build.dockerfile and not self.build.sha:
             # gather custom login information for registry if needed
             auth = None
-            if self.config.values.get('IMAGE_AUTH_USER', None):
+            if self.config.registry.get('username', None):
                 auth = {
-                    'username': self.config.values.get('IMAGE_AUTH_USER', None),
-                    'password': self.config.values.get('IMAGE_AUTH_PASSWORD', None),
+                    'username': self.config.registry.get('username', None),
+                    'password': self.config.registry.get('password', None),
                     'email': self.owner.email
                 }
 
@@ -248,8 +248,10 @@ class Release(UuidAuditedModel):
                     self.summary += "{} deployed {}".format(self.build.owner, self.build.sha[:7])
                 else:
                     self.summary += "{} deployed {}".format(self.build.owner, self.build.image)
+
             # if the config data changed, log the dict diff
             if self.config != old_config:
+                # if env vars change, log the dict diff
                 dict1 = self.config.values
                 dict2 = old_config.values if old_config else {}
                 diff = dict_diff(dict1, dict2)
@@ -265,6 +267,7 @@ class Release(UuidAuditedModel):
                     if self.summary:
                         self.summary += ' and '
                     self.summary += "{} {}".format(self.config.owner, changes)
+
                 # if the limits changed (memory or cpu), log the dict diff
                 changes = []
                 old_mem = old_config.memory if old_config else {}
@@ -278,6 +281,7 @@ class Release(UuidAuditedModel):
                 if changes:
                     changes = 'changed limits for '+', '.join(changes)
                     self.summary += "{} {}".format(self.config.owner, changes)
+
                 # if the tags changed, log the dict diff
                 changes = []
                 old_tags = old_config.tags if old_config else {}
@@ -294,6 +298,24 @@ class Release(UuidAuditedModel):
                     if self.summary:
                         self.summary += ' and '
                     self.summary += "{} {}".format(self.config.owner, changes)
+
+                # if the registry information changed, log the dict diff
+                changes = []
+                old_registry = old_config.registry if old_config else {}
+                diff = dict_diff(self.config.registry, old_registry)
+                # try to be as succinct as possible
+                added = ', '.join(k for k in diff.get('added', {}))
+                added = 'added registry info ' + added if added else ''
+                changed = ', '.join(k for k in diff.get('changed', {}))
+                changed = 'changed registry info ' + changed if changed else ''
+                deleted = ', '.join(k for k in diff.get('deleted', {}))
+                deleted = 'deleted registry info ' + deleted if deleted else ''
+                changes = ', '.join(i for i in (added, changed, deleted) if i)
+                if changes:
+                    if self.summary:
+                        self.summary += ' and '
+                    self.summary += "{} {}".format(self.config.owner, changes)
+
             if not self.summary:
                 if self.version == 1:
                     self.summary = "{} created the initial release".format(self.owner)

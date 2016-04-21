@@ -126,14 +126,15 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags'])
+                                'cpu', 'tags', 'registry'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {},
-            'tags': {}
+            'tags': {},
+            'registry': {}
         }
         self.assertDictContainsSubset(expected, response.data)
 
@@ -148,14 +149,15 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags'])
+                                'cpu', 'tags', 'registry'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {'web': "1024"},
-            'tags': {}
+            'tags': {},
+            'registry': {}
         }
         self.assertDictContainsSubset(expected, response.data)
 
@@ -526,6 +528,76 @@ class ConfigTest(APITransactionTestCase):
         body = {'tags': json.dumps({'host.name.com/,not.valid': 'valid'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
+
+        # disallow put/patch/delete
+        response = self.client.put(url)
+        self.assertEqual(response.status_code, 405)
+        response = self.client.patch(url)
+        self.assertEqual(response.status_code, 405)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_registry(self, mock_requests):
+        """
+        Test that registry information can be set on an application
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        # check default
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('registry', response.data)
+        self.assertEqual(response.data['registry'], {})
+
+        # set some registry information
+        body = {'registry': json.dumps({'username': 'bob'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry1 = response.data
+
+        # check registry information again
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('registry', response.data)
+        registry = response.data['registry']
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # set an additional value
+        # set them upper case, internally it should translate to lower
+        body = {'registry': json.dumps({'PASSWORD': 's3cur3pw1'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry2 = response.data
+        self.assertNotEqual(registry1['uuid'], registry2['uuid'])
+        registry = response.data['registry']
+        self.assertIn('password', registry)
+        self.assertEqual(registry['password'], 's3cur3pw1')
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # read the registry information again
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        registry3 = response.data
+        self.assertEqual(registry2, registry3)
+        registry = response.data['registry']
+        self.assertIn('password', registry)
+        self.assertEqual(registry['password'], 's3cur3pw1')
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # unset a value
+        body = {'registry': json.dumps({'password': None})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry4 = response.data
+        self.assertNotEqual(registry3['uuid'], registry4['uuid'])
+        self.assertNotIn('password', json.dumps(response.data['registry']))
 
         # disallow put/patch/delete
         response = self.client.put(url)

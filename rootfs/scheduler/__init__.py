@@ -427,6 +427,9 @@ class KubeHTTPClient(object):
             # Find if target port exists already, update / create as required
             if routable:
                 port = self._get_port(image)
+                if port is None:
+                    logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
+                    port = 5000
                 for pos, item in enumerate(service['spec']['ports']):
                     if item['port'] == 80 and port != item['targetPort']:
                         # port 80 is the only one we care about right now
@@ -670,8 +673,7 @@ class KubeHTTPClient(object):
             image_info = docker_cli.inspect_image(image)
             port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
         except Exception:
-            logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
-            port = 5000
+            port = None
 
         return port
 
@@ -938,8 +940,8 @@ class KubeHTTPClient(object):
         # add in healthchecks
         if kwargs.get('healthcheck'):
             template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
-        elif kwargs.get('build_type') == "buildpack":
-            template = self._buildpack_readiness_probe(template)
+        else:
+            template = self._default_readiness_probe(template, image, kwargs.get('build_type'))
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1047,6 +1049,24 @@ class KubeHTTPClient(object):
 
         return controller
 
+    def _default_readiness_probe(self, controller, image, build_type):
+        if build_type == "buildpack":
+            readinessprobe = self._default_buildpack_readiness_probe()
+        else:
+            readinessprobe = self._default_dockerapp_readiness_probe(image)
+        if readinessprobe is None:
+            return controller
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        namespace = controller['spec']['selector']['app']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(readinessprobe)
+
+        return controller
+
     '''
     Applies exec readiness probe to the slugrunner container.
     http://kubernetes.io/docs/user-guide/pod-states/#container-probes
@@ -1061,8 +1081,8 @@ class KubeHTTPClient(object):
     This should be added only for the build pack apps when a custom liveness probe is not set to
     make sure that the pod is ready only when the slug is downloaded and started running.
     '''
-    def _buildpack_readiness_probe(self, controller, delay=30, timeout=5, period_seconds=5,
-                                   success_threshold=1, failure_threshold=1):
+    def _default_buildpack_readiness_probe(self, delay=30, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
         readinessprobe = {
             'readinessProbe': {
                 # an exec probe
@@ -1082,17 +1102,33 @@ class KubeHTTPClient(object):
                 'failureThreshold': failure_threshold,
             },
         }
+        return readinessprobe
 
-        # Update only the application container with the health check
-        app_type = controller['spec']['selector']['type']
-        namespace = controller['spec']['selector']['app']
-        container_name = '{}-{}'.format(namespace, app_type)
-        containers = controller['spec']['template']['spec']['containers']
-        for container in containers:
-            if container['name'] == container_name:
-                container.update(readinessprobe)
-
-        return controller
+    '''
+    Applies tcp socket readiness probe to the docker app container only if some port is exposed
+    by the docker image.
+    '''
+    def _default_dockerapp_readiness_probe(self, image, delay=5, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
+        port = self._get_port(image)
+        if port is None:
+            return None
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'tcpSocket': {
+                    "port": port
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+        return readinessprobe
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret

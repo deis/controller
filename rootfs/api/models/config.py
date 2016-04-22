@@ -17,6 +17,7 @@ class Config(UuidAuditedModel):
     memory = JSONField(default={}, blank=True)
     cpu = JSONField(default={}, blank=True)
     tags = JSONField(default={}, blank=True)
+    registry = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -80,11 +81,15 @@ class Config(UuidAuditedModel):
         # having succeeded.
         self.values['HEALTHCHECK_FAILURE_THRESHOLD'] = health['failure_threshold']
 
+    def set_registry(self):
+        # lower case all registry options for consistency
+        self.registry = {key.lower(): value for key, value in self.registry.copy().items()}
+
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
             previous_config = self.app.config_set.latest()
-            for attr in ['cpu', 'memory', 'tags', 'values']:
+            for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
                 # Guard against migrations from older apps without fixes to
                 # JSONField encoding.
                 try:
@@ -104,8 +109,8 @@ class Config(UuidAuditedModel):
         except Config.DoesNotExist:
             pass
 
-        # set any missing HEALTHCHECK_* elements
         self.set_healthchecks()
+        self.set_registry()
 
         # verify the tags exist on any nodes as labels
         if self.tags:

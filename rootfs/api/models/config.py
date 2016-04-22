@@ -85,6 +85,28 @@ class Config(UuidAuditedModel):
         # lower case all registry options for consistency
         self.registry = {key.lower(): value for key, value in self.registry.copy().items()}
 
+    def set_tags(self, previous_config):
+        """verify the tags exist on any nodes as labels"""
+        if not self.tags:
+            return
+
+        # Get all nodes with label selectors
+        nodes = self._scheduler._get_nodes(labels=self.tags).json()
+        if nodes['items']:
+            return
+
+        labels = ['{}={}'.format(key, value) for key, value in self.tags.items()]
+        message = 'No nodes matched the provided labels: {}'.format(', '.join(labels))
+
+        # Find out if there are any other tags around
+        old_tags = getattr(previous_config, 'tags')
+        if old_tags:
+            old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
+            new = set(labels) - set(old)
+            message += ' - Addition of {} is the cause'.format(', '.join(new))
+
+        raise EnvironmentError(message)
+
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
@@ -106,27 +128,11 @@ class Config(UuidAuditedModel):
                 # remove config keys if we provided a null value
                 [data.pop(k) for k, v in new_data.items() if v is None]
                 setattr(self, attr, data)
+
+            self.set_healthchecks()
+            self.set_registry()
+            self.set_tags(previous_config)
         except Config.DoesNotExist:
             pass
-
-        self.set_healthchecks()
-        self.set_registry()
-
-        # verify the tags exist on any nodes as labels
-        if self.tags:
-            # Get all nodes with label selectors
-            nodes = self._scheduler._get_nodes(labels=self.tags).json()
-            if not nodes['items']:
-                labels = ['{}={}'.format(key, value) for key, value in self.tags.items()]
-                message = 'No nodes matched the provided labels: {}'.format(', '.join(labels))
-
-                # Find out if there are any other tags around
-                old_tags = getattr(previous_config, 'tags')
-                if old_tags:
-                    old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
-                    new = set(labels) - set(old)
-                    message += ' - Addition of {} is the cause'.format(', '.join(new))
-
-                raise EnvironmentError(message)
 
         return super(Config, self).save(**kwargs)

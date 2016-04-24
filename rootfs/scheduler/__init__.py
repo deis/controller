@@ -648,13 +648,14 @@ class KubeHTTPClient(object):
             return JobState.destroyed
 
         states = {
-            'Pending': JobState.initialized,
-            'Starting': JobState.starting,
-            'Running': JobState.up,
-            'Terminating': JobState.terminating,
-            'Succeeded': JobState.down,
-            'Failed': JobState.crashed,
-            'Unknown': JobState.error,
+            'Pending': JobState.initializing.name,
+            'ContainerCreating': JobState.creating.name,
+            'Starting': JobState.starting.name,
+            'Running': JobState.up.name,
+            'Terminating': JobState.terminating.name,
+            'Succeeded': JobState.down.name,
+            'Failed': JobState.crashed.name,
+            'Unknown': JobState.error.name,
         }
 
         # being in a running state can mean a pod is starting, actually running or terminating
@@ -667,7 +668,9 @@ class KubeHTTPClient(object):
                 # is the pod ready to serve requests?
                 return states[container_status]
 
-        return states[pod['status']['phase']]
+        # if no match was found for deis mapping then passthrough the real state
+        pod_state = pod['status']['phase']
+        return states.get(pod_state, pod_state)
 
     def _get_port(self, image):
         try:

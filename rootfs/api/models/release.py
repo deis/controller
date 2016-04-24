@@ -89,6 +89,10 @@ class Release(UuidAuditedModel):
         if self.build is None:
             raise EnvironmentError('No build associated with this release to publish')
 
+        # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
+        if self.build.dockerfile or self.build.sha:
+            return
+
         source_image = self.build.image
         # return image if it is already in the registry, test host and then host + port
         if (
@@ -103,19 +107,17 @@ class Release(UuidAuditedModel):
             source_tag = 'git-{}'.format(self.build.sha) if self.build.sha else source_version
             source_image = "{}:{}".format(source_image, source_tag)
 
-        # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
-        if not self.build.dockerfile and not self.build.sha:
-            # gather custom login information for registry if needed
-            auth = None
-            if self.config.registry.get('username', None):
-                auth = {
-                    'username': self.config.registry.get('username', None),
-                    'password': self.config.registry.get('password', None),
-                    'email': self.owner.email
-                }
+        # gather custom login information for registry if needed
+        auth = None
+        if self.config.registry.get('username', None):
+            auth = {
+                'username': self.config.registry.get('username', None),
+                'password': self.config.registry.get('password', None),
+                'email': self.owner.email
+            }
 
-            deis_registry = bool(self.build.sha)
-            publish_release(source_image, self.image, deis_registry, auth)
+        deis_registry = bool(self.build.sha)
+        publish_release(source_image, self.image, deis_registry, auth)
 
     def previous(self):
         """

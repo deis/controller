@@ -582,7 +582,7 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
-                state = self._scheduler.resolve_state(p).name
+                state = self._scheduler.resolve_state(p)
 
                 # follows kubelete convention - these are hidden unless show-all is set
                 if state in ['down', 'crashed']:

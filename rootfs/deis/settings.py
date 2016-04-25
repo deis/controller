@@ -268,6 +268,9 @@ SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugr
 SLUG_BUILDER_IMAGE_PULL_POLICY = os.environ.get('SLUG_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
 DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
 
+# How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL
+KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS = int(os.environ.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', 30))  # noqa
+
 # registry settings
 REGISTRY_HOST = os.environ.get('DEIS_REGISTRY_SERVICE_HOST', '127.0.0.1')
 REGISTRY_PORT = os.environ.get('DEIS_REGISTRY_SERVICE_PORT', 5000)

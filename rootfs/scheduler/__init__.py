@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import logging
 import os
@@ -63,13 +64,14 @@ POD_BTEMPLATE = """\
       }
     ],
     "volumes":[
-    {
+      {
         "name":"objectstorage-keyfile",
         "secret":{
         "secretName":"objectstorage-keyfile"
         }
-    }
+      }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -90,6 +92,7 @@ POD_TEMPLATE = """\
         "env": []
       }
     ],
+    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
     "restartPolicy": "Never"
   }
 }
@@ -126,6 +129,7 @@ RCD_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
@@ -181,6 +185,7 @@ RCB_TEMPLATE = """\
         }
       },
       "spec": {
+        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
         "containers": [
           {
             "name": "$containername",
@@ -217,11 +222,11 @@ RCB_TEMPLATE = """\
             }
             ],
             "volumeMounts":[
-            {
+              {
                 "name":"objectstorage-keyfile",
                 "mountPath":"/var/run/secrets/deis/objectstore/creds",
                 "readOnly":true
-            }
+              }
             ]
           }
         ],
@@ -427,6 +432,9 @@ class KubeHTTPClient(object):
             # Find if target port exists already, update / create as required
             if routable:
                 port = self._get_port(image)
+                if port is None:
+                    logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
+                    port = 5000
                 for pos, item in enumerate(service['spec']['ports']):
                     if item['port'] == 80 and port != item['targetPort']:
                         # port 80 is the only one we care about right now
@@ -505,7 +513,8 @@ class KubeHTTPClient(object):
             'version': self.apiversion,
             'image': imgurl,
             'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
-            'storagetype': os.getenv("APP_STORAGE")
+            'storagetype': os.getenv("APP_STORAGE"),
+            'terminationGracePeriodSeconds': settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
         if entrypoint == '/runner/init':
@@ -639,13 +648,14 @@ class KubeHTTPClient(object):
             return JobState.destroyed
 
         states = {
-            'Pending': JobState.initialized,
-            'Starting': JobState.starting,
-            'Running': JobState.up,
-            'Terminating': JobState.terminating,
-            'Succeeded': JobState.down,
-            'Failed': JobState.crashed,
-            'Unknown': JobState.error,
+            'Pending': JobState.initializing.name,
+            'ContainerCreating': JobState.creating.name,
+            'Starting': JobState.starting.name,
+            'Running': JobState.up.name,
+            'Terminating': JobState.terminating.name,
+            'Succeeded': JobState.down.name,
+            'Failed': JobState.crashed.name,
+            'Unknown': JobState.error.name,
         }
 
         # being in a running state can mean a pod is starting, actually running or terminating
@@ -658,7 +668,9 @@ class KubeHTTPClient(object):
                 # is the pod ready to serve requests?
                 return states[container_status]
 
-        return states[pod['status']['phase']]
+        # if no match was found for deis mapping then passthrough the real state
+        pod_state = pod['status']['phase']
+        return states.get(pod_state, pod_state)
 
     def _get_port(self, image):
         try:
@@ -670,8 +682,7 @@ class KubeHTTPClient(object):
             image_info = docker_cli.inspect_image(image)
             port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
         except Exception:
-            logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
-            port = 5000
+            port = None
 
         return port
 
@@ -794,12 +805,32 @@ class KubeHTTPClient(object):
         return response
 
     def _wait_until_pods_terminate(self, namespace, labels, current, desired):
-        delta = current - desired
+        """Wait until all the desired pods are terminated"""
+        # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_podspec
+        # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+        # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
 
-        logger.debug("waiting for {} pods in {} namespace to be terminated (120s timeout)".format(delta, namespace))  # noqa
-        for waited in range(120):
+        timeout = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
+        delta = current - desired
+        logger.debug("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
+        for waited in range(timeout):
             pods = self._get_pods(namespace, labels=labels).json()
             count = len(pods['items'])
+
+            # see if any pods are past their terminationGracePeriodsSeconds (as in stuck)
+            # seems to be a problem in k8s around that:
+            # https://github.com/kubernetes/kubernetes/search?q=terminating&type=Issues
+            # these will be eventually GC'ed by k8s, ignoring them for now
+            for pod in pods['items']:
+                if 'deletionTimestamp' in pod['metadata']:
+                    deletion = datetime.strptime(
+                        pod['metadata']['deletionTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    # past the graceful deletion period
+                    if deletion < datetime.utcnow():
+                        count -= 1
 
             # stop when all pods are terminated as expected
             if count == desired:
@@ -907,6 +938,7 @@ class KubeHTTPClient(object):
             "storagetype": storageType,
             "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
             "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
+            "terminationGracePeriodSeconds": settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
         }
 
         # Check if it is a slug builder image.
@@ -938,8 +970,8 @@ class KubeHTTPClient(object):
         # add in healthchecks
         if kwargs.get('healthcheck'):
             template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
-        elif kwargs.get('build_type') == "buildpack":
-            template = self._buildpack_readiness_probe(template)
+        else:
+            template = self._default_readiness_probe(template, image, kwargs.get('build_type'))
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1047,6 +1079,24 @@ class KubeHTTPClient(object):
 
         return controller
 
+    def _default_readiness_probe(self, controller, image, build_type):
+        if build_type == "buildpack":
+            readinessprobe = self._default_buildpack_readiness_probe()
+        else:
+            readinessprobe = self._default_dockerapp_readiness_probe(image)
+        if readinessprobe is None:
+            return controller
+        # Update only the application container with the health check
+        app_type = controller['spec']['selector']['type']
+        namespace = controller['spec']['selector']['app']
+        container_name = '{}-{}'.format(namespace, app_type)
+        containers = controller['spec']['template']['spec']['containers']
+        for container in containers:
+            if container['name'] == container_name:
+                container.update(readinessprobe)
+
+        return controller
+
     '''
     Applies exec readiness probe to the slugrunner container.
     http://kubernetes.io/docs/user-guide/pod-states/#container-probes
@@ -1061,8 +1111,8 @@ class KubeHTTPClient(object):
     This should be added only for the build pack apps when a custom liveness probe is not set to
     make sure that the pod is ready only when the slug is downloaded and started running.
     '''
-    def _buildpack_readiness_probe(self, controller, delay=30, timeout=5, period_seconds=5,
-                                   success_threshold=1, failure_threshold=1):
+    def _default_buildpack_readiness_probe(self, delay=30, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
         readinessprobe = {
             'readinessProbe': {
                 # an exec probe
@@ -1082,17 +1132,33 @@ class KubeHTTPClient(object):
                 'failureThreshold': failure_threshold,
             },
         }
+        return readinessprobe
 
-        # Update only the application container with the health check
-        app_type = controller['spec']['selector']['type']
-        namespace = controller['spec']['selector']['app']
-        container_name = '{}-{}'.format(namespace, app_type)
-        containers = controller['spec']['template']['spec']['containers']
-        for container in containers:
-            if container['name'] == container_name:
-                container.update(readinessprobe)
-
-        return controller
+    '''
+    Applies tcp socket readiness probe to the docker app container only if some port is exposed
+    by the docker image.
+    '''
+    def _default_dockerapp_readiness_probe(self, image, delay=5, timeout=5, period_seconds=5,
+                                           success_threshold=1, failure_threshold=1):
+        port = self._get_port(image)
+        if port is None:
+            return None
+        readinessprobe = {
+            'readinessProbe': {
+                # an exec probe
+                'tcpSocket': {
+                    "port": port
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': delay,
+                'timeoutSeconds': timeout,
+                'periodSeconds': period_seconds,
+                'successThreshold': success_threshold,
+                'failureThreshold': failure_threshold,
+            },
+        }
+        return readinessprobe
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
@@ -1277,9 +1343,16 @@ class KubeHTTPClient(object):
                 if not container['ready']:
                     if 'running' in container['state'].keys():
                         return 'Starting'
-                    elif 'terminated' in container['state'].keys():
+                    elif (
+                        'terminated' in container['state'].keys() or
+                        'deletionTimestamp' in pod['metadata']
+                    ):
                         return 'Terminating'
                 else:
+                    # See if k8s is in Terminating state
+                    if 'deletionTimestamp' in pod['metadata']:
+                        return 'Terminating'
+
                     return 'Running'
 
         # Seems like the most sensible default

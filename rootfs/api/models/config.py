@@ -17,6 +17,7 @@ class Config(UuidAuditedModel):
     memory = JSONField(default={}, blank=True)
     cpu = JSONField(default={}, blank=True)
     tags = JSONField(default={}, blank=True)
+    registry = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -80,11 +81,37 @@ class Config(UuidAuditedModel):
         # having succeeded.
         self.values['HEALTHCHECK_FAILURE_THRESHOLD'] = health['failure_threshold']
 
+    def set_registry(self):
+        # lower case all registry options for consistency
+        self.registry = {key.lower(): value for key, value in self.registry.copy().items()}
+
+    def set_tags(self, previous_config):
+        """verify the tags exist on any nodes as labels"""
+        if not self.tags:
+            return
+
+        # Get all nodes with label selectors
+        nodes = self._scheduler._get_nodes(labels=self.tags).json()
+        if nodes['items']:
+            return
+
+        labels = ['{}={}'.format(key, value) for key, value in self.tags.items()]
+        message = 'No nodes matched the provided labels: {}'.format(', '.join(labels))
+
+        # Find out if there are any other tags around
+        old_tags = getattr(previous_config, 'tags')
+        if old_tags:
+            old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
+            new = set(labels) - set(old)
+            message += ' - Addition of {} is the cause'.format(', '.join(new))
+
+        raise EnvironmentError(message)
+
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
             previous_config = self.app.config_set.latest()
-            for attr in ['cpu', 'memory', 'tags', 'values']:
+            for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
                 # Guard against migrations from older apps without fixes to
                 # JSONField encoding.
                 try:
@@ -101,27 +128,11 @@ class Config(UuidAuditedModel):
                 # remove config keys if we provided a null value
                 [data.pop(k) for k, v in new_data.items() if v is None]
                 setattr(self, attr, data)
+
+            self.set_healthchecks()
+            self.set_registry()
+            self.set_tags(previous_config)
         except Config.DoesNotExist:
             pass
-
-        # set any missing HEALTHCHECK_* elements
-        self.set_healthchecks()
-
-        # verify the tags exist on any nodes as labels
-        if self.tags:
-            # Get all nodes with label selectors
-            nodes = self._scheduler._get_nodes(labels=self.tags).json()
-            if not nodes['items']:
-                labels = ['{}={}'.format(key, value) for key, value in self.tags.items()]
-                message = 'No nodes matched the provided labels: {}'.format(', '.join(labels))
-
-                # Find out if there are any other tags around
-                old_tags = getattr(previous_config, 'tags')
-                if old_tags:
-                    old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
-                    new = set(labels) - set(old)
-                    message += ' - Addition of {} is the cause'.format(', '.join(new))
-
-                raise EnvironmentError(message)
 
         return super(Config, self).save(**kwargs)

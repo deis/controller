@@ -124,6 +124,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     memory = JSONFieldSerializer(required=False, binary=True)
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
+    registry = JSONFieldSerializer(required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""
@@ -205,6 +206,15 @@ class ConfigSerializer(serializers.ModelSerializer):
             if value and not re.match(TAGVAL_MATCH, str(value)):
                 raise serializers.ValidationError(
                     "Tag values must be alphanumeric or \"-_.\", and 1-63 characters.")
+
+        return data
+
+    def validate_registry(self, data):
+        for key, value in data.items():
+            if not re.match(CONFIGKEY_MATCH, key):
+                raise serializers.ValidationError(
+                    "Config keys must start with a letter or underscore and "
+                    "only contain [A-z0-9_]")
 
         return data
 

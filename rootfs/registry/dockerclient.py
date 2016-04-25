@@ -142,14 +142,14 @@ def log_output(stream, operation, repo, tag):
 
 def stream_error(chunk, operation, repo, tag):
     """Translate docker stream errors into a more digestable format"""
+    # grab the generic error and strip the useless Error: portion
+    message = chunk['error'].replace('Error: ', '')
+
     # not all errors provide the code
     if 'code' in chunk['errorDetail']:
         # permission denied on the repo
         if chunk['errorDetail']['code'] == 403:
             message = 'Permission Denied attempting to {} image {}:{}'.format(operation, repo, tag)
-    else:
-        # grab the generic error and strip the useless Error: portion
-        message = chunk['error'].replace('Error: ', '')
 
     raise RegistryException(message)
 

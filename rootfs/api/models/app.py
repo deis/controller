@@ -341,6 +341,9 @@ class App(UuidAuditedModel):
             self.structure = self._default_structure(release)
             self.save()
 
+        # see if the app config has deploy batch preference, otherwise use global
+        batches = release.config.values.get('DEPLOY_BATCHES', settings.DEPLOY_BATCHES)
+
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
         build_type = app_build_type(release)
@@ -357,7 +360,8 @@ class App(UuidAuditedModel):
                 'build_type': build_type,
                 'healthcheck': release.config.healthcheck(),
                 # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-                'routable': True if scale_type in ['web', 'cmd'] else False
+                'routable': True if scale_type in ['web', 'cmd'] else False,
+                'batches': batches
             }
 
         # Sort deploys so routable comes first

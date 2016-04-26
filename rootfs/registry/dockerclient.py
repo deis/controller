@@ -126,7 +126,7 @@ def check_blacklist(repo):
     """Check a Docker repository name for collision with deis/* components."""
     blacklisted = [  # NOTE: keep this list up to date!
         'builder', 'controller', 'database', 'dockerbuilder', 'etcd', 'minio', 'registry',
-        'router', 'slugbuilder', 'slugrunner', 'workflow',
+        'router', 'slugbuilder', 'slugrunner', 'workflow', 'workflow-manager',
     ]
     if any("deis/{}".format(c) in repo for c in blacklisted):
         raise PermissionDenied("Repository name {} is not allowed, as it is reserved by Deis".format(repo))  # noqa

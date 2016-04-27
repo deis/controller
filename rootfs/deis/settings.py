@@ -287,6 +287,10 @@ ROUTER_PORT = os.environ.get('DEIS_ROUTER_SERVICE_PORT', 80)
 # check if we can register users with `deis register`
 REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 
+# check if app creation is disabled for normal users
+DISABLE_APP_CREATION = os.environ.get('DISABLE_APP_CREATION', False)
+
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',

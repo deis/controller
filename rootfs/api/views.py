@@ -196,6 +196,12 @@ class AppViewSet(BaseDeisViewSet):
     def get_queryset(self, *args, **kwargs):
         return self.model.objects.all(*args, **kwargs)
 
+    def create(self, request, **kwargs):
+        if not permissions.can_create_app(request):
+            raise PermissionDenied()
+
+        return super(AppViewSet, self).create(request, **kwargs)
+
     def list(self, request, *args, **kwargs):
         """
         HACK: Instead of filtering by the queryset, we limit the queryset to list only the apps

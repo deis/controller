@@ -855,13 +855,7 @@ class KubeHTTPClient(object):
             pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
                 # now that state is running time to see if probes are passing
-                if (
-                    pod['status']['phase'] == 'Running' and
-                    # is the readiness probe passing?
-                    self._pod_readiness_status(pod) == 'Running' and
-                    # is the pod ready to serve requests?
-                    self._pod_liveness_status(pod)
-                ):
+                if self._pod_ready(pod):
                     count += 1
 
             if count == desired:
@@ -883,32 +877,38 @@ class KubeHTTPClient(object):
             'type': rc['spec']['selector']['type'],
             'version': rc['spec']['selector']['version']
         }
-        current = len(self._get_pods(namespace, labels=labels).json()['items'])
+
+        # Are there any pods running (and verified as ready) available?
+        pods = self._get_pods(namespace, labels=labels).json()['items']
+        current = 0
+        for pod in pods:
+            if self._pod_ready(pod):
+                current += 1
 
         if desired == current:
             logger.debug("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
             return
+        elif desired != rc['spec']['replicas']:  # RC needs new replica count
+            # Set the new desired replica count
+            rc['spec']['replicas'] = desired
 
-        # Set the new desired replica count
-        rc['spec']['replicas'] = desired
+            logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
-        logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+            self._update_rc(namespace, name, rc)
 
-        self._update_rc(namespace, name, rc)
+            resource_ver = rc['metadata']['resourceVersion']
+            logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
+            for waited in range(30):
+                js_template = self._get_rc(namespace, name).json()
+                if js_template["metadata"]["resourceVersion"] != resource_ver:
+                    break
 
-        resource_ver = rc['metadata']['resourceVersion']
-        logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
-        for waited in range(30):
-            js_template = self._get_rc(namespace, name).json()
-            if js_template["metadata"]["resourceVersion"] != resource_ver:
-                break
+                if waited > 0 and (waited % 10) == 0:
+                    logger.debug("waited {}s so far for a new resource version".format(waited))
 
-            if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s so far for a new resource version".format(waited))
+                time.sleep(1)
 
-            time.sleep(1)
-
-        logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
+            logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
         # Double check enough pods are in the required state to service the application
         self._get_pod_ready_status(namespace, labels, desired)
@@ -1370,6 +1370,16 @@ class KubeHTTPClient(object):
                 return False
 
         return True
+
+    def _pod_ready(self, pod):
+        """Combines various checks to see if the pod is considered up or not by checking probes"""
+        return (
+            pod['status']['phase'] == 'Running' and
+            # is the readiness probe passing?
+            self._pod_readiness_status(pod) == 'Running' and
+            # is the pod ready to serve requests?
+            self._pod_liveness_status(pod)
+        )
 
     # NODES #
 

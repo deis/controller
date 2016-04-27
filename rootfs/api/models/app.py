@@ -458,8 +458,12 @@ class App(UuidAuditedModel):
         # Uses time module to account for the timout value of 3 seconds
         start = time.time()
         for _ in range(10):
-            # http://docs.python-requests.org/en/master/user/advanced/#timeouts
-            response = session.get(url, timeout=req_timeout)
+            try:
+                # http://docs.python-requests.org/en/master/user/advanced/#timeouts
+                response = session.get(url, timeout=req_timeout)
+            except requests.exceptions.ConnectTimeout:
+                # We are fine with timeouts, lets keep trying
+                continue
 
             # 30 second timeout (timout per request * 10)
             if (time.time() - start) > (req_timeout * 10):

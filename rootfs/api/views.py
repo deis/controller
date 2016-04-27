@@ -26,10 +26,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class HealthCheckView(View):
+class ReadinessCheckView(View):
     """
-    Simple health check view to determine if the server
-    is responding to HTTP requests and DB connection / query.
+    Simple readiness check view to determine DB connection / query.
     """
 
     def get(self, request):
@@ -47,6 +46,17 @@ class HealthCheckView(View):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
 
+        return HttpResponse("OK")
+    head = get
+
+
+class LivenessCheckView(View):
+    """
+    Simple liveness check view to determine if the server
+    is responding to HTTP requests.
+    """
+
+    def get(self, request):
         return HttpResponse("OK")
     head = get
 

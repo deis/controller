@@ -1,3 +1,27 @@
+### v2.0.0-beta2 -> v2.0.0-beta3
+
+#### Features
+
+ - [`70f319f`](https://github.com/deis/controller/commit/70f319f01258f62ccc7515811cf056bd73626998) scheduler: allow setting gracefulTerminationPeriod and account for in terminations
+ - [`ad9d6a0`](https://github.com/deis/controller/commit/ad9d6a068494d2909c6abec266735cee2c914ed9) dockerapp: add default readiness check for the docker file app
+ - [`9213747`](https://github.com/deis/controller/commit/9213747662eccaa7c6a2c897605315f440b344ff) registry: move registry information to its own top level Config resource
+ - [`0cb2f02`](https://github.com/deis/controller/commit/0cb2f028923bc8d9889dd9d8157795d7c2fba472) registry: add initial support to auth to an external Registry on per app basis
+ - [`d077bfe`](https://github.com/deis/controller/commit/d077bfe0bcc1921537bd0ea24bff62bf9d69dd8f) slugrunner: add readiness check for the slugrunner pod
+
+#### Fixes
+
+ - [`333b7a6`](https://github.com/deis/controller/commit/333b7a6843d873148d421de76d1c83ececa75f04) docker client: default to generic message on exceptions
+ - [`1c8a17c`](https://github.com/deis/controller/commit/1c8a17cfb828541f6ee1ef15fa94a44239a14361) controller: use django HttpResponse for logs
+ - [`fa13d46`](https://github.com/deis/controller/commit/fa13d46a77b048e72d88b381ae463d077223a020) api: pass if no builds are associated with the release
+ - [`bec9752`](https://github.com/deis/controller/commit/bec9752c94c007775c5d03e0d2fe4250433ac427) deploy: should deploy successfullly without web type in the procfile
+ - [`3027406`](https://github.com/deis/controller/commit/3027406e52aaaf5e5fc50007213a77e7a46ba14c) app: deploy applications on Controller start to create RCs and Pods
+ - [`3cc896f`](https://github.com/deis/controller/commit/3cc896f79ff75609de9c32d590a78085d7d0593d) models: make dates consistent, output Z instead of UTC for ISO8601 compatibility
+
+#### Maintenance
+
+ - [`8b49d66`](https://github.com/deis/controller/commit/8b49d66c86a0e86556aac51a1a4f2224bf7e7772) dockerclient: Add workflow-manager to repo blacklist
+ - [`b5ba78d`](https://github.com/deis/controller/commit/b5ba78db0d12bca988de1d56f247ef591f387d12) .travis.yml: Deep six the travis -> jenkins webhooks
+
 ### v2.0.0-beta1 -> v2.0.0-beta2
 
 #### Features

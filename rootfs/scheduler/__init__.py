@@ -1309,22 +1309,26 @@ class KubeHTTPClient(object):
         if unhealthy(resp.status_code):
             error(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
-        # Verify the pod has been deleted. Give it 30 seconds.
-        for _ in range(30):
+        # Verify the pod has been deleted
+        # Only wait as long as the grace period is - k8s will eventually GC
+        for _ in range(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS):
             try:
-                self._get_pod(namespace, name)
+                pod = self._get_pod(namespace, name).json()
+                # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
+                if 'deletionTimestamp' in pod['metadata']:
+                    deletion = datetime.strptime(
+                        pod['metadata']['deletionTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    # past the graceful deletion period
+                    if deletion < datetime.utcnow():
+                        return
             except KubeHTTPException as e:
                 if e.response.status_code == 404:
                     break
 
             time.sleep(1)
-
-        # Pod was not deleted within the grace period.
-        try:
-            self._get_pod(namespace, name)
-        except KubeHTTPException as e:
-            if e.response.status_code != 404:
-                error(e.response, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
     def _pod_log(self, namespace, name):
         url = self._api("/namespaces/{}/pods/{}/log", namespace, name)

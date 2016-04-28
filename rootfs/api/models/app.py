@@ -461,8 +461,9 @@ class App(UuidAuditedModel):
             try:
                 # http://docs.python-requests.org/en/master/user/advanced/#timeouts
                 response = session.get(url, timeout=req_timeout)
-            except requests.exceptions.ConnectTimeout:
-                # We are fine with timeouts, lets keep trying
+            except requests.exceptions.RequestException:
+                # We are fine with timeouts and request problems, lets keep trying
+                time.sleep(1)  # just a bit of a buffer
                 continue
 
             # 30 second timeout (timout per request * 10)

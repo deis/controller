@@ -367,27 +367,40 @@ class KubeHTTPClient(object):
             desired = kwargs['replicas']
             logger.debug('No prior RC could be found for {}-{}'.format(namespace, app_type))
 
+        # see if application or global deploy batches are defined
+        if not kwargs.get('batches', None):
+            # figure out how many nodes the application can go on
+            tags = kwargs.get('tags', {})
+            steps = len(self._get_nodes(labels=tags).json()['items'])
+        else:
+            steps = int(kwargs.get('batches'))
+
+        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
+        if desired < steps:
+            # do it all in one go
+            batches = [desired]
+        else:
+            # figure out the stepped deploy count and then see if there is a leftover
+            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
+            if desired - sum(batches) > 0:
+                batches.append(desired - sum(batches))
+
         try:
-            count = 1
-            while desired >= count:
+            count = 0
+            new_name = new_rc["metadata"]["name"]
+            for batch in batches:
+                count += batch
                 logger.debug('scaling release {} to {} out of final {}'.format(
-                    new_rc["metadata"]["name"], count, desired
+                    new_name, count, desired
                 ))
-                self._scale_rc(namespace, new_rc["metadata"]["name"], count)
-                logger.debug('scaled up pod number {} for {}'.format(
-                    count, new_rc["metadata"]["name"]
-                ))
+                self._scale_rc(namespace, new_name, count)
 
                 if old_rc:
+                    old_name = old_rc["metadata"]["name"]
                     logger.debug('scaling old release {} from original {} to {}'.format(
-                        old_rc["metadata"]["name"], desired, (desired-count))
+                        old_name, desired, (desired-count))
                     )
-                    self._scale_rc(namespace, old_rc["metadata"]["name"], (desired-count))
-                    logger.debug('scaled down pod number {} for {}'.format(
-                        count, old_rc["metadata"]["name"]
-                    ))
-
-                count += 1
+                    self._scale_rc(namespace, old_name, (desired-count))
         except Exception as e:
             # New release is broken. Clean up
             logger.error('Could not scale {} to {}. Deleting and going back to old release'.format(

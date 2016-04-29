@@ -268,6 +268,13 @@ SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugr
 SLUG_BUILDER_IMAGE_PULL_POLICY = os.environ.get('SLUG_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
 DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POLICY', "Always")  # noqa
 
+# Define a global default on how many pods to bring up and then
+# take down sequentially during a deploy
+# Defaults to None, the default is to deploy to as many nodes as
+# the application has been instructed to run on
+# Can also be overwritten on per app basis if desired
+DEPLOY_BATCHES = os.environ.get('DEPLOY_BATCHES', None)
+
 # How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL
 KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS = int(os.environ.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', 30))  # noqa
 

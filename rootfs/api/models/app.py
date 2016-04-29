@@ -461,11 +461,15 @@ class App(UuidAuditedModel):
         # Give the router max of 10 tries or max 30 seconds to become healthy
         # Uses time module to account for the timout value of 3 seconds
         start = time.time()
+        failed = False
         for _ in range(10):
             try:
                 # http://docs.python-requests.org/en/master/user/advanced/#timeouts
                 response = session.get(url, timeout=req_timeout)
+                failed = False
             except requests.exceptions.RequestException:
+                # In case of a failure where response object is not available
+                failed = True
                 # We are fine with timeouts and request problems, lets keep trying
                 time.sleep(1)  # just a bit of a buffer
                 continue
@@ -482,7 +486,7 @@ class App(UuidAuditedModel):
             time.sleep(1)
 
         # Endpoint did not report healthy in time
-        if response.status_code == 404:
+        if ('response' in locals() and response.status_code == 404) or failed:
             delta = time.time() - start
             self.log(
                 'Router was not ready to serve traffic to process type {} in time, waited {} seconds'.format(app_type, delta),  # noqa

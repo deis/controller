@@ -645,6 +645,16 @@ class ConfigTest(APITransactionTestCase):
         app_id = response.data['id']
 
         # Set healthcheck URL to get defaults set
+        body = {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': '25'})}
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            body
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('HEALTHCHECK_INITIAL_DELAY', resp.data['values'])
+        self.assertEqual(resp.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
+
+        # Set healthcheck URL to get defaults set
         body = {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
         resp = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),

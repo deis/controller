@@ -249,7 +249,7 @@ LOG_LINES = 100
 TEMPDIR = tempfile.mkdtemp(prefix='deis')
 
 # names which apps cannot reserve for routing
-DEIS_RESERVED_NAMES = [os.environ.get('RESERVED_NAMES', 'deis')]
+DEIS_RESERVED_NAMES = os.environ.get('RESERVED_NAMES', '').replace(' ', '').split(',')
 
 # default scheduler settings
 SCHEDULER_MODULE = 'scheduler'

@@ -61,6 +61,8 @@ class Config(UuidAuditedModel):
         # fetch set health values and any defaults
         # this approach allows new health items to be added without issues
         health = self.healthcheck()
+        if not health:
+            return
 
         # HTTP GET related
         self.values['HEALTHCHECK_URL'] = health['path']

@@ -7,6 +7,7 @@ import logging
 from unittest import mock
 import requests
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
@@ -27,6 +28,7 @@ def _mock_run(*args, **kwargs):
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
+@mock.patch('api.models.release.publish_release', lambda *args: None)
 class AppTest(APITestCase):
     """Tests creation of applications"""
 
@@ -381,6 +383,101 @@ class AppTest(APITestCase):
             'duplicate already exists as a namespace in this kuberenetes setup',
             status_code=409
         )
+
+    def test_app_verify_application_health_success(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it succeed on the 6th try
+        """
+        responses = [
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'OK', 'status_code': 200}
+        ]
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, responses)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 6)
+
+    def test_app_verify_application_health_failure_404(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it fail with a 404 after 10 tries
+        """
+        # function tries to hit router 10 times
+        responses = [
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+        ]
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, responses)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 10)
+
+    def test_app_verify_application_health_failure_exceptions(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it fail with a python-requets exception
+        """
+        def _raise_exception(request, ctx):
+            raise requests.exceptions.RequestException('Boom!')
+
+        # function tries to hit router 10 times
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, text=_raise_exception)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        # Called 10 times due to the exception
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 10)
 
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

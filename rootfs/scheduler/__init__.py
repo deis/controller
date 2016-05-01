@@ -347,7 +347,22 @@ class KubeHTTPClient(object):
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
+        build_type = kwargs.get('build_type')
         routable = kwargs.get('routable', False)
+        port = None
+
+        try:
+            if routable:
+                if build_type == "buildpack":
+                    logger.debug("Using default port 5000 for build pack app {}".format(name))
+                    port = 5000
+                else:
+                    port = self._get_port(image)
+                    if port is None:
+                        raise Exception("Expose a port or make the app non routable by changing"
+                                        " the process type")
+        except Exception as e:
+            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
@@ -425,9 +440,9 @@ class KubeHTTPClient(object):
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
-        self._update_application_service(namespace, name, app_type, image, routable)
+        self._update_application_service(namespace, name, app_type, port, routable)
 
-    def _update_application_service(self, namespace, name, app_type, image, routable=False):
+    def _update_application_service(self, namespace, name, app_type, port, routable=False):
         """Update application service with all the various required information"""
         try:
             # Fetch service
@@ -444,10 +459,6 @@ class KubeHTTPClient(object):
 
             # Find if target port exists already, update / create as required
             if routable:
-                port = self._get_port(image)
-                if port is None:
-                    logger.debug("Failed to find port for Docker image {}, defaulting to 5000".format(image))  # noqa
-                    port = 5000
                 for pos, item in enumerate(service['spec']['ports']):
                     if item['port'] == 80 and port != item['targetPort']:
                         # port 80 is the only one we care about right now
@@ -690,18 +701,24 @@ class KubeHTTPClient(object):
         return states.get(pod_state, pod_state)
 
     def _get_port(self, image):
-        try:
-            image = self.registry + '/' + image
-            repo = image.split(":")
-            # image already includes the tag, so we split it out here
-            docker_cli = Client(version="auto")
-            docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-            image_info = docker_cli.inspect_image(image)
-            port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-        except Exception:
-            port = None
-
-        return port
+        # try thrice to find the port before raising exception as docker-py is flaky
+        for i in range(3):
+            try:
+                imagepath = self.registry + '/' + image
+                repo = imagepath.split(":")
+                # image already includes the tag, so we split it out here
+                docker_cli = Client(version="auto")
+                docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
+                image_info = docker_cli.inspect_image(imagepath)
+                if 'ExposedPorts' not in image_info['Config']:
+                    return None
+                port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
+                return port
+            except Exception:
+                if i == 2:
+                    raise
+                else:
+                    continue
 
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
@@ -1199,8 +1216,11 @@ class KubeHTTPClient(object):
     '''
     def _default_dockerapp_readiness_probe(self, image, delay=5, timeout=5, period_seconds=5,
                                            success_threshold=1, failure_threshold=1):
-        port = self._get_port(image)
-        if port is None:
+        try:
+            port = self._get_port(image)
+            if port is None:
+                return None
+        except Exception:
             return None
         readinessprobe = {
             'readinessProbe': {

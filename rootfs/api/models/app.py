@@ -342,7 +342,7 @@ class App(UuidAuditedModel):
             self.save()
 
         # see if the app config has deploy batch preference, otherwise use global
-        batches = release.config.values.get('DEPLOY_BATCHES', settings.DEPLOY_BATCHES)
+        batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}

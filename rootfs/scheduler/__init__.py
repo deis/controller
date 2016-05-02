@@ -13,6 +13,7 @@ from .states import JobState
 import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
+from retrying import retry
 
 from deis import __version__ as deis_version
 
@@ -700,25 +701,19 @@ class KubeHTTPClient(object):
 
         return states.get(pod_state, pod_state)
 
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
     def _get_port(self, image):
         # try thrice to find the port before raising exception as docker-py is flaky
-        for i in range(3):
-            try:
-                imagepath = self.registry + '/' + image
-                repo = imagepath.split(":")
-                # image already includes the tag, so we split it out here
-                docker_cli = Client(version="auto")
-                docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-                image_info = docker_cli.inspect_image(imagepath)
-                if 'ExposedPorts' not in image_info['Config']:
-                    return None
-                port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-                return port
-            except Exception:
-                if i == 2:
-                    raise
-                else:
-                    continue
+        imagepath = self.registry + '/' + image
+        repo = imagepath.split(":")
+        # image already includes the tag, so we split it out here
+        docker_cli = Client(version="auto")
+        docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
+        image_info = docker_cli.inspect_image(imagepath)
+        if 'ExposedPorts' not in image_info['Config']:
+            return None
+        port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
+        return port
 
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""

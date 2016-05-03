@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import requests_mock
 from urllib.parse import urlparse, parse_qs
@@ -47,30 +47,66 @@ def get_type(key, pos=-1):
     return 'unknown'
 
 
+def cleanup_pods():
+    """Can be called during any sort of access, it will cleanup pods as needed"""
+    pods = cache.get('cleanup_pods', {})
+    for pod, timestamp in pods.copy().items():
+        if timestamp > datetime.utcnow():
+            continue
+
+        del pods[pod]
+        remove_cache_item(pod, 'pods')
+    cache.set('cleanup_pods', pods)
+
+
+def add_cleanup_pod(url):
+    """populate the cleanup pod list"""
+    # variance allows a pod to stay alive past grace period
+    variance = random.uniform(0.1, 1.5)
+    grace = round(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS * variance)
+
+    # save
+    pods = cache.get('cleanup_pods', {})
+    pods[url] = (datetime.utcnow() + timedelta(seconds=grace))
+    cache.set('cleanup_pods', pods)
+
+    # add grace period timestamp
+    pod = cache.get(url)
+    pd = datetime.utcnow() + timedelta(seconds=settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+    timestamp = str(pd.strftime(settings.DEIS_DATETIME_FORMAT))
+    pod['metadata']['deletionTimestamp'] = timestamp
+    cache.set(url, pod)
+
+
+def delete_pod(url, data, request):
+    # Try to determine the connected RC to readjust pod count
+    # One way is to look at annotations:kubernetes.io/created-by and read
+    # the serialized reference but that looks clunky right now
+    controllers = filter_data({'labels': data['metadata']['labels']}, 'replicationcontrollers')
+    controller = controllers.pop()
+    upsert_pods(controller, cache_key(request.path))
+
+
 def delete_pods(url, pods, current, desired):
-    # remove from namespace scope
+    if not pods:
+        return
+
     delta = current - desired
 
     removed = []
-    items = cache.get(url, [])
-    for _ in range(delta):
+    while True:
+        if len(removed) == delta:
+            break
+
         item = pods.pop()
-        items.remove(item)
+        pod = cache.get(item)
+        if 'deletionTimestamp' in pod['metadata']:
+            continue
+
         removed.append(item)
-        # Remove individual item
-        cache.delete(item)
-    # remove from namespace
-    cache.set(url, items, None)
 
-    # remove from global scope
-    items = cache.get('pods', [])  # global scope
     for item in removed:
-        if item in items:
-            items.remove(item)
-    cache.set('pods', items, None)
-
-    # Remove operation is done. No additions
-    return
+        add_cleanup_pod(item)
 
 
 def create_pods(url, labels, base, new_pods):
@@ -98,7 +134,7 @@ def create_pods(url, labels, base, new_pods):
                     'name': '{}-{}'.format(labels['app'], labels['type']),
                     # TODO ready can be True / False (boolean)
                     'ready': True,
-                    # TODO can be running / terminated or nothing if in pending mode
+                    # TODO can be running / terminated / waiting
                     'state': {
                         'running': {
                             'startedAt': timestamp
@@ -139,8 +175,13 @@ def upsert_pods(controller, url):
     # fetch a list of all the pods given the labels
     items = []
     for item in filter_data({'labels': data['metadata']['labels']}, url):
+        # skip pods being deleted
+        if 'deletionTimestamp' in data['metadata']:
+            continue
+
         # Translate to a cache key since a full object gets passed
         items.append(cache_key(url + '_' + item['metadata']['name']))
+
     current = len(items)
     desired = controller['spec']['replicas']
 
@@ -320,16 +361,7 @@ def delete(request, context):
         context.reason = 'Not Found'
         return {}
 
-    # remove data object from individual cache
-    cache.delete(url)
-
-    # remove from the resource type global scope
     resource_type = get_type(request.url, -2)
-    items = cache.get(resource_type, [])
-    if url in items:
-        items.remove(url)
-        cache.set(resource_type, items, None)
-
     # clean everything from a namespace
     if resource_type == 'namespaces':
         for resource in resources:
@@ -346,14 +378,8 @@ def delete(request, context):
     # If a pod belongs to an RC and DELETE operation makes it fall below the
     # minimum replicas count then a new pod comes into service
     elif resource_type == 'pods':
-        remove_cache_item(url, resource_type)
-
-        # Try to determine the connected RC to readjust pod count
-        # One way is to look at annotations:kubernetes.io/created-by and read
-        # the serialized reference but that looks clunky right now
-        controllers = filter_data({'labels': data['metadata']['labels']}, 'replicationcontrollers')
-        controller = controllers.pop()
-        upsert_pods(controller, cache_key(request.path))
+        # pods have a graceful termination period, handle pods different
+        delete_pod(url, data, request)
     else:
         remove_cache_item(url, resource_type)
 
@@ -364,16 +390,29 @@ def delete(request, context):
 
 
 def remove_cache_item(url, resource_type):
+    # remove data object from individual cache
+    cache.delete(url)
+
     # remove from namespace specific scope
     namespace, item = url.split('_{}_'.format(resource_type))
     cache_url = '{}_{}'.format(namespace, resource_type)
     items = cache.get(cache_url, [])
     if url in items:
         items.remove(url)
-        cache.set(cache_url, items, None)
+
+    cache.set(cache_url, items, None)
+
+    # remove from the resource type global scope
+    items = cache.get(resource_type, [])
+    if url in items:
+        items.remove(url)
+        cache.set(resource_type, items, None)
 
 
 def mock(request, context):
+    # always cleanup pods
+    cleanup_pods()
+
     # What to do about context
     if request.method == 'POST':
         return post(request, context)

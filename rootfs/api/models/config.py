@@ -114,17 +114,8 @@ class Config(UuidAuditedModel):
         try:
             previous_config = self.app.config_set.latest()
             for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
-                # Guard against migrations from older apps without fixes to
-                # JSONField encoding.
-                try:
-                    data = getattr(previous_config, attr).copy()
-                except AttributeError:
-                    data = {}
-
-                try:
-                    new_data = getattr(self, attr).copy()
-                except AttributeError:
-                    new_data = {}
+                data = getattr(previous_config, attr, {}).copy()
+                new_data = getattr(self, attr, {}).copy()
 
                 data.update(new_data)
                 # remove config keys if we provided a null value

@@ -13,6 +13,6 @@ psycopg2==2.6.1
 pyOpenSSL==16.0.0
 pytz==2016.4
 PyYAML==3.11
-requests==2.9.1
+requests==2.10.0
 requests-toolbelt==0.6.0
 simpleflock==0.0.3

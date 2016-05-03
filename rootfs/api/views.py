@@ -3,24 +3,21 @@ RESTful view classes for presenting Deis API objects.
 """
 from django.http import Http404, HttpResponse
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
 from guardian.shortcuts import assign_perm, get_objects_for_user, \
     get_users_with_perms, remove_perm
 from django.views.generic import View
 from rest_framework import mixins, renderers, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, NotFound, AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.authtoken.models import Token
 
 from api import authentication, models, permissions, serializers, viewsets
-from api.models import AlreadyExists
-from scheduler import KubeException
+from api.models import AlreadyExists, ServiceUnavailable, DeisException
 
-import requests
 import logging
 
 logger = logging.getLogger(__name__)
@@ -41,10 +38,7 @@ class ReadinessCheckView(View):
             # FIXME why is turning on DEBUG=true in env not outputting this error?
             logger.debug(str(e))
 
-            return HttpResponse(
-                "Database health check failed",
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
-            )
+            raise ServiceUnavailable("Database health check failed")
 
         return HttpResponse("OK")
     head = get
@@ -92,7 +86,7 @@ class UserManagementViewSet(GenericViewSet):
         # A user can not be removed without apps changing ownership first
         if len(models.App.objects.filter(owner=target_obj)) > 0:
             msg = '{} still has applications assigned. Delete or transfer ownership'.format(str(target_obj))  # noqa
-            return Response({'detail': msg}, status=status.HTTP_409_CONFLICT)
+            raise AlreadyExists(msg)
 
         target_obj.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -106,10 +100,11 @@ class UserManagementViewSet(GenericViewSet):
                 target_obj = get_object_or_404(User, username=request.data['username'])
             else:
                 raise PermissionDenied()
+
         if request.data.get('password') or not caller_obj.is_superuser:
             if not target_obj.check_password(request.data['password']):
-                return Response({'detail': 'Current password does not match'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                raise AuthenticationFailed('Current password does not match')
+
         target_obj.set_password(request.data['new_password'])
         target_obj.save()
         return Response({'status': 'password set'})
@@ -158,17 +153,6 @@ class BaseDeisViewSet(viewsets.OwnerViewSet):
     lookup_field = 'id'
     permission_classes = [IsAuthenticated, permissions.IsAppUser]
     renderer_classes = [renderers.JSONRenderer]
-
-    def create(self, request, *args, **kwargs):
-        try:
-            return super(BaseDeisViewSet, self).create(request, *args, **kwargs)
-        except AlreadyExists as e:
-            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
-        except EnvironmentError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        # If the scheduler oopsie'd
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
 class AppResourceViewSet(BaseDeisViewSet):
@@ -221,52 +205,28 @@ class AppViewSet(BaseDeisViewSet):
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(instance, many=True)
-
         return Response(serializer.data)
 
     def scale(self, request, **kwargs):
-        new_structure = {}
-        app = self.get_object()
-        try:
-            for target, count in request.data.items():
-                new_structure[target] = int(count)
-            models.validate_app_structure(new_structure)
-            app.scale(request.user, new_structure)
-        except (TypeError, ValueError) as e:
-            return Response({'detail': 'Invalid scaling format: {}'.format(e)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        except (EnvironmentError, ValidationError) as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.get_object().scale(request.user, request.data)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def logs(self, request, **kwargs):
         app = self.get_object()
         try:
-            return HttpResponse(app.logs(request.query_params.get('log_lines',
-                                         str(settings.LOG_LINES))),
-                                status=status.HTTP_200_OK, content_type='text/plain')
-        except requests.exceptions.RequestException:
+            logs = app.logs(request.query_params.get('log_lines', str(settings.LOG_LINES)))
+            return HttpResponse(logs, status=status.HTTP_200_OK, content_type='text/plain')
+        except NotFound:
+            return HttpResponse(status=status.HTTP_204_NO_CONTENT)
+        except ServiceUnavailable:
+            # TODO make 503
             return HttpResponse("Error accessing logs for {}".format(app.id),
                                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                                 content_type='text/plain')
-        except EnvironmentError as e:
-            if str(e) == 'Error accessing deis-logger':
-                return HttpResponse("Error accessing logs for {}".format(app.id),
-                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                    content_type='text/plain')
-            else:
-                return HttpResponse(status=status.HTTP_204_NO_CONTENT)
 
     def run(self, request, **kwargs):
         app = self.get_object()
-        try:
-            rc, output = app.run(self.request.user, request.data['command'])
-        except EnvironmentError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        rc, output = app.run(self.request.user, request.data['command'])
         return Response({'rc': rc, 'output': str(output)})
 
     def update(self, request, **kwargs):
@@ -303,9 +263,9 @@ class ConfigViewSet(ReleasableViewSet):
             # It's possible to set config values before a build
             if self.release.build is not None:
                 config.app.deploy(self.release)
-        except Exception:
+        except Exception as e:
             self.release.delete()
-            raise
+            raise DeisException(str(e))
 
 
 class PodViewSet(AppResourceViewSet):
@@ -313,29 +273,19 @@ class PodViewSet(AppResourceViewSet):
     serializer_class = serializers.PodSerializer
 
     def list(self, *args, **kwargs):
-        app = self.get_app()
-
-        try:
-            pods = app.list_pods(*args, **kwargs)
-            data = self.get_serializer(pods, many=True).data
-            # fake out pagination for now
-            pagination = {'results': data, 'count': len(data)}
-            return Response(pagination, status=status.HTTP_200_OK)
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        pods = self.get_app().list_pods(*args, **kwargs)
+        data = self.get_serializer(pods, many=True).data
+        # fake out pagination for now
+        pagination = {'results': data, 'count': len(data)}
+        return Response(pagination, status=status.HTTP_200_OK)
 
     def restart(self, *args, **kwargs):
-        app = self.get_app()
-
-        try:
-            pods = app.restart(**kwargs)
-            data = self.get_serializer(pods, many=True).data
-            # fake out pagination for now
-            # pagination = {'results': data, 'count': len(data)}
-            pagination = data
-            return Response(pagination, status=status.HTTP_200_OK)
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        pods = self.get_app().restart(**kwargs)
+        data = self.get_serializer(pods, many=True).data
+        # fake out pagination for now
+        # pagination = {'results': data, 'count': len(data)}
+        pagination = data
+        return Response(pagination, status=status.HTTP_200_OK)
 
 
 class DomainViewSet(AppResourceViewSet):
@@ -365,10 +315,6 @@ class CertificateViewSet(BaseDeisViewSet):
             self.get_object().attach(*args, **kwargs)
         except Http404:
             raise
-        except AlreadyExists as e:
-            return Response({'detail': str(e)}, status=status.HTTP_409_CONFLICT)
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_201_CREATED)
 
@@ -377,8 +323,6 @@ class CertificateViewSet(BaseDeisViewSet):
             self.get_object().detach(*args, **kwargs)
         except Http404:
             raise
-        except KubeException as e:
-            return Response({'detail': str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -405,21 +349,10 @@ class ReleaseViewSet(AppResourceViewSet):
         Create a new release as a copy of the state of the compiled slug and config vars of a
         previous release.
         """
-        app = self.get_app()
-        try:
-            release = app.release_set.latest()
-            version_to_rollback_to = release.version - 1
-            if request.data.get('version'):
-                version_to_rollback_to = int(request.data['version'])
-            new_release = release.rollback(request.user, version_to_rollback_to)
-            response = {'version': new_release.version}
-            return Response(response, status=status.HTTP_201_CREATED)
-        except EnvironmentError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            if 'new_release' in locals():
-                new_release.delete()
-            raise
+        release = self.get_app().release_set.latest()
+        new_release = release.rollback(request.user, request.data.get('version', None))
+        response = {'version': new_release.version}
+        return Response(response, status=status.HTTP_201_CREATED)
 
 
 class BaseHookViewSet(BaseDeisViewSet):
@@ -487,7 +420,7 @@ class KeyHookViewSet(BaseHookViewSet):
                      .values('public', 'fingerprint') \
                      .order_by('created')
         if not keys:
-            raise Http404("No Keys match the given query.")
+            raise NotFound("No Keys match the given query.")
 
         for info in keys:
             data[request.user.username].append({

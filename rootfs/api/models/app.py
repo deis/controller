@@ -11,11 +11,12 @@ from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import models
-from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, NotFound
 from jsonfield import JSONField
 
 from deis import __version__ as deis_version
-from api.models import UuidAuditedModel, log_event, AlreadyExists
+from api.models import UuidAuditedModel, log_event, AlreadyExists, \
+    DeisException, ServiceUnavailable
 
 from api.utils import generate_app_name, app_build_type
 from api.models.release import Release
@@ -43,7 +44,7 @@ def validate_app_structure(value):
         if any(int(v) < 0 for v in value.values()):
             raise ValueError("Must be greater than or equal to zero")
     except ValueError as err:
-        raise ValidationError(err)
+        raise ValidationError(str(err))
 
 
 def validate_reserved_names(value):
@@ -152,7 +153,10 @@ class App(UuidAuditedModel):
             )
 
         # create required minimum resources in k8s for the application
-        self._scheduler.create(self.id)
+        try:
+            self._scheduler.create(self.id)
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
 
         # Attach the platform specific application sub domain to the k8s service
         # Only attach it on first release in case a customer has remove the app domain
@@ -164,8 +168,8 @@ class App(UuidAuditedModel):
         try:
             # attempt to remove application from kubernetes
             self._scheduler.destroy(self.id)
-        except KubeException:
-            pass
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
 
         self._clean_app_logs()
         return super(App, self).delete(*args, **kwargs)
@@ -213,7 +217,7 @@ class App(UuidAuditedModel):
             while True:
                 # timed out
                 if elapsed >= timeout:
-                    raise KubeException('timeout - 5 minutes have passed and pods are not up')
+                    raise DeisException('timeout - 5 minutes have passed and pods are not up')
 
                 # restarting a single pod behaves differently, fetch the *newest* pod
                 # and hope it is the right one. Comes back sorted
@@ -234,7 +238,6 @@ class App(UuidAuditedModel):
 
                 elapsed += 5
                 time.sleep(5)
-
         except Exception as e:
             err = "warning, some pods failed to start:\n{}".format(str(e))
             log_event(self, err, logging.WARNING)
@@ -261,9 +264,17 @@ class App(UuidAuditedModel):
         self.create()
 
         if self.release_set.latest().build is None:
-            raise EnvironmentError('No build associated with this release')
+            raise DeisException('No build associated with this release')
 
         release = self.release_set.latest()
+
+        # Validate structure
+        try:
+            for target, count in structure.copy().items():
+                structure[target] = int(count)
+            validate_app_structure(structure)
+        except (TypeError, ValueError) as e:
+            raise DeisException('Invalid scaling format: {}'.format(e))
 
         # test for available process types
         available_process_types = release.build.procfile or {}
@@ -272,7 +283,7 @@ class App(UuidAuditedModel):
                 continue  # allow docker cmd types in case we don't have the image source
 
             if container_type not in available_process_types:
-                raise EnvironmentError(
+                raise DeisException(
                     'Container type {} does not exist in application'.format(container_type))
 
         # merge current structure and the new items together
@@ -323,16 +334,15 @@ class App(UuidAuditedModel):
                     command=command,
                     **kwargs
                 )
-
             except Exception as e:
                 err = '{} (scale): {}'.format(self._get_job_id(scale_type), e)
                 log_event(self, err, logging.ERROR)
-                raise
+                raise ServiceUnavailable(e) from e
 
     def deploy(self, release):
         """Deploy a new release to this application"""
         if release.build is None:
-            raise EnvironmentError('No build associated with this release')
+            raise DeisException('No build associated with this release')
 
         # use create to make sure minimum resources are created
         self.create()
@@ -386,7 +396,7 @@ class App(UuidAuditedModel):
             except Exception as e:
                 err = '{} (app::deploy): {}'.format(self._get_job_id(scale_type), e)
                 log_event(self, err, logging.ERROR)
-                raise
+                raise ServiceUnavailable(err) from e
 
         # cleanup old releases from kubernetes
         release.cleanup_old()
@@ -508,19 +518,20 @@ class App(UuidAuditedModel):
             r = requests.get(url)
         # Handle HTTP request errors
         except requests.exceptions.RequestException as e:
-            logger.error("Error accessing deis-logger using url '{}': {}".format(url, e))
-            raise e
+            msg = "Error accessing deis-logger using url '{}': {}".format(url, e)
+            logger.error(msg)
+            raise ServiceUnavailable(msg) from e
 
         # Handle logs empty or not found
         if r.status_code == 204 or r.status_code == 404:
             logger.info("GET {} returned a {} status code".format(url, r.status_code))
-            raise EnvironmentError('Could not locate logs')
+            raise NotFound('Could not locate logs')
 
         # Handle unanticipated status codes
         if r.status_code != 200:
             logger.error("Error accessing deis-logger: GET {} returned a {} status code"
                          .format(url, r.status_code))
-            raise EnvironmentError('Error accessing deis-logger')
+            raise ServiceUnavailable('Error accessing deis-logger')
 
         # cast content to string since it comes as bytes via the requests object
         return str(r.content)
@@ -532,7 +543,7 @@ class App(UuidAuditedModel):
         """Run a one-off command in an ephemeral app container."""
         release = self.release_set.latest()
         if release.build is None:
-            raise EnvironmentError('No build associated with this release to run this command')
+            raise DeisException('No build associated with this release to run this command')
 
         # TODO: add support for interactive shell
         # SECURITY: shell-escape user input
@@ -576,7 +587,7 @@ class App(UuidAuditedModel):
         except Exception as e:
             err = '{} (run): {}'.format(name, e)
             log_event(self, err, logging.ERROR)
-            raise
+            raise ServiceUnavailable(str(e)) from e
 
     def list_pods(self, *args, **kwargs):
         """Used to list basic information about pods running for a given application"""
@@ -627,7 +638,7 @@ class App(UuidAuditedModel):
         except Exception as e:
             err = '(list pods): {}'.format(e)
             log_event(self, err, logging.ERROR)
-            raise
+            raise ServiceUnavailable(err) from e
 
     def _scheduler_filter(self, **kwargs):
         labels = {'app': self.id}

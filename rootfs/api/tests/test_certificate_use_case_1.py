@@ -110,11 +110,17 @@ class CertificateUseCase1Test(APITestCase):
         for key, value in list(expected.items()):
             self.assertEqual(response.data[key], value, key)
 
-        # detach domain to certificate
+        # detach domain from a certificate
         response = self.client.delete(
             '{}/{}/domain/{}'.format(self.url, self.name, self.domain)
         )
         self.assertEqual(response.status_code, 204)
+
+        # detach a domain that does not exist from a certificate
+        response = self.client.delete(
+            '{}/{}/domain/{}'.format(self.url, self.name, 'i-am-fake.com')
+        )
+        self.assertEqual(response.status_code, 404)
 
         # Assert data
         response = self.client.get('{}/{}'.format(self.url, self.name))

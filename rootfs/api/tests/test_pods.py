@@ -15,6 +15,7 @@ from rest_framework.authtoken.models import Token
 from test.support import EnvironmentVarGuard
 
 from api.models import App, Build, Release
+from scheduler import KubeException
 
 from . import adapter
 import requests_mock
@@ -382,7 +383,7 @@ class PodTest(APITransactionTestCase):
         data = App.objects.get(id=app_id)
         self.assertNotIn('{c_type}', data._get_command('web'))
 
-    def test_container_scale_errors(self, mock_requests):
+    def test_scale_errors(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
@@ -430,6 +431,12 @@ class PodTest(APITransactionTestCase):
         body = {'web': 1}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 204)
+
+        with mock.patch('scheduler.KubeHTTPClient.scale') as mock_kube:
+            mock_kube.side_effect = KubeException('Boom!')
+            url = "/v2/apps/{app_id}/scale".format(**locals())
+            response = self.client.post(url, {'web': 10})
+            self.assertEqual(response.status_code, 503)
 
     def test_admin_can_manage_other_pods(self, mock_requests):
         """If a non-admin user creates a container, an administrator should be able to
@@ -816,3 +823,21 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['type'], 'web')
+
+    def test_list_pods_failure(self, mock_requests):
+        """
+        Listing all available pods exceptions
+        """
+
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        with mock.patch('scheduler.KubeHTTPClient._get_pod') as kube_pod:
+            with mock.patch('scheduler.KubeHTTPClient._get_pods') as kube_pods:
+                kube_pod.side_effect = KubeException('boom!')
+                kube_pods.side_effect = KubeException('boom!')
+                url = "/v2/apps/{app_id}/pods".format(**locals())
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 503)

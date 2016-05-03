@@ -237,6 +237,29 @@ class ConfigTest(APITransactionTestCase):
             self.assertEqual(resp.status_code, 201)
             self.assertIn(k, resp.data['values'])
 
+    def test_config_deploy_failure(self, mock_requests):
+        """
+        Cause an Exception in app.deploy to cause a release.delete
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        # deploy app to get a build
+        url = "/v2/apps/{}/builds".format(app_id)
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+            url = '/v2/apps/{app_id}/config'.format(**locals())
+            body = {'values': json.dumps({'test': "testvalue"})}
+            resp = self.client.post(url, body)
+            self.assertEqual(resp.status_code, 400)
+
     def test_invalid_config_keys(self, mock_requests):
         """Test that invalid config keys are rejected.
         """
@@ -548,6 +571,13 @@ class ConfigTest(APITransactionTestCase):
         body = {'tags': json.dumps({'host.name.com/,not.valid': 'valid'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
+        long_tag = 'a' * 300
+        body = {'tags': json.dumps({'{}/not.valid'.format(long_tag): 'valid'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+        body = {'tags': json.dumps({'this&foo.com/not.valid': 'valid'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
 
         # disallow put/patch/delete
         response = self.client.put(url)
@@ -618,6 +648,12 @@ class ConfigTest(APITransactionTestCase):
         registry4 = response.data
         self.assertNotEqual(registry3['uuid'], registry4['uuid'])
         self.assertNotIn('password', json.dumps(response.data['registry']))
+
+        # bad registry key values
+        body = {'registry': json.dumps({'pa$$w0rd': 'woop'})}
+        response = self.client.post(url, body)
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
 
         # disallow put/patch/delete
         response = self.client.put(url)

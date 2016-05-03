@@ -15,6 +15,8 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import Build
+from registry.dockerclient import RegistryException
+from scheduler import KubeException
 
 from . import adapter
 import requests_mock
@@ -346,3 +348,78 @@ class BuildTest(APITransactionTestCase):
         release = build.app.release_set.latest()
         # Registry host + port is internally stripped off
         self.assertEqual(release.image, 'autotest/example')
+
+    def test_build_image_in_registry_with_auth(self, mock_requests):
+        """add authentication to the build"""
+        self.client.post('/v2/apps', {'id': 'test'})
+
+        # post an image as a build using registry hostname
+        url = "/v2/apps/test/builds"
+        image = 'autotest/example'
+        response = self.client.post(url, {'image': image})
+        self.assertEqual(response.status_code, 201)
+
+        # set some registry information
+        url = '/v2/apps/test/config'
+        body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+    def test_release_create_failure(self, mock_requests):
+        """
+        Cause an Exception in app.deploy to cause a release.delete in build.create
+        """
+        body = {'id': 'test'}
+        self.client.post('/v2/apps', body)
+
+        # deploy app to get a build
+        url = "/v2/apps/test/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+
+            url = "/v2/apps/test/builds"
+            body = {'image': 'autotest/example'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
+
+    def test_release_registry_create_failure(self, mock_requests):
+        """
+        Cause a RegistryException in app.deploy to cause a release.delete in build.create
+        """
+        body = {'id': 'test'}
+        self.client.post('/v2/apps', body)
+
+        # deploy app to get a build
+        url = "/v2/apps/test/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        with mock.patch('api.models.Release.publish') as mock_registry:
+            mock_registry.side_effect = RegistryException('Boom!')
+
+            url = "/v2/apps/test/builds"
+            body = {'image': 'autotest/example'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
+
+    def test_build_deploy_kube_failure(self, mock_requests):
+        """
+        Cause an Exception in scheduler.deploy
+        """
+        body = {'id': 'test'}
+        self.client.post('/v2/apps', body)
+
+        with mock.patch('scheduler.KubeHTTPClient.deploy') as mock_deploy:
+            mock_deploy.side_effect = KubeException('Boom!')
+
+            url = "/v2/apps/test/builds"
+            body = {'image': 'autotest/example'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)

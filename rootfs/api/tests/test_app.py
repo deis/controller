@@ -14,6 +14,7 @@ from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App
+from scheduler import KubeException
 
 from . import adapter
 import requests_mock
@@ -266,9 +267,7 @@ class AppTest(APITestCase):
         A user should be able to run a one off command
         """
         app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(url, body)
+        response = self.client.post('/v2/apps', {'id': app_id})
 
         # create build
         body = {'image': 'autotest/example'}
@@ -283,6 +282,25 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['rc'], 0)
         self.assertEqual(response.data['output'], 'mock')
+
+    def test_run_failure(self, mock_requests):
+        """Raise a KubeException via scheduler.run"""
+        app_id = 'autotest'
+        response = self.client.post('/v2/apps', {'id': app_id})
+
+        # create build
+        body = {'image': 'autotest/example'}
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        with mock.patch('scheduler.KubeHTTPClient.run') as kube_run:
+            kube_run.side_effect = KubeException('boom!')
+            # run command
+            url = '/v2/apps/{}/run'.format(app_id)
+            body = {'command': 'ls -al'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 503)
 
     def test_unauthorized_user_cannot_see_app(self, mock_requests):
         """
@@ -383,6 +401,30 @@ class AppTest(APITestCase):
             'duplicate already exists as a namespace in this kuberenetes setup',
             status_code=409
         )
+
+    def test_app_create_failure_kubernetes_create(self, mock_requests):
+        """
+        Create an app but have scheduler.create fail with an exception
+        """
+        with mock.patch('scheduler.KubeHTTPClient.create') as mock_kube:
+            mock_kube.side_effect = KubeException('Boom!')
+            response = self.client.post('/v2/apps', {'id': 'test-kube'})
+            self.assertEqual(response.status_code, 503)
+
+    def test_app_delete_failure_kubernetes_destroy(self, mock_requests):
+        """
+        Create an app and then delete but have scheduler.destroy
+        fail with an exception
+        """
+        # create
+        response = self.client.post('/v2/apps', {'id': 'test'})
+        self.assertEqual(response.status_code, 201)
+
+        with mock.patch('scheduler.KubeHTTPClient.destroy') as mock_kube:
+            # delete
+            mock_kube.side_effect = KubeException('Boom!')
+            response = self.client.delete('/v2/apps/test')
+            self.assertEqual(response.status_code, 503)
 
     def test_app_verify_application_health_success(self, mock_requests):
         """

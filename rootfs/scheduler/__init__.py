@@ -835,15 +835,9 @@ class KubeHTTPClient(object):
             # https://github.com/kubernetes/kubernetes/search?q=terminating&type=Issues
             # these will be eventually GC'ed by k8s, ignoring them for now
             for pod in pods['items']:
-                if 'deletionTimestamp' in pod['metadata']:
-                    deletion = datetime.strptime(
-                        pod['metadata']['deletionTimestamp'],
-                        settings.DEIS_DATETIME_FORMAT
-                    )
-
-                    # past the graceful deletion period
-                    if deletion < datetime.utcnow():
-                        count -= 1
+                # remove pod if it is passed the graceful termination period
+                if self._pod_deleted(pod):
+                    count -= 1
 
             # stop when all pods are terminated as expected
             if count == desired:
@@ -1327,16 +1321,9 @@ class KubeHTTPClient(object):
         for _ in range(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS):
             try:
                 pod = self._get_pod(namespace, name).json()
-                # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
-                if 'deletionTimestamp' in pod['metadata']:
-                    deletion = datetime.strptime(
-                        pod['metadata']['deletionTimestamp'],
-                        settings.DEIS_DATETIME_FORMAT
-                    )
-
-                    # past the graceful deletion period
-                    if deletion < datetime.utcnow():
-                        return
+                # hide pod if it is passed the graceful termination period
+                if self._pod_deleted(pod):
+                    return
             except KubeHTTPException as e:
                 if e.response.status_code == 404:
                     break
@@ -1393,6 +1380,22 @@ class KubeHTTPClient(object):
             # is the pod ready to serve requests?
             self._pod_liveness_status(pod)
         )
+
+    def _pod_deleted(self, pod):
+        """Checks if a pod is deleted and past its graceful termination period"""
+        # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
+        # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
+        if 'deletionTimestamp' in pod['metadata']:
+            deletion = datetime.strptime(
+                pod['metadata']['deletionTimestamp'],
+                settings.DEIS_DATETIME_FORMAT
+            )
+
+            # past the graceful deletion period
+            if deletion < datetime.utcnow():
+                return True
+
+        return False
 
     # NODES #
 

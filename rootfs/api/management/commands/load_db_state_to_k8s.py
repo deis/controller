@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.shortcuts import get_object_or_404
 
-from api.models import Key, App, Domain, Certificate, Config
+from api.models import Key, App, Domain, Certificate
 from api.exceptions import DeisException, AlreadyExists
 
 
@@ -12,7 +12,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Publishes Deis platform state from the database to kubernetes."""
         print("Publishing DB state to kubernetes...")
-        for model in (Key, App, Domain, Certificate, Config):
+        for app in App.objects.all():
+            try:
+                app.save()
+                app.config_set.latest().save()
+            except DeisException as error:
+                print('ERROR: Problem saving to model {} for {}'
+                      'due to {}'.format(str(App.__name__), str(app), str(error)))
+        for model in (Key, Domain, Certificate):
             for obj in model.objects.all():
                 try:
                     obj.save()

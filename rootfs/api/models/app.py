@@ -601,18 +601,9 @@ class App(UuidAuditedModel):
                 if state in ['down', 'crashed']:
                     continue
 
-                # hide pods that are past their graceful termination
-                # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
-                # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
-                if 'deletionTimestamp' in p['metadata']:
-                    deletion = datetime.strptime(
-                        p['metadata']['deletionTimestamp'],
-                        settings.DEIS_DATETIME_FORMAT
-                    )
-
-                    # past the graceful deletion period
-                    if deletion < datetime.utcnow():
-                        continue
+                # hide pod if it is passed the graceful termination period
+                if self._scheduler._pod_deleted(p):
+                    continue
 
                 item = Pod()
                 item['name'] = p['metadata']['name']

@@ -2,7 +2,7 @@ import base64
 
 from django.conf import settings
 from django.db import models
-from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError
 
 from api.models import UuidAuditedModel
 from api.utils import fingerprint
@@ -13,7 +13,7 @@ def validate_base64(value):
     try:
         base64.b64decode(value.split()[1])
     except Exception as e:
-        raise ValidationError(e)
+        raise ValidationError(str(e))
 
 
 class Key(UuidAuditedModel):

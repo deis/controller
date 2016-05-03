@@ -2,11 +2,10 @@ import logging
 
 from django.conf import settings
 from django.db import models
-from rest_framework.serializers import ValidationError
 
 from registry import publish_release, RegistryException
 from api.utils import dict_diff
-from api.models import UuidAuditedModel, log_event
+from api.models import UuidAuditedModel, log_event, DeisException
 from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
@@ -74,20 +73,19 @@ class Release(UuidAuditedModel):
 
         try:
             release.publish()
-        except EnvironmentError as e:
+        except DeisException as e:
             # If we cannot publish this app, just log and carry on
             log_event(self.app, e)
             pass
         except RegistryException as e:
             log_event(self.app, e)
-            # Uses ValidationError to get return of 400 up in views
-            raise ValidationError({'detail': str(e)})
+            raise DeisException(str(e)) from e
 
         return release
 
     def publish(self, source_version='latest'):
         if self.build is None:
-            raise EnvironmentError('No build associated with this release to publish')
+            raise DeisException('No build associated with this release to publish')
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         if self.build.dockerfile or self.build.sha:
@@ -136,28 +134,30 @@ class Release(UuidAuditedModel):
             prev_release = None
         return prev_release
 
-    def rollback(self, user, version):
-        if version < 1:
-            raise EnvironmentError('version cannot be below 0')
-
-        summary = "{} rolled back to v{}".format(user, version)
-        prev = self.app.release_set.get(version=version)
-        new_release = self.new(
-            user,
-            build=prev.build,
-            config=prev.config,
-            summary=summary,
-            source_version='v{}'.format(version)
-        )
-
+    def rollback(self, user, version=None):
         try:
+            # if no version is provided then grab version from object
+            version = (self.version - 1) if version is None else int(version)
+
+            if version < 1:
+                raise DeisException('version cannot be below 0')
+
+            prev = self.app.release_set.get(version=version)
+            new_release = self.new(
+                user,
+                build=prev.build,
+                config=prev.config,
+                summary="{} rolled back to v{}".format(user, version),
+                source_version='v{}'.format(version)
+            )
+
             if self.build is not None:
                 self.app.deploy(new_release)
             return new_release
-        except Exception:
+        except Exception as e:
             if 'new_release' in locals():
                 new_release.delete()
-            raise
+            raise DeisException(str(e))
 
     def delete(self, *args, **kwargs):
         """Delete release DB record and any RCs from the affect release"""
@@ -165,7 +165,7 @@ class Release(UuidAuditedModel):
             self._delete_release_in_scheduler(self.app.id, self.version)
         except KubeHTTPException as e:
             # 404 means they were already cleaned up
-            if e.status_code is not 404:
+            if e.response.status_code is not 404:
                 # Another problem came up
                 message = 'Could not to cleanup RCs for release {}'.format(self.version)
                 log_event(self.app, message)

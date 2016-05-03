@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel
+from api.models import UuidAuditedModel, DeisException
 
 
 class Config(UuidAuditedModel):
@@ -107,7 +107,7 @@ class Config(UuidAuditedModel):
             new = set(labels) - set(old)
             message += ' - Addition of {} is the cause'.format(', '.join(new))
 
-        raise EnvironmentError(message)
+        raise DeisException(message)
 
     def save(self, **kwargs):
         """merge the old config with the new"""

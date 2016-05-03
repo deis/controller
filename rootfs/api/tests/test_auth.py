@@ -248,7 +248,7 @@ class AuthTest(APITestCase):
         }
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(token))
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 401)
         self.assertEqual(response.data, {'detail': 'Current password does not match'})
         self.assertEqual(response.get('content-type'), 'application/json')
         submit = {

@@ -176,7 +176,11 @@ class Release(UuidAuditedModel):
     def cleanup_old(self):
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
-        log_event(self.app, 'Cleaning up RCS for releases older than {} (latest)'.format(latest_version))  # noqa
+        log_event(
+            self.app,
+            'Cleaning up RCS for releases older than {} (latest)'.format(latest_version),
+            level=logging.DEBUG
+        )
 
         # Cleanup controllers
         controller_removal = []
@@ -192,13 +196,17 @@ class Release(UuidAuditedModel):
                 controller_removal.append(current_version)
 
         if controller_removal:
-            log_event(self.app, 'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)))  # noqa
+            log_event(
+                self.app,
+                'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)),  # noqa
+                level=logging.DEBUG
+            )
 
         for version in controller_removal:
             self._delete_release_in_scheduler(self.app.id, version)
 
         # find stray env secrets to remove that may have been missed
-        log_event(self.app, 'Cleaning up orphaned environment var secrets')
+        log_event(self.app, 'Cleaning up orphaned environment var secrets', level=logging.DEBUG)
         labels = {
             'app': self.app.id,
             'type': 'env'

@@ -15,7 +15,7 @@ from api import models
 # https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
 PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+)$')
 MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE)
-CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[0-9.]+[m]{0,1})$')
+CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[-+]?[0-9]*\.?[0-9]+[m]{0,1})$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
 
@@ -167,15 +167,6 @@ class ConfigSerializer(serializers.ModelSerializer):
             if not shares:
                 raise serializers.ValidationError("CPU shares must be a numeric value")
 
-            for share in shares.groupdict().values():
-                try:
-                    if share[-1] == "m":
-                        float(share[:-1])
-                    else:
-                        float(share)
-                except ValueError:
-                    raise serializers.ValidationError("CPU units must be a numeric value")
-
         return data
 
     def validate_tags(self, data):
@@ -194,6 +185,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 if len(prefix) > 253:
                     raise serializers.ValidationError(
                         "Tag key prefixes must 253 characters or less.")
+
                 for part in prefix.split('/'):
                     if not re.match(TAGVAL_MATCH, part):
                         raise serializers.ValidationError(

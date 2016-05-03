@@ -98,6 +98,9 @@ def delete_pods(url, pods, current, desired):
         if len(removed) == delta:
             break
 
+        if not pods:
+            break
+
         item = pods.pop()
         pod = cache.get(item)
         if 'deletionTimestamp' in pod['metadata']:

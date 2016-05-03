@@ -4,8 +4,6 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
 import json
 
 from django.contrib.auth.models import User
@@ -355,6 +353,17 @@ class ConfigTest(APITransactionTestCase):
         self.assertNotEqual(limit3['uuid'], limit4['uuid'])
         self.assertNotIn('worker', json.dumps(response.data['memory']))
 
+        # bad memory values
+        mem = {'web': '1Z'}
+        body = {'memory': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
+        mem = {'w3&b': '1G'}
+        body = {'memory': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
         # disallow put/patch/delete
         response = self.client.put(url)
         self.assertEqual(response.status_code, 405)
@@ -397,14 +406,14 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(cpu['web'], '1024')
 
         # set an additional value
-        body = {'cpu': json.dumps({'worker': '512'})}
+        body = {'cpu': json.dumps({'worker': '512m'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         limit2 = response.data
         self.assertNotEqual(limit1['uuid'], limit2['uuid'])
         cpu = response.data['cpu']
         self.assertIn('worker', cpu)
-        self.assertEqual(cpu['worker'], '512')
+        self.assertEqual(cpu['worker'], '512m')
         self.assertIn('web', cpu)
         self.assertEqual(cpu['web'], '1024')
 
@@ -415,17 +424,28 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(limit2, limit3)
         cpu = response.data['cpu']
         self.assertIn('worker', cpu)
-        self.assertEqual(cpu['worker'], '512')
+        self.assertEqual(cpu['worker'], '512m')
         self.assertIn('web', cpu)
         self.assertEqual(cpu['web'], '1024')
 
         # unset a value
-        body = {'memory': json.dumps({'worker': None})}
+        body = {'cpu': json.dumps({'worker': None})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         limit4 = response.data
         self.assertNotEqual(limit3['uuid'], limit4['uuid'])
-        self.assertNotIn('worker', json.dumps(response.data['memory']))
+        self.assertNotIn('worker', json.dumps(response.data['cpu']))
+
+        # bad cpu values
+        mem = {'web': '1G'}
+        body = {'cpu': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
+        mem = {'w3&b': '1G'}
+        body = {'cpu': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
 
         # disallow put/patch/delete
         response = self.client.put(url)

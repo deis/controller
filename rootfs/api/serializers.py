@@ -11,7 +11,9 @@ from rest_framework import serializers
 
 from api import models
 
-PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z]+)')
+# proc type name is alphanumeric
+# https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
+PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+)$')
 MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE)
 CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[0-9.]+[m]{0,1})$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
@@ -145,7 +147,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain [a-z]")
+                raise serializers.ValidationError("Process types can only contain alphanumeric")
 
             if not re.match(MEMLIMIT_MATCH, str(value)):
                 raise serializers.ValidationError(
@@ -159,7 +161,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain [a-z]")
+                raise serializers.ValidationError("Process types can only contain alphanumeric")
 
             shares = re.match(CPUSHARE_MATCH, str(value))
             if not shares:

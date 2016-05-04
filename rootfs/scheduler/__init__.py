@@ -986,22 +986,19 @@ class KubeHTTPClient(object):
             error(resp, 'create ReplicationController "{}" in Namespace "{}"', name, namespace)
             logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
 
-        create = False
         for _ in range(30):
-            if not create and self._get_rc_status(namespace, name) == 404:
+            try:
+                rc = self._get_rc(namespace, name).json()
+                if (
+                    "observedGeneration" in rc["status"] and
+                    rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
+                ):
+                    break
+
                 time.sleep(1)
-                continue
-
-            create = True
-            rc = self._get_rc(namespace, name).json()
-            # TODO: Does this matter? Is there a better indicator?
-            if (
-                "observedGeneration" in rc["status"] and
-                rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
-            ):
-                break
-
-            time.sleep(1)
+            except KubeHTTPException as e:
+                if e.response.status_code == 404:
+                    time.sleep(1)
 
         return resp.json()
 

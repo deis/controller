@@ -250,7 +250,7 @@ def fetch_all(request, context):
 
 
 def prepare_query_filters(query):
-    filters = {'labels': {}}
+    filters = {'labels': {}, 'fields': {}}
     if query:
         queries = parse_qs(query)
         if 'labelSelector' in queries:
@@ -258,6 +258,12 @@ def prepare_query_filters(query):
                 for item in items.split(','):
                     key, value = item.split('=')
                     filters['labels'][key] = value
+
+        if 'fieldSelector' in queries:
+            for items in queries['fieldSelector']:
+                for item in items.split(','):
+                    key, value = item.split('=')
+                    filters['fields'][key] = value
 
     return filters
 
@@ -344,6 +350,8 @@ def put(request, context):
 
     if resource_type == 'replicationcontrollers':
         data['metadata']['resourceVersion'] += 1
+        data['metadata']['generation'] += 1
+        data['status']['observedGeneration'] += 1
         upsert_pods(data, url)
 
     # Update the individual resource

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import logging
 import os
@@ -671,18 +671,22 @@ class KubeHTTPClient(object):
             'Unknown': JobState.error.name,
         }
 
+        # being in a Pending state can mean different things, introspecting app container first
+        if pod['status']['phase'] == 'Pending':
+            pod_state = self._pod_pending_status(pod)
         # being in a running state can mean a pod is starting, actually running or terminating
-        if pod['status']['phase'] == 'Running':
+        elif pod['status']['phase'] == 'Running':
             # is the readiness probe passing?
-            container_status = self._pod_readiness_status(pod)
-            if container_status in ['Starting', 'Terminating']:
-                return states[container_status]
-            elif container_status == 'Running' and self._pod_liveness_status(pod):
+            pod_state = self._pod_readiness_status(pod)
+            if pod_state in ['Starting', 'Terminating']:
+                return states[pod_state]
+            elif pod_state == 'Running' and self._pod_liveness_status(pod):
                 # is the pod ready to serve requests?
-                return states[container_status]
+                return states[pod_state]
+        else:
+            # if no match was found for deis mapping then passthrough the real state
+            pod_state = pod['status']['phase']
 
-        # if no match was found for deis mapping then passthrough the real state
-        pod_state = pod['status']['phase']
         return states.get(pod_state, pod_state)
 
     def _get_port(self, image):
@@ -857,10 +861,40 @@ class KubeHTTPClient(object):
 
         # Ensure the minimum desired number of pods are available
         logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(desired, namespace))  # noqa
-        for waited in range(120):
-            count = 0
+        waited = 0
+        timeout = 120  # 2 minutes
+        timeout_padded = False  # has timeout been increased or not
+        while True:
+            # timed out, time to bail
+            if waited > timeout:
+                logger.debug('timed out waiting for pods to come up in namespace {}'.format(namespace))  # noqa
+                break
+
+            count = 0  # ready pods
             pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
+                # If pulling an image is taking long then increase the timout
+                if (
+                    pod['status']['phase'] == 'Pending' and
+                    self._pod_pending_status(pod) == 'Pulling' and
+                    not timeout_padded
+                ):
+                    # last event should be Pulling in this case
+                    event = self._pod_events(pod).pop()
+                    # see if pull operation has been happening for over 1 minute
+                    start = datetime.strptime(
+                        event['firstTimestamp'],
+                        settings.DEIS_DATETIME_FORMAT
+                    )
+
+                    seconds = 60
+                    if (start + timedelta(seconds=seconds)) < datetime.utcnow():
+                        # add 10 minutes to timeout to allow a pull image operation to finish
+                        logger.debug('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
+                        logger.debug('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
+                        timeout += (60 * 10)
+                        timeout_padded = True
+
                 # now that state is running time to see if probes are passing
                 if self._pod_ready(pod):
                     count += 1
@@ -871,6 +905,8 @@ class KubeHTTPClient(object):
             if waited > 0 and (waited % 10) == 0:
                 logger.debug("waited {}s and {} pods are in service".format(waited, count))
 
+            # increase wait time without dealing with jitters from above code
+            waited += 1
             time.sleep(1)
 
         logger.debug("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
@@ -1335,26 +1371,63 @@ class KubeHTTPClient(object):
 
         return response
 
+    def _pod_pending_status(self, pod):
+        """Introspect the pod containers when pod is in Pending state"""
+        if 'containerStatuses' not in pod['status']:
+            return 'Pending'
+
+        name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
+        for container in pod['status']['containerStatuses']:
+            # find the right container in case there are many on the pod
+            if container['name'] != name:
+                continue
+
+            if 'waiting' in container['state']:
+                reason = container['state']['waiting']['reason']
+                if reason == 'ContainerCreating':
+                    # get the last event
+                    event = self._pod_events(pod).pop()
+                    return event['reason']
+
+        # Return Pending if nothing else can be found
+        return 'Pending'
+
+    def _pod_events(self, pod):
+        """Process events for a given Pod to find if Pulling is happening, among other events"""
+        # fetch all events for this pod
+        fields = {
+            'involvedObject.name': pod['metadata']['name'],
+            'involvedObject.namespace': pod['metadata']['namespace'],
+            'involvedObject.uid': pod['metadata']['uid']
+        }
+        events = self._get_namespace_events(pod['metadata']['namespace'], fields=fields).json()
+        # make sure that events are sorted
+        events['items'].sort(key=lambda x: x['lastTimestamp'])
+        return events['items']
+
     def _pod_readiness_status(self, pod):
         """Check if the pod container have passed the readiness probes"""
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         for container in pod['status']['containerStatuses']:
             # find the right container in case there are many on the pod
-            if container['name'] == name:
-                if not container['ready']:
-                    if 'running' in container['state'].keys():
-                        return 'Starting'
-                    elif (
-                        'terminated' in container['state'].keys() or
-                        'deletionTimestamp' in pod['metadata']
-                    ):
-                        return 'Terminating'
-                else:
-                    # See if k8s is in Terminating state
-                    if 'deletionTimestamp' in pod['metadata']:
-                        return 'Terminating'
+            if container['name'] != name:
+                continue
 
-                    return 'Running'
+            if not container['ready']:
+                if 'running' in container['state'].keys():
+                    return 'Starting'
+
+                if (
+                    'terminated' in container['state'].keys() or
+                    'deletionTimestamp' in pod['metadata']
+                ):
+                    return 'Terminating'
+            else:
+                # See if k8s is in Terminating state
+                if 'deletionTimestamp' in pod['metadata']:
+                    return 'Terminating'
+
+                return 'Running'
 
         # Seems like the most sensible default
         return 'Unknown'

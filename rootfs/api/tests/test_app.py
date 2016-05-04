@@ -17,6 +17,7 @@ from api.models import App
 from scheduler import KubeException
 
 from . import adapter
+from . import mock_port
 import requests_mock
 
 
@@ -30,6 +31,7 @@ def _mock_run(*args, **kwargs):
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class AppTest(APITestCase):
     """Tests creation of applications"""
 

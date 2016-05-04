@@ -7,6 +7,10 @@ from django.conf import settings
 from django.test.runner import DiscoverRunner
 
 
+def mock_port(*args, **kwargs):
+    return 5000
+
+
 # Mock out router requests and add in some jitter
 # Used for application is available in router checks
 def fake_responses(request, context):

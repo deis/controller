@@ -854,16 +854,35 @@ class KubeHTTPClient(object):
 
         logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))  # noqa
 
-    def _get_pod_ready_status(self, namespace, labels, desired):
+    def _get_pod_ready_status(self, namespace, controller, labels, desired):
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
 
-        # Ensure the minimum desired number of pods are available
-        logger.debug("waiting for {} pods in {} namespace to be in services (120s timeout)".format(desired, namespace))  # noqa
         waited = 0
         timeout = 120  # 2 minutes
-        timeout_padded = False  # has timeout been increased or not
+        # If there is initial delay on the readiness check then timeout needs to be higher
+        # this is to account for kubernetes having readiness check report as failure until
+        # the initial delay period is up
+        delay = 0
+        container_name = '{}-{}'.format(
+            controller['metadata']['labels']['app'],
+            controller['metadata']['labels']['type']
+        )
+        # get health info from spec
+        for container in controller['spec']['template']['spec']['containers']:
+            if container['name'] != container_name or 'readinessProbe' not in container:
+                continue
+
+            delay = int(container['readinessProbe']['initialDelaySeconds'])
+            logger.debug("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe for the RC".format(delay, timeout, controller['metadata']['name']))  # noqa
+            timeout += delay
+
+        logger.debug("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
+
+        # has timeout been increased or not within the loop
+        timeout_padded = False
+        # Ensure the minimum desired number of pods are available
         while True:
             # timed out, time to bail
             if waited > timeout:
@@ -873,7 +892,7 @@ class KubeHTTPClient(object):
             count = 0  # ready pods
             pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
-                # If pulling an image is taking long then increase the timout
+                # If pulling an image is taking long then increase the timeout
                 if (
                     pod['status']['phase'] == 'Pending' and
                     self._pod_pending_status(pod) == 'Pulling' and
@@ -954,7 +973,7 @@ class KubeHTTPClient(object):
             logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
         # Double check enough pods are in the required state to service the application
-        self._get_pod_ready_status(namespace, labels, desired)
+        self._get_pod_ready_status(namespace, rc, labels, desired)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):

@@ -17,11 +17,13 @@ from rest_framework.authtoken.models import Token
 from api.models import Release
 from scheduler import KubeHTTPException
 from . import adapter
+from . import mock_port
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class ReleaseTest(APITransactionTestCase):
 
     """Tests push notification from build system"""

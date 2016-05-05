@@ -16,3 +16,4 @@ PyYAML==3.11
 requests==2.10.0
 requests-toolbelt==0.6.0
 simpleflock==0.0.3
+retrying==1.3.3

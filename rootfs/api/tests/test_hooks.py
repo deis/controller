@@ -11,6 +11,7 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from . import adapter
+from . import mock_port
 import requests_mock
 
 RSA_PUBKEY = (
@@ -34,6 +35,7 @@ RSA_PUBKEY2 = (
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class HookTest(APITransactionTestCase):
 
     """Tests API hooks used to trigger actions from external components"""

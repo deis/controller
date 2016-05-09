@@ -337,11 +337,7 @@ class KubeHTTPClient(object):
             'Content-Type': 'application/json',
             'User-Agent': user_agent('Deis Controller', deis_version)
         }
-        # TODO: accessing the k8s api server by IP address rather than hostname avoids
-        # TODO look at https://toolbelt.readthedocs.org/en/latest/adapters.html#fingerprintadapter
-        # intermittent DNS errors, but at the price of disabling cert verification.
-        # session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
-        session.verify = False
+        session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
         self.session = session
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa

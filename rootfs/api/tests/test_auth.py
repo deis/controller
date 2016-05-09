@@ -83,6 +83,26 @@ class AuthTest(APITestCase):
         }
         self.assertDictContainsSubset(expected, response.data)
 
+        user = User.objects.get(username=username)
+        token = Token.objects.get(user=user).key
+        url = '/v2/auth/whoami'
+        response = self.client.get(url, HTTP_AUTHORIZATION='token {}'.format(token))
+        self.assertEqual(response.status_code, 200)
+        for key in response.data:
+            self.assertIn(key, ['id', 'last_login', 'is_superuser', 'username', 'first_name',
+                                'last_name', 'email', 'is_active', 'is_superuser', 'is_staff',
+                                'date_joined', 'groups', 'user_permissions'])
+        expected = {
+            'username': username,
+            'email': email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'is_active': True,
+            'is_superuser': False,
+            'is_staff': False
+        }
+        self.assertDictContainsSubset(expected, response.data)
+
     @override_settings(REGISTRATION_MODE="disabled")
     def test_auth_registration_disabled(self):
         """test that a new user cannot register when registration is disabled."""

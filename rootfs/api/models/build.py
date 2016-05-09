@@ -46,6 +46,7 @@ class Build(UuidAuditedModel):
         except Exception as e:
             if 'new_release' in locals():
                 new_release.delete()
+            self.delete()
 
             raise DeisException(str(e)) from e
 

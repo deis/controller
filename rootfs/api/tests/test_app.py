@@ -7,14 +7,17 @@ import logging
 from unittest import mock
 import requests
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App
+from scheduler import KubeException
 
 from . import adapter
+from . import mock_port
 import requests_mock
 
 
@@ -27,6 +30,8 @@ def _mock_run(*args, **kwargs):
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
+@mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class AppTest(APITestCase):
     """Tests creation of applications"""
 
@@ -99,32 +104,33 @@ class AppTest(APITestCase):
         url = "/v2/apps/{app_id}/logs".format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response.data, "No logs for {}".format(app_id))
 
         # test logs - 404 from deis-logger
         mock_response.status_code = 404
         response = self.client.get(url)
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response.data, "No logs for {}".format(app_id))
 
         # test logs - unanticipated status code from deis-logger
         mock_response.status_code = 400
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.data, "Error accessing logs for {}".format(app_id))
+        self.assertContains(
+            response,
+            "Error accessing logs for {}".format(app_id),
+            status_code=500)
 
         # test logs - success accessing deis-logger
         mock_response.status_code = 200
         mock_response.content = FAKE_LOG_DATA
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, FAKE_LOG_DATA)
+        self.assertContains(response, FAKE_LOG_DATA, status_code=200)
 
         # test logs - HTTP request error while accessing deis-logger
         mock_get.side_effect = requests.exceptions.RequestException('Boom!')
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.data, "Error accessing logs for {}".format(app_id))
+        self.assertContains(
+            response,
+            "Error accessing logs for {}".format(app_id),
+            status_code=500)
 
         # TODO: test run needs an initial build
 
@@ -263,9 +269,7 @@ class AppTest(APITestCase):
         A user should be able to run a one off command
         """
         app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(url, body)
+        response = self.client.post('/v2/apps', {'id': app_id})
 
         # create build
         body = {'image': 'autotest/example'}
@@ -280,6 +284,25 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['rc'], 0)
         self.assertEqual(response.data['output'], 'mock')
+
+    def test_run_failure(self, mock_requests):
+        """Raise a KubeException via scheduler.run"""
+        app_id = 'autotest'
+        response = self.client.post('/v2/apps', {'id': app_id})
+
+        # create build
+        body = {'image': 'autotest/example'}
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        with mock.patch('scheduler.KubeHTTPClient.run') as kube_run:
+            kube_run.side_effect = KubeException('boom!')
+            # run command
+            url = '/v2/apps/{}/run'.format(app_id)
+            body = {'command': 'ls -al'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 503)
 
     def test_unauthorized_user_cannot_see_app(self, mock_requests):
         """
@@ -380,6 +403,125 @@ class AppTest(APITestCase):
             'duplicate already exists as a namespace in this kuberenetes setup',
             status_code=409
         )
+
+    def test_app_create_failure_kubernetes_create(self, mock_requests):
+        """
+        Create an app but have scheduler.create fail with an exception
+        """
+        with mock.patch('scheduler.KubeHTTPClient.create') as mock_kube:
+            mock_kube.side_effect = KubeException('Boom!')
+            response = self.client.post('/v2/apps', {'id': 'test-kube'})
+            self.assertEqual(response.status_code, 503)
+
+    def test_app_delete_failure_kubernetes_destroy(self, mock_requests):
+        """
+        Create an app and then delete but have scheduler.destroy
+        fail with an exception
+        """
+        # create
+        response = self.client.post('/v2/apps', {'id': 'test'})
+        self.assertEqual(response.status_code, 201)
+
+        with mock.patch('scheduler.KubeHTTPClient.destroy') as mock_kube:
+            # delete
+            mock_kube.side_effect = KubeException('Boom!')
+            response = self.client.delete('/v2/apps/test')
+            self.assertEqual(response.status_code, 503)
+
+    def test_app_verify_application_health_success(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it succeed on the 6th try
+        """
+        responses = [
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'OK', 'status_code': 200}
+        ]
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, responses)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 6)
+
+    def test_app_verify_application_health_failure_404(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it fail with a 404 after 10 tries
+        """
+        # function tries to hit router 10 times
+        responses = [
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+            {'text': 'Not Found', 'status_code': 404},
+        ]
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, responses)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 10)
+
+    def test_app_verify_application_health_failure_exceptions(self, mock_requests):
+        """
+        Create an application which in turn causes a health check to run against
+        the router. Make it fail with a python-requets exception
+        """
+        def _raise_exception(request, ctx):
+            raise requests.exceptions.RequestException('Boom!')
+
+        # function tries to hit router 10 times
+        hostname = 'http://{}:{}/'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
+        mr = mock_requests.register_uri('GET', hostname, text=_raise_exception)
+
+        # create app
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201)
+
+        # deploy app to get verification
+        url = "/v2/apps/myid/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        # Called 10 times due to the exception
+        self.assertEqual(mr.called, True)
+        self.assertEqual(mr.call_count, 10)
 
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

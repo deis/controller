@@ -126,7 +126,7 @@ def check_blacklist(repo):
     """Check a Docker repository name for collision with deis/* components."""
     blacklisted = [  # NOTE: keep this list up to date!
         'builder', 'controller', 'database', 'dockerbuilder', 'etcd', 'minio', 'registry',
-        'router', 'slugbuilder', 'slugrunner', 'workflow',
+        'router', 'slugbuilder', 'slugrunner', 'workflow', 'workflow-manager',
     ]
     if any("deis/{}".format(c) in repo for c in blacklisted):
         raise PermissionDenied("Repository name {} is not allowed, as it is reserved by Deis".format(repo))  # noqa
@@ -142,14 +142,14 @@ def log_output(stream, operation, repo, tag):
 
 def stream_error(chunk, operation, repo, tag):
     """Translate docker stream errors into a more digestable format"""
+    # grab the generic error and strip the useless Error: portion
+    message = chunk['error'].replace('Error: ', '')
+
     # not all errors provide the code
     if 'code' in chunk['errorDetail']:
         # permission denied on the repo
         if chunk['errorDetail']['code'] == 403:
             message = 'Permission Denied attempting to {} image {}:{}'.format(operation, repo, tag)
-    else:
-        # grab the generic error and strip the useless Error: portion
-        message = chunk['error'].replace('Error: ', '')
 
     raise RegistryException(message)
 

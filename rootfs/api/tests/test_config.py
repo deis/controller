@@ -4,8 +4,6 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
 import json
 
 from django.contrib.auth.models import User
@@ -17,11 +15,13 @@ from rest_framework.authtoken.models import Token
 from api.models import App, Config
 
 from . import adapter
+from . import mock_port
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class ConfigTest(APITransactionTestCase):
 
     """Tests setting and updating config values"""
@@ -126,14 +126,15 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags'])
+                                'cpu', 'tags', 'registry'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {},
-            'tags': {}
+            'tags': {},
+            'registry': {}
         }
         self.assertDictContainsSubset(expected, response.data)
 
@@ -148,14 +149,15 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags'])
+                                'cpu', 'tags', 'registry'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {'web': "1024"},
-            'tags': {}
+            'tags': {},
+            'registry': {}
         }
         self.assertDictContainsSubset(expected, response.data)
 
@@ -236,6 +238,29 @@ class ConfigTest(APITransactionTestCase):
             resp = self.client.post(url, body)
             self.assertEqual(resp.status_code, 201)
             self.assertIn(k, resp.data['values'])
+
+    def test_config_deploy_failure(self, mock_requests):
+        """
+        Cause an Exception in app.deploy to cause a release.delete
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        # deploy app to get a build
+        url = "/v2/apps/{}/builds".format(app_id)
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+            url = '/v2/apps/{app_id}/config'.format(**locals())
+            body = {'values': json.dumps({'test': "testvalue"})}
+            resp = self.client.post(url, body)
+            self.assertEqual(resp.status_code, 400)
 
     def test_invalid_config_keys(self, mock_requests):
         """Test that invalid config keys are rejected.
@@ -353,6 +378,17 @@ class ConfigTest(APITransactionTestCase):
         self.assertNotEqual(limit3['uuid'], limit4['uuid'])
         self.assertNotIn('worker', json.dumps(response.data['memory']))
 
+        # bad memory values
+        mem = {'web': '1Z'}
+        body = {'memory': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
+        mem = {'w3&b': '1G'}
+        body = {'memory': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
         # disallow put/patch/delete
         response = self.client.put(url)
         self.assertEqual(response.status_code, 405)
@@ -395,14 +431,14 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(cpu['web'], '1024')
 
         # set an additional value
-        body = {'cpu': json.dumps({'worker': '512'})}
+        body = {'cpu': json.dumps({'worker': '512m'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         limit2 = response.data
         self.assertNotEqual(limit1['uuid'], limit2['uuid'])
         cpu = response.data['cpu']
         self.assertIn('worker', cpu)
-        self.assertEqual(cpu['worker'], '512')
+        self.assertEqual(cpu['worker'], '512m')
         self.assertIn('web', cpu)
         self.assertEqual(cpu['web'], '1024')
 
@@ -413,17 +449,28 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(limit2, limit3)
         cpu = response.data['cpu']
         self.assertIn('worker', cpu)
-        self.assertEqual(cpu['worker'], '512')
+        self.assertEqual(cpu['worker'], '512m')
         self.assertIn('web', cpu)
         self.assertEqual(cpu['web'], '1024')
 
         # unset a value
-        body = {'memory': json.dumps({'worker': None})}
+        body = {'cpu': json.dumps({'worker': None})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201)
         limit4 = response.data
         self.assertNotEqual(limit3['uuid'], limit4['uuid'])
-        self.assertNotIn('worker', json.dumps(response.data['memory']))
+        self.assertNotIn('worker', json.dumps(response.data['cpu']))
+
+        # bad cpu values
+        mem = {'web': '1G'}
+        body = {'cpu': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
+        mem = {'w3&b': '1G'}
+        body = {'cpu': json.dumps(mem)}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
 
         # disallow put/patch/delete
         response = self.client.put(url)
@@ -526,6 +573,89 @@ class ConfigTest(APITransactionTestCase):
         body = {'tags': json.dumps({'host.name.com/,not.valid': 'valid'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400)
+        long_tag = 'a' * 300
+        body = {'tags': json.dumps({'{}/not.valid'.format(long_tag): 'valid'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+        body = {'tags': json.dumps({'this&foo.com/not.valid': 'valid'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
+
+        # disallow put/patch/delete
+        response = self.client.put(url)
+        self.assertEqual(response.status_code, 405)
+        response = self.client.patch(url)
+        self.assertEqual(response.status_code, 405)
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_registry(self, mock_requests):
+        """
+        Test that registry information can be set on an application
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201)
+        app_id = response.data['id']
+
+        # check default
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('registry', response.data)
+        self.assertEqual(response.data['registry'], {})
+
+        # set some registry information
+        body = {'registry': json.dumps({'username': 'bob'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry1 = response.data
+
+        # check registry information again
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('registry', response.data)
+        registry = response.data['registry']
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # set an additional value
+        # set them upper case, internally it should translate to lower
+        body = {'registry': json.dumps({'PASSWORD': 's3cur3pw1'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry2 = response.data
+        self.assertNotEqual(registry1['uuid'], registry2['uuid'])
+        registry = response.data['registry']
+        self.assertIn('password', registry)
+        self.assertEqual(registry['password'], 's3cur3pw1')
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # read the registry information again
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        registry3 = response.data
+        self.assertEqual(registry2, registry3)
+        registry = response.data['registry']
+        self.assertIn('password', registry)
+        self.assertEqual(registry['password'], 's3cur3pw1')
+        self.assertIn('username', registry)
+        self.assertEqual(registry['username'], 'bob')
+
+        # unset a value
+        body = {'registry': json.dumps({'password': None})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        registry4 = response.data
+        self.assertNotEqual(registry3['uuid'], registry4['uuid'])
+        self.assertNotIn('password', json.dumps(response.data['registry']))
+
+        # bad registry key values
+        body = {'registry': json.dumps({'pa$$w0rd': 'woop'})}
+        response = self.client.post(url, body)
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400)
 
         # disallow put/patch/delete
         response = self.client.put(url)
@@ -571,6 +701,16 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201)
         app_id = response.data['id']
+
+        # Set healthcheck URL to get defaults set
+        body = {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': '25'})}
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            body
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('HEALTHCHECK_INITIAL_DELAY', resp.data['values'])
+        self.assertEqual(resp.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
 
         # Set healthcheck URL to get defaults set
         body = {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}

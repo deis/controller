@@ -13,16 +13,27 @@ from django.conf import settings
 from django.db import models
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-from django.core.exceptions import ValidationError
+
+from rest_framework.exceptions import ValidationError, APIException
 from rest_framework.authtoken.models import Token
 
 from api.utils import dict_merge
+from scheduler import KubeException
 
 logger = logging.getLogger(__name__)
 
 
-class AlreadyExists(EnvironmentError):
-    pass
+class DeisException(APIException):
+    status_code = 400
+
+
+class AlreadyExists(APIException):
+    status_code = 409
+
+
+class ServiceUnavailable(APIException):
+    status_code = 503
+    default_detail = 'Service temporarily unavailable, try again later.'
 
 
 def log_event(app, msg, level=logging.INFO):
@@ -57,8 +68,12 @@ class AuditedModel(models.Model):
         return mod.SchedulerClient()
 
     def _fetch_service_config(self, app):
-        # Get the service from k8s to attach the domain correctly
-        svc = self._scheduler._get_service(app, app).json()
+        try:
+            # Get the service from k8s to attach the domain correctly
+            svc = self._scheduler._get_service(app, app).json()
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
+
         # Get minimum structure going if it is missing on the service
         if 'metadata' not in svc or 'annotations' not in svc['metadata']:
             default = {'metadata': {'annotations': {}}}
@@ -90,8 +105,11 @@ class AuditedModel(models.Model):
         data = {"%s%s" % (component, key): value for key, value in list(data.items())}
         svc['metadata']['annotations'].update(morph.flatten(data))
 
-        # Update the k8s service for the application with new domain information
-        self._scheduler._update_service(app, app, svc)
+        # Update the k8s service for the application with new service information
+        try:
+            self._scheduler._update_service(app, app, svc)
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e
 
 
 class UuidAuditedModel(AuditedModel):

@@ -655,9 +655,9 @@ class KubeHTTPClient(object):
                 })
 
         # Inject debugging if workflow is in debug mode
-        if os.environ.get("DEBUG", False):
+        if os.environ.get("DEIS_DEBUG", False):
             data["env"].append({
-                "name": "DEBUG",
+                "name": "DEIS_DEBUG",
                 "value": "1"
             })
 

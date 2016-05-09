@@ -374,7 +374,7 @@ class KubeHTTPClient(object):
             logger.debug('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
             return
         except KubeHTTPException:
-            new_rc = self._create_rc(namespace, name, image, command, **kwargs)
+            new_rc = self._create_rc(namespace, name, image, command, **kwargs).json()
 
         # Get the desired number to scale to
         if old_rc:
@@ -1053,6 +1053,15 @@ class KubeHTTPClient(object):
             error(resp, 'create ReplicationController "{}" in Namespace "{}"', name, namespace)
             logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
 
+        self._wait_for_rc_ready(namespace, name)
+
+        return resp
+
+    def _wait_for_rc_ready(self, namespace, name):
+        """
+        Waits for status/observedGeneration and metadata/generation to match
+        Indicates RC is ready
+        """
         for _ in range(30):
             try:
                 rc = self._get_rc(namespace, name).json()
@@ -1066,8 +1075,6 @@ class KubeHTTPClient(object):
             except KubeHTTPException as e:
                 if e.response.status_code == 404:
                     time.sleep(1)
-
-        return resp.json()
 
     def _update_rc(self, namespace, name, data):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)

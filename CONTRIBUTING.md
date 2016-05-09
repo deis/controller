@@ -21,7 +21,7 @@ Our official support channels are:
   - chart: https://github.com/deis/charts/issues
   - database: https://github.com/deis/postgres/issues
   - etcd: https://github.com/deis/etcd/issues
-  - helm: https://github.com/helm/helm/issues
+  - helm classic: https://github.com/helm/helm-classic/issues
   - minio: https://github.com/deis/minio/issues
   - registry: https://github.com/deis/registry/issues
   - router: https://github.com/deis/router/issues

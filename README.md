@@ -47,15 +47,15 @@ In order to do development on this component, you'll need a working Kubernetes c
 
 * Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
 
-### Helm
+### Helm Classic
 
-After you have a working Kubernetes cluster, install [helm](http://helm.sh) and run the following commands to add the Deis chart repository and install Deis to your new cluster:
+After you have a working Kubernetes cluster, install [helm classic](http://helm.sh) and run the following commands to add the Deis chart repository and install Deis to your new cluster:
 
 ```console
-helm repo add deis https://github.com/deis/charts
-helm fetch deis/workflow-dev
-helm generate -x manifests workflow-dev
-helm install workflow-dev
+helmc repo add deis https://github.com/deis/charts
+helmc fetch deis/workflow-dev
+helmc generate -x manifests workflow-dev
+helmc install workflow-dev
 ```
 
 ### Python

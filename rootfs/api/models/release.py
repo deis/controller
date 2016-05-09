@@ -183,8 +183,11 @@ class Release(UuidAuditedModel):
         )
 
         # Cleanup controllers
+        labels = {
+            'heritage': 'deis'
+        }
         controller_removal = []
-        controllers = self._scheduler._get_rcs(self.app.id).json()
+        controllers = self._scheduler._get_rcs(self.app.id, labels=labels).json()
         for controller in controllers['items']:
             current_version = controller['metadata']['labels']['version']
             # skip the latest release
@@ -208,6 +211,7 @@ class Release(UuidAuditedModel):
         # find stray env secrets to remove that may have been missed
         log_event(self.app, 'Cleaning up orphaned environment var secrets', level=logging.DEBUG)
         labels = {
+            'heritage': 'deis',
             'app': self.app.id,
             'type': 'env'
         }
@@ -220,6 +224,22 @@ class Release(UuidAuditedModel):
 
             self._scheduler._delete_secret(self.app.id, secret['metadata']['name'])
 
+        # Remove stray pods
+        labels = {
+            'heritage': 'deis'
+        }
+        pods = self._scheduler._get_pods(self.app.id, labels=labels).json()
+        for pod in pods['items']:
+            if self._scheduler._pod_deleted(pod):
+                continue
+
+            current_version = pod['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            self._scheduler._delete_pod(self.app.id, pod['metadata']['name'])
+
     def _delete_release_in_scheduler(self, namespace, version):
         """
         Deletes a specific release in k8s
@@ -228,13 +248,22 @@ class Release(UuidAuditedModel):
         secret that container the env var
         """
         labels = {
+            'heritage': 'deis',
             'app': namespace,
             'version': 'v{}'.format(version)
         }
-        controllers = self._scheduler._get_rcs(namespace, labels=labels)
-        for controller in controllers.json()['items']:
+        controllers = self._scheduler._get_rcs(namespace, labels=labels).json()
+        for controller in controllers['items']:
             self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0)
             self._scheduler._delete_rc(namespace, controller['metadata']['name'])
+            # Remove stray pods
+            labels = controller['metadata']['labels']
+            pods = self._scheduler._get_pods(namespace, labels=labels).json()
+            for pod in pods['items']:
+                if self._scheduler._pod_deleted(pod):
+                    continue
+
+                self._scheduler._delete_pod(namespace, pod['metadata']['name'])
 
         # remove secret that contains env vars for the release
         try:

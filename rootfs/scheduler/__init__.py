@@ -419,24 +419,38 @@ class KubeHTTPClient(object):
             )
 
             # Remove new release of the RC
-            self._scale_rc(namespace, new_rc["metadata"]["name"], 0)
-            self._delete_rc(namespace, new_rc["metadata"]["name"])
+            self._cleanup_release(namespace, new_rc)
 
-            # Bring back old release if available of the RC
+            # If there was a previous release then bring that back
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
+            raise KubeException(str(e))
 
         # New release is live and kicking. Clean up old release
         if old_rc:
-            self._scale_rc(namespace, old_rc["metadata"]["name"], 0)
-            self._delete_rc(namespace, old_rc["metadata"]["name"])
+            self._cleanup_release(namespace, old_rc)
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
         self._update_application_service(namespace, name, app_type, port, routable)
+
+    def _cleanup_release(self, namespace, controller):
+        """
+        Cleans up resources related to an application deployment
+        """
+        # Have the RC scale down pods and delete itself
+        self._scale_rc(namespace, controller['metadata']['name'], 0)
+        self._delete_rc(namespace, controller['metadata']['name'])
+
+        # Remove stray pods that the scale down will have missed (this can occassionally happen)
+        pods = self._get_pods(namespace, labels=controller['metadata']['labels']).json()
+        for pod in pods['items']:
+            if self._pod_deleted(pod):
+                continue
+
+            self._delete_pod(namespace, pod['metadata']['name'])
 
     def _update_application_service(self, namespace, name, app_type, port, routable=False):
         """Update application service with all the various required information"""

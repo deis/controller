@@ -1,0 +1,6 @@
+# documentation is at https://codecov.io/gh/deis/controller/settings/yaml
+comment:
+  layout: header, diff
+coverage:
+  status:
+    changes: false

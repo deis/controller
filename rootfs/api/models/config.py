@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel
+from api.models import UuidAuditedModel, DeisException
 
 
 class Config(UuidAuditedModel):
@@ -61,6 +61,8 @@ class Config(UuidAuditedModel):
         # fetch set health values and any defaults
         # this approach allows new health items to be added without issues
         health = self.healthcheck()
+        if not health:
+            return
 
         # HTTP GET related
         self.values['HEALTHCHECK_URL'] = health['path']
@@ -105,24 +107,15 @@ class Config(UuidAuditedModel):
             new = set(labels) - set(old)
             message += ' - Addition of {} is the cause'.format(', '.join(new))
 
-        raise EnvironmentError(message)
+        raise DeisException(message)
 
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
             previous_config = self.app.config_set.latest()
             for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
-                # Guard against migrations from older apps without fixes to
-                # JSONField encoding.
-                try:
-                    data = getattr(previous_config, attr).copy()
-                except AttributeError:
-                    data = {}
-
-                try:
-                    new_data = getattr(self, attr).copy()
-                except AttributeError:
-                    new_data = {}
+                data = getattr(previous_config, attr, {}).copy()
+                new_data = getattr(self, attr, {}).copy()
 
                 data.update(new_data)
                 # remove config keys if we provided a null value

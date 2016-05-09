@@ -2,11 +2,10 @@ import logging
 
 from django.conf import settings
 from django.db import models
-from rest_framework.serializers import ValidationError
 
 from registry import publish_release, RegistryException
 from api.utils import dict_diff
-from api.models import UuidAuditedModel, log_event
+from api.models import UuidAuditedModel, log_event, DeisException
 from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
@@ -49,13 +48,13 @@ class Release(UuidAuditedModel):
         if not self.build.dockerfile:
             # Deis Pull
             if not self.build.sha:
-                return '{}:v{}'.format(self.app.id, str(self.version))
+                return '{}/{}:v{}'.format(settings.REGISTRY_URL, self.app.id, str(self.version))
 
-            # Build Pack
+            # Build Pack - Registry URL not prepended since slugrunner image will download slug
             return self.build.image
 
         # DockerFile
-        return '{}:git-{}'.format(self.app.id, str(self.build.sha))
+        return '{}/{}:git-{}'.format(settings.REGISTRY_URL, self.app.id, str(self.build.sha))
 
     def new(self, user, config, build, summary=None, source_version='latest'):
         """
@@ -74,20 +73,19 @@ class Release(UuidAuditedModel):
 
         try:
             release.publish()
-        except EnvironmentError as e:
+        except DeisException as e:
             # If we cannot publish this app, just log and carry on
             log_event(self.app, e)
             pass
         except RegistryException as e:
             log_event(self.app, e)
-            # Uses ValidationError to get return of 400 up in views
-            raise ValidationError({'detail': str(e)})
+            raise DeisException(str(e)) from e
 
         return release
 
     def publish(self, source_version='latest'):
         if self.build is None:
-            raise EnvironmentError('No build associated with this release to publish')
+            raise DeisException('No build associated with this release to publish')
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
         if self.build.dockerfile or self.build.sha:
@@ -136,28 +134,30 @@ class Release(UuidAuditedModel):
             prev_release = None
         return prev_release
 
-    def rollback(self, user, version):
-        if version < 1:
-            raise EnvironmentError('version cannot be below 0')
-
-        summary = "{} rolled back to v{}".format(user, version)
-        prev = self.app.release_set.get(version=version)
-        new_release = self.new(
-            user,
-            build=prev.build,
-            config=prev.config,
-            summary=summary,
-            source_version='v{}'.format(version)
-        )
-
+    def rollback(self, user, version=None):
         try:
+            # if no version is provided then grab version from object
+            version = (self.version - 1) if version is None else int(version)
+
+            if version < 1:
+                raise DeisException('version cannot be below 0')
+
+            prev = self.app.release_set.get(version=version)
+            new_release = self.new(
+                user,
+                build=prev.build,
+                config=prev.config,
+                summary="{} rolled back to v{}".format(user, version),
+                source_version='v{}'.format(version)
+            )
+
             if self.build is not None:
                 self.app.deploy(new_release)
             return new_release
-        except Exception:
+        except Exception as e:
             if 'new_release' in locals():
                 new_release.delete()
-            raise
+            raise DeisException(str(e))
 
     def delete(self, *args, **kwargs):
         """Delete release DB record and any RCs from the affect release"""
@@ -165,7 +165,7 @@ class Release(UuidAuditedModel):
             self._delete_release_in_scheduler(self.app.id, self.version)
         except KubeHTTPException as e:
             # 404 means they were already cleaned up
-            if e.status_code is not 404:
+            if e.response.status_code is not 404:
                 # Another problem came up
                 message = 'Could not to cleanup RCs for release {}'.format(self.version)
                 log_event(self.app, message)
@@ -176,11 +176,18 @@ class Release(UuidAuditedModel):
     def cleanup_old(self):
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
-        log_event(self.app, 'Cleaning up RCS for releases older than {} (latest)'.format(latest_version))  # noqa
+        log_event(
+            self.app,
+            'Cleaning up RCS for releases older than {} (latest)'.format(latest_version),
+            level=logging.DEBUG
+        )
 
         # Cleanup controllers
+        labels = {
+            'heritage': 'deis'
+        }
         controller_removal = []
-        controllers = self._scheduler._get_rcs(self.app.id).json()
+        controllers = self._scheduler._get_rcs(self.app.id, labels=labels).json()
         for controller in controllers['items']:
             current_version = controller['metadata']['labels']['version']
             # skip the latest release
@@ -192,14 +199,19 @@ class Release(UuidAuditedModel):
                 controller_removal.append(current_version)
 
         if controller_removal:
-            log_event(self.app, 'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)))  # noqa
+            log_event(
+                self.app,
+                'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)),  # noqa
+                level=logging.DEBUG
+            )
 
         for version in controller_removal:
             self._delete_release_in_scheduler(self.app.id, version)
 
         # find stray env secrets to remove that may have been missed
-        log_event(self.app, 'Cleaning up orphaned environment var secrets')
+        log_event(self.app, 'Cleaning up orphaned environment var secrets', level=logging.DEBUG)
         labels = {
+            'heritage': 'deis',
             'app': self.app.id,
             'type': 'env'
         }
@@ -212,6 +224,22 @@ class Release(UuidAuditedModel):
 
             self._scheduler._delete_secret(self.app.id, secret['metadata']['name'])
 
+        # Remove stray pods
+        labels = {
+            'heritage': 'deis'
+        }
+        pods = self._scheduler._get_pods(self.app.id, labels=labels).json()
+        for pod in pods['items']:
+            if self._scheduler._pod_deleted(pod):
+                continue
+
+            current_version = pod['metadata']['labels']['version']
+            # skip the latest release
+            if current_version == latest_version:
+                continue
+
+            self._scheduler._delete_pod(self.app.id, pod['metadata']['name'])
+
     def _delete_release_in_scheduler(self, namespace, version):
         """
         Deletes a specific release in k8s
@@ -220,13 +248,22 @@ class Release(UuidAuditedModel):
         secret that container the env var
         """
         labels = {
+            'heritage': 'deis',
             'app': namespace,
             'version': 'v{}'.format(version)
         }
-        controllers = self._scheduler._get_rcs(namespace, labels=labels)
-        for controller in controllers.json()['items']:
+        controllers = self._scheduler._get_rcs(namespace, labels=labels).json()
+        for controller in controllers['items']:
             self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0)
             self._scheduler._delete_rc(namespace, controller['metadata']['name'])
+            # Remove stray pods
+            labels = controller['metadata']['labels']
+            pods = self._scheduler._get_pods(namespace, labels=labels).json()
+            for pod in pods['items']:
+                if self._scheduler._pod_deleted(pod):
+                    continue
+
+                self._scheduler._delete_pod(namespace, pod['metadata']['name'])
 
         # remove secret that contains env vars for the release
         try:

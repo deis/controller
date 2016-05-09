@@ -15,12 +15,15 @@ from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import Release
+from scheduler import KubeHTTPException
 from . import adapter
+from . import mock_port
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('scheduler.KubeHTTPClient._get_port', mock_port)
 class ReleaseTest(APITransactionTestCase):
 
     """Tests push notification from build system"""
@@ -276,3 +279,55 @@ class ReleaseTest(APITransactionTestCase):
         url = '{base_url}/{app_id}/releases/rollback/'.format(**locals())
         response = self.client.post(url)
         self.assertEqual(response.status_code, 403)
+
+    def test_release_rollback_failure(self, mock_requests):
+        """
+        Cause an Exception in app.deploy to cause a release.delete
+        """
+        body = {'id': 'test'}
+        self.client.post('/v2/apps', body)
+
+        # deploy app to get a build
+        url = "/v2/apps/test/builds"
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['image'], body['image'])
+
+        # update config to roll a new release
+        url = '/v2/apps/test/config'
+        body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        # update config to roll a new release
+        url = '/v2/apps/test/config'
+        body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201)
+
+        # app.deploy exception
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+            url = "/v2/apps/test/releases/rollback/"
+            body = {'version': 2}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
+
+        # app.deploy exception followed by a KubeHTTPException of 404
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+            with mock.patch('api.models.Release._delete_release_in_scheduler') as mock_kube:
+                # instead of full request mocking, fake it out in a simple way
+                class Response(object):
+                    pass
+
+                response = Response()
+                response.status_code = 404
+                kube_exception = KubeHTTPException(response=response)
+                mock_kube.side_effect = kube_exception
+
+                url = "/v2/apps/test/releases/rollback/"
+                body = {'version': 2}
+                response = self.client.post(url, body)
+                self.assertEqual(response.status_code, 400)

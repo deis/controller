@@ -665,6 +665,36 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 405, response.data)
 
+    def test_registry_deploy(self, mock_requests):
+        """
+        Test that registry information can be applied
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set healthcheck URL to get defaults set
+        body = {'registry': json.dumps({
+            'username': 'bob',
+            'password': 's3cur3pw1'
+        })}
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            body
+        )
+        self.assertEqual(resp.status_code, 201, response.data)
+        self.assertIn('username', resp.data['registry'])
+        self.assertIn('password', resp.data['registry'])
+        self.assertEqual(resp.data['registry']['username'], 'bob')
+        self.assertEqual(resp.data['registry']['password'], 's3cur3pw1')
+
+        # post a new build
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
     def test_config_owner_is_requesting_user(self, mock_requests):
         """
         Ensure that setting the config value is owned by the requesting user
@@ -724,6 +754,6 @@ class ConfigTest(APITransactionTestCase):
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
-        body = {'image': 'autotest/example'}
+        body = {'image': 'quay.io/autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)

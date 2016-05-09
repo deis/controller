@@ -338,7 +338,8 @@ class App(UuidAuditedModel):
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
-                'envs': envs,
+                'envs': release.config.values,
+                'registry': release.config.registry,
                 'version': "v{}".format(release.version),
                 'replicas': replicas,
                 'app_type': scale_type,
@@ -390,7 +391,8 @@ class App(UuidAuditedModel):
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
-                'envs': envs,
+                'envs': release.config.values,
+                'registry': release.config.registry,
                 # only used if there is no previous RC
                 'replicas': replicas,
                 'version': "v{}".format(release.version),
@@ -583,6 +585,7 @@ class App(UuidAuditedModel):
             'cpu': release.config.cpu,
             'tags': release.config.tags,
             'envs': release.config.values,
+            'registry': release.config.registry,
             'version': "v{}".format(release.version),
             'build_type': release.build.type,
         }

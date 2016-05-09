@@ -40,7 +40,19 @@ class Release(UuidAuditedModel):
 
     @property
     def image(self):
-        # return image if it is already in the registry, test host and then host + port
+        # Builder pushes to internal registry, exclude SHA based images from being returned
+        registry = self.config.registry
+        if (
+            registry.get('username', None) and
+            registry.get('password', None) and
+            # SHA means it came from a git push (builder)
+            not self.build.sha and
+            # hostname tells Builder where to push images
+            not registry.get('hostname', None)
+        ):
+            return self.build.image
+
+        # return image if it is already in a registry, test host and then host + port
         if (
             self.build.image.startswith(settings.REGISTRY_HOST) or
             self.build.image.startswith(settings.REGISTRY_URL)
@@ -95,16 +107,29 @@ class Release(UuidAuditedModel):
         if self.build.source_based:
             return
 
-        source_image = self.build.image
+        # Builder pushes to internal registry, exclude SHA based images from being returned early
+        registry = self.config.registry
+        if (
+            registry.get('username', None) and
+            registry.get('password', None) and
+            # SHA means it came from a git push (builder)
+            not self.build.sha and
+            # hostname tells Builder where to push images
+            not registry.get('hostname', None)
+        ):
+            log_event(self.app, '{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
+            return
+
         # return image if it is already in the registry, test host and then host + port
         if (
-            source_image.startswith(settings.REGISTRY_HOST) or
-            source_image.startswith(settings.REGISTRY_URL)
+            self.build.image.startswith(settings.REGISTRY_HOST) or
+            self.build.image.startswith(settings.REGISTRY_URL)
         ):
-            log_event(self.app, '{} already exists in the target registry. Using this image for release {} of app {}'.format(source_image, self.version, self.app))  # noqa
+            log_event(self.app, '{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
             return
 
         # add tag if it was not provided
+        source_image = self.build.image
         if ':' not in source_image:
             source_image = "{}:{}".format(source_image, self.build.version)
 

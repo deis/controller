@@ -43,10 +43,9 @@ The Deis project welcomes contributions from all developers. The high level proc
 
 ### Kubernetes
 
-In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.1 with the following requirements:
+In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.2 and higher with the following requirements:
 
 * Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
-* If you are testing the logger components, you must enable `DaemonSet` experimental APIs via `--runtime-config=extensions/v1beta1/daemonsets=true`
 
 ### Helm
 

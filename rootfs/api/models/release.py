@@ -48,13 +48,13 @@ class Release(UuidAuditedModel):
         if not self.build.dockerfile:
             # Deis Pull
             if not self.build.sha:
-                return '{}:v{}'.format(self.app.id, str(self.version))
+                return '{}/{}:v{}'.format(settings.REGISTRY_URL, self.app.id, str(self.version))
 
-            # Build Pack
+            # Build Pack - Registry URL not prepended since slugrunner image will download slug
             return self.build.image
 
         # DockerFile
-        return '{}:git-{}'.format(self.app.id, str(self.build.sha))
+        return '{}/{}:git-{}'.format(settings.REGISTRY_URL, self.app.id, str(self.build.sha))
 
     def new(self, user, config, build, summary=None, source_version='latest'):
         """

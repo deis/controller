@@ -32,7 +32,7 @@ POD_BTEMPLATE = """\
     "containers": [
       {
         "name": "$id",
-        "image": "$slugimage",
+        "image": "$image",
         "env": [
         {
             "name":"PORT",
@@ -40,7 +40,7 @@ POD_BTEMPLATE = """\
         },
         {
             "name":"SLUG_URL",
-            "value":"$image"
+            "value":"$slug_url"
         },
         {
             "name": "BUILDER_STORAGE",
@@ -190,7 +190,7 @@ RCB_TEMPLATE = """\
         "containers": [
           {
             "name": "$containername",
-            "image": "$slugimage",
+            "image": "$image",
             "imagePullPolicy": "$image_pull_policy",
             "env": [
             {
@@ -199,7 +199,7 @@ RCB_TEMPLATE = """\
             },
             {
                 "name":"SLUG_URL",
-                "value":"$image"
+                "value":"$slug_url"
             },
             {
                 "name":"DEIS_APP",
@@ -327,7 +327,6 @@ class KubeHTTPClient(object):
 
     def __init__(self):
         self.url = settings.SCHEDULER_URL
-        self.registry = settings.REGISTRY_URL
 
         with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as token_file:
             token = token_file.read()
@@ -530,13 +529,11 @@ class KubeHTTPClient(object):
             name, image, entrypoint, command)
         )
 
-        imgurl = self.registry + '/' + image
         POD = POD_TEMPLATE
-
         l = {
             'id': name,
             'version': self.apiversion,
-            'image': imgurl,
+            'image': image,
             'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
             'storagetype': os.getenv("APP_STORAGE"),
             'terminationGracePeriodSeconds': settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
@@ -544,9 +541,9 @@ class KubeHTTPClient(object):
 
         if entrypoint == '/runner/init':
             POD = POD_BTEMPLATE
-            l["image"] = image
+            l["slug_url"] = image
             l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
-            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            l["image"] = settings.SLUGRUNNER_IMAGE
             l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
             l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
 
@@ -704,12 +701,11 @@ class KubeHTTPClient(object):
     @retry(stop_max_attempt_number=3, wait_fixed=1000)
     def _get_port(self, image):
         # try thrice to find the port before raising exception as docker-py is flaky
-        imagepath = self.registry + '/' + image
-        repo = imagepath.split(":")
+        repo = image.split(":")
         # image already includes the tag, so we split it out here
         docker_cli = Client(version="auto")
         docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-        image_info = docker_cli.inspect_image(imagepath)
+        image_info = docker_cli.inspect_image(image)
         if 'ExposedPorts' not in image_info['Config']:
             return None
         port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
@@ -995,7 +991,6 @@ class KubeHTTPClient(object):
         app_type = kwargs.get('app_type')
         container_name = namespace + '-' + app_type
         args = command.split()
-        imgurl = self.registry + "/" + image
         storageType = os.getenv("APP_STORAGE")
         TEMPLATE = RCD_TEMPLATE
 
@@ -1004,7 +999,7 @@ class KubeHTTPClient(object):
             "id": namespace,
             "appversion": kwargs.get("version"),
             "version": self.apiversion,
-            "image": imgurl,
+            "image": image,
             'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
             "replicas": kwargs.get("replicas", 0),
             "containername": container_name,
@@ -1024,9 +1019,9 @@ class KubeHTTPClient(object):
                 secret = self._get_secret('deis', 'objectstorage-keyfile').json()
                 self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
 
-            l["image"] = image
+            l["slug_url"] = image
             l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
-            l["slugimage"] = settings.SLUGRUNNER_IMAGE
+            l["image"] = settings.SLUGRUNNER_IMAGE
             TEMPLATE = RCB_TEMPLATE
 
         template = json.loads(string.Template(TEMPLATE).substitute(l))

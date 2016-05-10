@@ -16,7 +16,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(response.data['is_superuser'])
 
         # register a second user
@@ -29,7 +29,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data['is_superuser'])
 
     def test_list(self):
@@ -40,7 +40,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(response.data['is_superuser'])
 
         user = User.objects.get(username='firstuser')
@@ -48,7 +48,7 @@ class TestAdminPerms(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
         response = self.client.get('/v2/admin/perms')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['username'], 'firstuser')
         self.assertTrue(response.data['results'][0]['is_superuser'])
@@ -61,7 +61,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data['is_superuser'])
 
         user = User.objects.get(username='seconduser')
@@ -80,7 +80,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(response.data['is_superuser'])
 
         submit = {
@@ -90,7 +90,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data['is_superuser'])
 
         user = User.objects.get(username='first')
@@ -100,9 +100,9 @@ class TestAdminPerms(APITestCase):
         url = '/v2/admin/perms'
         body = {'username': 'second'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
         self.assertIn('second', str(response.data['results']))
 
@@ -114,7 +114,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(response.data['is_superuser'])
 
         submit = {
@@ -124,7 +124,7 @@ class TestAdminPerms(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data['is_superuser'])
 
         user = User.objects.get(username='first')
@@ -134,13 +134,13 @@ class TestAdminPerms(APITestCase):
         url = '/v2/admin/perms'
         body = {'username': 'second'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # revoke the superuser perm
         response = self.client.delete(url + '/second')
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         self.assertNotIn('two', str(response.data['results']))
 
@@ -164,7 +164,7 @@ class TestAppPerms(APITestCase):
         # check that user 1 sees her lone app and user 2's app
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
         app_id = response.data['results'][0]['id']
 
@@ -187,12 +187,12 @@ class TestAppPerms(APITestCase):
         body = {'username': 'autotest-2'}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # check that user 2 can see the app
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token2)
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
 
         # check that user 2 sees (empty) results now for builds, containers,
@@ -222,19 +222,19 @@ class TestAppPerms(APITestCase):
         url = "/v2/apps/{}/perms".format(app_id)
         body = {'username': 'autotest-2'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # check that user 2 can see the app as well as his own
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token2)
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
 
         # delete permission to user 1's app
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         url = "/v2/apps/{}/perms/{}".format(app_id, 'autotest-2')
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
         self.assertIsNone(response.data)
 
         # check that user 2 can only see his app
@@ -250,7 +250,7 @@ class TestAppPerms(APITestCase):
     def test_list(self):
         # check that user 1 sees her lone app and user 2's app
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
         app_id = response.data['results'][0]['id']
 
@@ -258,7 +258,7 @@ class TestAppPerms(APITestCase):
         url = "/v2/apps/{}/perms".format(app_id)
         body = {'username': 'autotest-2'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # list perms on the app
         response = self.client.get("/v2/apps/{}/perms".format(app_id))
@@ -267,7 +267,7 @@ class TestAppPerms(APITestCase):
     def test_admin_can_list(self):
         """Check that an administrator can list an app's perms"""
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 2)
 
     def test_list_errors(self):
@@ -311,7 +311,7 @@ class TestAppPerms(APITestCase):
         body = {'username': collab.username}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Collaborator should fail to share app
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + collab_token)
@@ -321,16 +321,16 @@ class TestAppPerms(APITestCase):
 
         # Collaborator can list
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # Share app with user 3 for rest of tests
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + collab_token)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # Collaborator cannot delete other collaborator
         url += "/{}".format(self.user3.username)
@@ -340,4 +340,4 @@ class TestAppPerms(APITestCase):
         # Collaborator can delete themselves
         url = '/v2/apps/{}/perms/{}'.format(app_id, collab.username)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)

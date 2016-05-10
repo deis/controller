@@ -30,7 +30,7 @@ class APIMiddlewareTest(APITestCase):
             '/v2/apps',
             HTTP_DEIS_VERSION=__version__.rsplit('.', 2)[0]
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.has_header('DEIS_API_VERSION'), True)
         self.assertEqual(response['DEIS_API_VERSION'], __version__.rsplit('.', 1)[0])
 
@@ -42,11 +42,11 @@ class APIMiddlewareTest(APITestCase):
             '/v2/apps',
             HTTP_DEIS_VERSION='1234.5678'
         )
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_deis_version_header_not_present(self):
         """
         Test that when the version header is not present, the request is accepted.
         """
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)

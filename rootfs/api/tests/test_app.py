@@ -52,20 +52,20 @@ class AppTest(APITestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']  # noqa
         self.assertIn('id', response.data)
         response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         url = '/v2/apps/{app_id}'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         body = {'id': 'new'}
         response = self.client.patch(url, body)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
@@ -83,7 +83,7 @@ class AppTest(APITestCase):
     def test_app_override_id(self, mock_requests):
         body = {'id': 'myid'}
         response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         body = {'id': response.data['id']}
         response = self.client.post('/v2/apps', body)
         self.assertContains(response, 'App with this id already exists.', status_code=400)
@@ -94,7 +94,7 @@ class AppTest(APITestCase):
         url = '/v2/apps'
         body = {'id': 'autotest'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']  # noqa
 
         # test logs - 204 from deis-logger
@@ -103,12 +103,12 @@ class AppTest(APITestCase):
         mock_get.return_value = mock_response
         url = "/v2/apps/{app_id}/logs".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.content)
 
         # test logs - 404 from deis-logger
         mock_response.status_code = 404
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.content)
 
         # test logs - unanticipated status code from deis-logger
         mock_response.status_code = 400
@@ -140,7 +140,7 @@ class AppTest(APITestCase):
         url = '/v2/apps'
         body = {'id': 'autotest'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         # check app logs
         exp_msg = "autotest created initial release"
         exp_log_call = mock.call(logging.INFO, exp_msg)
@@ -159,11 +159,11 @@ class AppTest(APITestCase):
         url = '/v2/apps'
         body = {'id': app_id}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']  # noqa
         url = '/v2/apps/{app_id}'.format(**locals())
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
         for endpoint in ('containers', 'config', 'releases', 'builds'):
             url = '/v2/apps/{app_id}/{endpoint}'.format(**locals())
             response = self.client.get(url)
@@ -186,7 +186,7 @@ class AppTest(APITestCase):
         """Application structures should be valid JSON objects."""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         self.assertIn('structure', response.data)
         self.assertEqual(response.data['structure'], {})
@@ -215,7 +215,7 @@ class AppTest(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         url = '/v2/apps/{}'.format(app_id)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # check app logs
         exp_msg = "autotest2 created initial release"
         exp_log_call = mock.call(logging.INFO, exp_msg)
@@ -225,7 +225,7 @@ class AppTest(APITestCase):
         # delete the app
         url = '/v2/apps/{}'.format(app_id)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def test_admin_can_see_other_apps(self, mock_requests):
         """If a user creates an application, the administrator should be able
@@ -257,7 +257,7 @@ class AppTest(APITestCase):
         url = '/v2/apps/{}/run'.format(app_id)
         body = {'command': 'ls -al'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(response.data, {'detail': 'No build associated with this '
                                                    'release to run this command'})
 
@@ -275,13 +275,13 @@ class AppTest(APITestCase):
         body = {'image': 'autotest/example'}
         url = '/v2/apps/{app_id}/builds'.format(**locals())
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # run command
         url = '/v2/apps/{}/run'.format(app_id)
         body = {'command': 'ls -al'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['rc'], 0)
         self.assertEqual(response.data['output'], 'mock')
 
@@ -294,7 +294,7 @@ class AppTest(APITestCase):
         body = {'image': 'autotest/example'}
         url = '/v2/apps/{app_id}/builds'.format(**locals())
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         with mock.patch('scheduler.KubeHTTPClient.run') as kube_run:
             kube_run.side_effect = KubeException('boom!')
@@ -302,7 +302,7 @@ class AppTest(APITestCase):
             url = '/v2/apps/{}/run'.format(app_id)
             body = {'command': 'ls -al'}
             response = self.client.post(url, body)
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)
 
     def test_unauthorized_user_cannot_see_app(self, mock_requests):
         """
@@ -360,7 +360,7 @@ class AppTest(APITestCase):
         new_owner_token = Token.objects.get(user=new_owner).key
         body = {'owner': new_owner.username}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # Original user can no longer access it
         response = self.client.get(url)
@@ -369,14 +369,14 @@ class AppTest(APITestCase):
         # New owner can access it
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + new_owner_token)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['owner'], new_owner.username)
 
         # Collaborators can't transfer
         body = {'username': owner.username}
         perms_url = url+"/perms/"
         response = self.client.post(perms_url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
         body = {'owner': self.user.username}
@@ -387,9 +387,9 @@ class AppTest(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         body = {'owner': self.user.username}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['owner'], self.user.username)
 
     def test_app_exists_in_kubernetes(self, mock_requests):
@@ -411,7 +411,7 @@ class AppTest(APITestCase):
         with mock.patch('scheduler.KubeHTTPClient.create') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             response = self.client.post('/v2/apps', {'id': 'test-kube'})
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)
 
     def test_app_delete_failure_kubernetes_destroy(self, mock_requests):
         """
@@ -420,13 +420,13 @@ class AppTest(APITestCase):
         """
         # create
         response = self.client.post('/v2/apps', {'id': 'test'})
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         with mock.patch('scheduler.KubeHTTPClient.destroy') as mock_kube:
             # delete
             mock_kube.side_effect = KubeException('Boom!')
             response = self.client.delete('/v2/apps/test')
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)
 
     def test_app_verify_application_health_success(self, mock_requests):
         """
@@ -447,13 +447,13 @@ class AppTest(APITestCase):
         # create app
         body = {'id': 'myid'}
         response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # deploy app to get verification
         url = "/v2/apps/myid/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         self.assertEqual(mr.called, True)
@@ -483,13 +483,13 @@ class AppTest(APITestCase):
         # create app
         body = {'id': 'myid'}
         response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # deploy app to get verification
         url = "/v2/apps/myid/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         self.assertEqual(mr.called, True)
@@ -510,13 +510,13 @@ class AppTest(APITestCase):
         # create app
         body = {'id': 'myid'}
         response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # deploy app to get verification
         url = "/v2/apps/myid/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         # Called 10 times due to the exception

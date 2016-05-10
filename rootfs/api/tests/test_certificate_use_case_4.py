@@ -76,7 +76,7 @@ class CertificateUseCase4Test(APITestCase):
                     'key': certificate['key']
                 }
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
     def test_get_certificate_screens_data(self):
         """
@@ -93,20 +93,20 @@ class CertificateUseCase4Test(APITestCase):
                     'key': certificate['key']
                 }
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
             # Attach domain to certificate
             response = self.client.post(
                 '{}/{}/domain/'.format(self.url, certificate['name']),
                 {'domain': domain}
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
             # Assert data
             response = self.client.get(
                 '{}/{}'.format(self.url, certificate['name'])
             )
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 200, response.data)
 
             expected = {
                 'name': certificate['name'],
@@ -127,13 +127,13 @@ class CertificateUseCase4Test(APITestCase):
             response = self.client.delete(
                 '{}/{}/domain/{}'.format(self.url, certificate['name'], domain)
             )
-            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.status_code, 204, response.data)
 
             # Assert data
             response = self.client.get(
                 '{}/{}'.format(self.url, certificate['name'])
             )
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(response.data['domains'], [])
 
     def test_certificate_attach_overwrite(self):
@@ -150,14 +150,14 @@ class CertificateUseCase4Test(APITestCase):
                     'key': certificate['key']
                 }
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
         # Attach domain to certificate
         response = self.client.post(
             '{}/{}/domain/'.format(self.url, 'foo-com'),
             {'domain': 'foo.com'}
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Attach domain to a second certificate
         response = self.client.post(
@@ -171,7 +171,7 @@ class CertificateUseCase4Test(APITestCase):
         response = self.client.get(
             '{}/{}'.format(self.url, 'foo-com')
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         expected = {
             'name': 'foo-com',
@@ -188,7 +188,7 @@ class CertificateUseCase4Test(APITestCase):
         response = self.client.get(
             '{}/{}'.format(self.url, 'bar-com')
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         expected = {
             'name': 'bar-com',
@@ -205,9 +205,9 @@ class CertificateUseCase4Test(APITestCase):
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
@@ -220,4 +220,4 @@ class CertificateUseCase4Test(APITestCase):
             )
             url = '/v2/certs/{}'.format(certificate['name'])
             response = self.client.delete(url)
-            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.status_code, 204, response.data)

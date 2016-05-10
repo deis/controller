@@ -43,7 +43,7 @@ class AuthTest(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         for key in response.data:
             self.assertIn(key, ['id', 'last_login', 'is_superuser', 'username', 'first_name',
                                 'last_name', 'email', 'is_active', 'is_superuser', 'is_staff',
@@ -117,7 +117,7 @@ class AuthTest(APITestCase):
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         for key in response.data:
             self.assertIn(key, ['id', 'last_login', 'is_superuser', 'username', 'first_name',
                                 'last_name', 'email', 'is_active', 'is_superuser', 'is_staff',
@@ -183,18 +183,18 @@ class AuthTest(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # cancel the account
         url = '/v2/auth/cancel'
         user = User.objects.get(username=username)
         token = Token.objects.get(user=user).key
         response = self.client.delete(url, HTTP_AUTHORIZATION='token {}'.format(token))
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = '/v2/auth/register'
         response = self.client.post(url, other_submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # normal user can't delete another user
         url = '/v2/auth/cancel'
@@ -207,14 +207,14 @@ class AuthTest(APITestCase):
         # admin can delete another user
         response = self.client.delete(url, {'username': other_username},
                                       HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # user can not be deleted if it has an app attached to it
         response = self.client.post(
             '/v2/apps',
             HTTP_AUTHORIZATION='token {}'.format(self.admin_token)
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']  # noqa
         self.assertIn('id', response.data)
 
@@ -237,7 +237,7 @@ class AuthTest(APITestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         # change password
         url = '/v2/auth/passwd'
         user = User.objects.get(username=username)
@@ -248,7 +248,7 @@ class AuthTest(APITestCase):
         }
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(token))
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
         self.assertEqual(response.data, {'detail': 'Current password does not match'})
         self.assertEqual(response.get('content-type'), 'application/json')
         submit = {
@@ -257,7 +257,7 @@ class AuthTest(APITestCase):
         }
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(token))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # test login with old password
         response = self.client.login(username=username, password=password)
@@ -281,7 +281,7 @@ class AuthTest(APITestCase):
         }
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # test login with old password
         response = self.client.login(username=self.user1.username, password=old_password)
@@ -301,7 +301,7 @@ class AuthTest(APITestCase):
         # change back password with a regular user
         response = self.client.post(url, submit,
                                     HTTP_AUTHORIZATION='token {}'.format(self.user1_token))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # test login with new password
         response = self.client.login(username=self.user1.username, password=old_password)
@@ -313,18 +313,18 @@ class AuthTest(APITestCase):
 
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_token)
         response = self.client.post(url, {})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertNotEqual(response.data['token'], self.admin_token)
 
         self.admin_token = Token.objects.get(user=self.admin).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_token)
 
         response = self.client.post(url, {"username": "autotest2"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertNotEqual(response.data['token'], self.user1_token)
 
         response = self.client.post(url, {"all": "true"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         response = self.client.post(url, {})
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)

@@ -57,27 +57,27 @@ class HookTest(APITransactionTestCase):
         # Create app to use
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # give user permission to app
         url = "/v2/apps/{}/perms".format(app_id)
         body = {'username': str(self.user)}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Create key
         url = '/v2/keys'
         body = {'id': str(self.user), 'public': RSA_PUBKEY}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         public = response.data['public']
 
         # Create another keys
         url = '/v2/keys'
         body = {'id': str(self.user), 'public': RSA_PUBKEY2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         public2 = response.data['public']
 
         # Make sure 404 is returned for a random app
@@ -88,7 +88,7 @@ class HookTest(APITransactionTestCase):
         # Test app that exists
         url = '/v2/hooks/keys/{}'.format(app_id)
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data, {"autotest": [
             {'key': public, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
             {'key': public2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'}
@@ -102,7 +102,7 @@ class HookTest(APITransactionTestCase):
         # Test against an app that exists and user that does
         url = '/v2/hooks/keys/{}/{}'.format(app_id, str(self.user))
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data, {"autotest": [
             {'key': public, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
             {'key': public2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'}
@@ -111,7 +111,7 @@ class HookTest(APITransactionTestCase):
         # Fetch a valid ssh key
         url = '/v2/hooks/key/54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data, {
             "username": str(self.user),
             "apps": [
@@ -133,7 +133,7 @@ class HookTest(APITransactionTestCase):
         """Test creating a Push via the API"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # prepare a push body
@@ -152,7 +152,7 @@ class HookTest(APITransactionTestCase):
         # now try with the builder key in the special auth header
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         for k in ('owner', 'app', 'sha', 'fingerprint', 'receive_repo', 'receive_user',
                   'ssh_connection', 'ssh_original_command'):
             self.assertIn(k, response.data)
@@ -162,7 +162,7 @@ class HookTest(APITransactionTestCase):
         # create a legit app as "autotest"
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # register an evil user
         username, password = 'eviluser', 'password'
@@ -177,7 +177,7 @@ class HookTest(APITransactionTestCase):
         }
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         # prepare a push body that simulates a git push
         body = {
             'sha': 'df1e628f2244b73f9cdf944f880a2b3470a122f4',
@@ -197,7 +197,7 @@ class HookTest(APITransactionTestCase):
         """Test creating a Build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
@@ -207,11 +207,11 @@ class HookTest(APITransactionTestCase):
         # post the build without an auth token
         self.client.credentials()
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
         # post the build with the builder auth key
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
 
@@ -219,7 +219,7 @@ class HookTest(APITransactionTestCase):
         """Test creating a slug_url build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
@@ -230,12 +230,12 @@ class HookTest(APITransactionTestCase):
         # post the build without an auth token
         self.client.credentials()
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
 
         # post the build with the builder auth key
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
 
@@ -243,7 +243,7 @@ class HookTest(APITransactionTestCase):
         """Test creating a Procfile build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
@@ -258,13 +258,13 @@ class HookTest(APITransactionTestCase):
         # post the build with the builder auth key
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
         # make sure build fields were populated
         url = '/v2/apps/{app_id}/builds'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('results', response.data)
         build = response.data['results'][0]
         self.assertEqual(build['sha'], SHA)
@@ -272,7 +272,7 @@ class HookTest(APITransactionTestCase):
         # test listing/retrieving container info
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'web')
@@ -283,13 +283,13 @@ class HookTest(APITransactionTestCase):
         # post the build without an auth token
         self.client.credentials()
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
 
     def test_build_hook_dockerfile(self, mock_requests):
         """Test creating a Dockerfile build via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
@@ -305,13 +305,13 @@ class HookTest(APITransactionTestCase):
         # post the build with the builder auth key
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('release', response.data)
         self.assertIn('version', response.data['release'])
         # make sure build fields were populated
         url = '/v2/apps/{app_id}/builds'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('results', response.data)
         build = response.data['results'][0]
         self.assertEqual(build['sha'], SHA)
@@ -319,7 +319,7 @@ class HookTest(APITransactionTestCase):
         # test default container
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
@@ -330,17 +330,17 @@ class HookTest(APITransactionTestCase):
         # post the build without an auth token
         self.client.credentials()
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
 
     def test_config_hook(self, mock_requests):
         """Test reading Config via an API Hook"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         url = '/v2/apps/{app_id}/config'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('values', response.data)
         values = response.data['values']
         # prepare the config hook
@@ -351,11 +351,11 @@ class HookTest(APITransactionTestCase):
         # post without an auth token
         self.client.credentials()
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401, response.data)
         # post with the builder auth key
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('values', response.data)
         self.assertEqual(values, response.data['values'])
 
@@ -369,7 +369,7 @@ class HookTest(APITransactionTestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # prepare a push body
         DOCKERFILE = """
@@ -384,5 +384,5 @@ class HookTest(APITransactionTestCase):
         url = '/v2/hooks/builds'
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['release']['version'], 2)

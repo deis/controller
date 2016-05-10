@@ -45,7 +45,7 @@ class CertificateTest(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_update_certificate(self):
         """Tests update of a certificate."""
@@ -57,7 +57,7 @@ class CertificateTest(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_create_certificate_with_different_common_name(self):
         """
@@ -72,7 +72,7 @@ class CertificateTest(APITestCase):
                 'common_name': 'foo.example.com'
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['common_name'], 'autotest.example.com')
 
     def test_get_certificate_screens_data(self):
@@ -88,10 +88,10 @@ class CertificateTest(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         response = self.client.get('{}/{}'.format(self.url, 'random-test-cert'))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         expected = {
             'common_name': 'autotest.example.com',
@@ -106,9 +106,9 @@ class CertificateTest(APITestCase):
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
@@ -120,7 +120,7 @@ class CertificateTest(APITestCase):
         )
         url = '/v2/certs/random-test-cert'
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def test_create_invalid_cert(self):
         """Upload a cert that can't be loaded by pyopenssl"""
@@ -132,7 +132,7 @@ class CertificateTest(APITestCase):
                 'key': 'i am bad data as well'
             }
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         # match partial since right now the rest is pyopenssl errors
         self.assertIn('Could not load certificate', response.data['certificate'][0])
 

@@ -70,21 +70,21 @@ class KeyTest(APITestCase):
         url = '/v2/keys'
         body = {'id': 'mykey@box.local', 'public': pubkey}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         key_id = response.data['id']
 
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
 
         url = '/v2/keys/{key_id}'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(body['id'], response.data['id'])
         self.assertEqual(body['public'], response.data['public'])
 
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def _check_bad_key(self, pubkey):
         """
@@ -94,7 +94,7 @@ class KeyTest(APITestCase):
         body = {'id': 'mykey@box.local', 'public': pubkey}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         return response
 
     def test_rsa_key(self):
@@ -114,16 +114,16 @@ class KeyTest(APITestCase):
         url = '/v2/keys'
         body = {'id': 'mykey@box.local', 'public': pubkey}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         # test that adding a key with the same fingerprint fails
         body = {'id': 'mykey2@box.local', 'public': pubkey}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         body = {'id': 'mykey2@box.local', 'public': pubkey2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_rsa_duplicate_key(self):
         self._check_duplicate_key(RSA_PUBKEY, RSA_PUBKEY2)
@@ -143,7 +143,7 @@ class KeyTest(APITestCase):
                 'b6PkOR4c+LS5WWXd2oM6HyBQBxxiwXbA2lSgQxOdgDiM2FzT0GVSFMUklkUH'
                 'MdsaG6/HJDw9QckTS0vN autotest@deis.io'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         key = Key.objects.get(uuid=response.data['uuid'])
         self.assertEqual(str(key), 'ssh-rsa AAAAB3NzaC.../HJDw9QckTS0vN autotest@deis.io')
 

@@ -46,23 +46,23 @@ class ReleaseTest(APITransactionTestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertIn('NEW_URL1', response.data['values'])
         # check to see that an initial release was created
         url = '/v2/apps/{app_id}/releases'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # account for the config release as well
         self.assertEqual(response.data['count'], 2)
         url = '/v2/apps/{app_id}/releases/v1'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release1 = response.data
         self.assertIn('config', response.data)
         self.assertIn('build', response.data)
@@ -70,7 +70,7 @@ class ReleaseTest(APITransactionTestCase):
         # check to see that a new release was created
         url = '/v2/apps/{app_id}/releases/v2'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release2 = response.data
         self.assertNotEqual(release1['uuid'], release2['uuid'])
         self.assertNotEqual(release1['config'], release2['config'])
@@ -81,12 +81,12 @@ class ReleaseTest(APITransactionTestCase):
         build_config = json.dumps({'PATH': 'bin:/usr/local/bin:/usr/bin:/bin'})
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
         # check to see that a new release was created
         url = '/v2/apps/{app_id}/releases/v3'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release3 = response.data
         self.assertNotEqual(release2['uuid'], release3['uuid'])
         self.assertNotEqual(release2['build'], release3['build'])
@@ -94,7 +94,7 @@ class ReleaseTest(APITransactionTestCase):
         # check that we can fetch a previous release
         url = '/v2/apps/{app_id}/releases/v2'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release2 = response.data
         self.assertNotEqual(release2['uuid'], release3['uuid'])
         self.assertNotEqual(release2['build'], release3['build'])
@@ -102,13 +102,13 @@ class ReleaseTest(APITransactionTestCase):
         # disallow post/put/patch/delete
         url = '/v2/apps/{app_id}/releases'.format(**locals())
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.put(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         return release3
 
     def test_response_data(self, mock_requests):
@@ -134,42 +134,42 @@ class ReleaseTest(APITransactionTestCase):
     def test_release_rollback(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # try to rollback with only 1 release extant, expecting 400
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(response.data, {'detail': 'version cannot be below 0'})
         self.assertEqual(response.get('content-type'), 'application/json')
         # update config to roll a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         #  TODO: edge case that fails becasue version 1 has no build object.
         # update the build to roll a new release
         # url = '/v2/apps/{app_id}/builds'.format(**locals())
         # body = {'image': 'autotest/example'}
         # response = self.client.post(url, body)
-        # self.assertEqual(response.status_code, 201)
+        # self.assertEqual(response.status_code, 201, response.data)
         # rollback and check to see that a 4th release was created
         # with the build and config of release #2
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         url = '/v2/apps/{app_id}/releases'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 3)
         url = '/v2/apps/{app_id}/releases/v1'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release1 = response.data
         self.assertEqual(release1['version'], 1)
         url = '/v2/apps/{app_id}/releases/v3'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release3 = response.data
         self.assertEqual(release3['version'], 3)
         self.assertNotEqual(release1['uuid'], release3['uuid'])
@@ -180,18 +180,18 @@ class ReleaseTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         body = {'version': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         url = '/v2/apps/{app_id}/releases'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 4)
         url = '/v2/apps/{app_id}/releases/v1'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release1 = response.data
         url = '/v2/apps/{app_id}/releases/v4'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         release4 = response.data
         self.assertEqual(release4['version'], 4)
         self.assertNotEqual(release1['uuid'], release4['uuid'])
@@ -200,16 +200,16 @@ class ReleaseTest(APITransactionTestCase):
         # check to see that the current config is actually the initial one
         url = "/v2/apps/{app_id}/config".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['values'], {})
         # rollback to #2 and see that it has the correct config
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         body = {'version': 2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         url = "/v2/apps/{app_id}/config".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         values = response.data['values']
         self.assertIn('NEW_URL1', values)
         self.assertEqual('http://localhost:8080/', values['NEW_URL1'])
@@ -234,19 +234,19 @@ class ReleaseTest(APITransactionTestCase):
         url = '/v2/apps'
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertIn('NEW_URL1', response.data['values'])
         # check to see that an initial release was created
         url = '/v2/apps/{app_id}/releases'.format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # account for the config release as well
         self.assertEqual(response.data['count'], 2)
 
@@ -291,20 +291,20 @@ class ReleaseTest(APITransactionTestCase):
         url = "/v2/apps/test/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         # update config to roll a new release
         url = '/v2/apps/test/config'
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # update config to roll a new release
         url = '/v2/apps/test/config'
         body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # app.deploy exception
         with mock.patch('api.models.App.deploy') as mock_deploy:
@@ -312,7 +312,7 @@ class ReleaseTest(APITransactionTestCase):
             url = "/v2/apps/test/releases/rollback/"
             body = {'version': 2}
             response = self.client.post(url, body)
-            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.status_code, 400, response.data)
 
         # app.deploy exception followed by a KubeHTTPException of 404
         with mock.patch('api.models.App.deploy') as mock_deploy:
@@ -330,4 +330,4 @@ class ReleaseTest(APITransactionTestCase):
                 url = "/v2/apps/test/releases/rollback/"
                 body = {'version': 2}
                 response = self.client.post(url, body)
-                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.status_code, 400, response.data)

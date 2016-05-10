@@ -48,7 +48,7 @@ class CertificateUseCase1Test(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_create_certificate_with_different_common_name(self):
         """
@@ -63,7 +63,7 @@ class CertificateUseCase1Test(APITestCase):
                 'common_name': 'foo.example.com'
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['common_name'], 'foo.com')
 
     def test_get_certificate_screens_data(self):
@@ -79,7 +79,7 @@ class CertificateUseCase1Test(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Attach to domain that does not exist
         response = self.client.post(
@@ -93,11 +93,11 @@ class CertificateUseCase1Test(APITestCase):
             '{}/{}/domain/'.format(self.url, self.name),
             {'domain': str(self.domain)}
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Assert data
         response = self.client.get('{}/{}'.format(self.url, self.name))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         expected = {
             'name': self.name,
@@ -114,7 +114,7 @@ class CertificateUseCase1Test(APITestCase):
         response = self.client.delete(
             '{}/{}/domain/{}'.format(self.url, self.name, self.domain)
         )
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # detach a domain that does not exist from a certificate
         response = self.client.delete(
@@ -124,15 +124,15 @@ class CertificateUseCase1Test(APITestCase):
 
         # Assert data
         response = self.client.get('{}/{}'.format(self.url, self.name))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['domains'], [])
 
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
@@ -144,7 +144,7 @@ class CertificateUseCase1Test(APITestCase):
 
         url = '/v2/certs/{}'.format(self.name)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def test_delete_certificate_with_attached_domain(self):
         """
@@ -160,18 +160,18 @@ class CertificateUseCase1Test(APITestCase):
                 'key': self.key
             }
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Attach domain to certificate
         response = self.client.post(
             '{}/{}/domain/'.format(self.url, self.name),
             {'domain': str(self.domain)}
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # Assert data from cert side
         response = self.client.get('{}/{}'.format(self.url, self.name))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['domains'], [str(self.domain)])
 
         # Assert data from domain side
@@ -181,7 +181,7 @@ class CertificateUseCase1Test(APITestCase):
         # Delete certificate
         url = '/v2/certs/{}'.format(self.name)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # verify certificate is not attached to domain anymore
         domain = Domain.objects.get(id=self.domain.id)

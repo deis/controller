@@ -47,41 +47,41 @@ class BuildTest(APITransactionTestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # check to see that no initial build was created
         url = "/v2/apps/{app_id}/builds".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 0)
         # post a new build
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         build_id = str(response.data['uuid'])
         build1 = response.data
         self.assertEqual(response.data['image'], body['image'])
         # read the build
         url = "/v2/apps/{app_id}/builds/{build_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         build2 = response.data
         self.assertEqual(build1, build2)
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         build3 = response.data
         self.assertEqual(response.data['image'], body['image'])
         self.assertNotEqual(build2['uuid'], build3['uuid'])
         # disallow put/patch/delete
         response = self.client.put(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
@@ -109,17 +109,17 @@ class BuildTest(APITransactionTestCase):
     def test_build_default_containers(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # post an image as a build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
@@ -130,7 +130,7 @@ class BuildTest(APITransactionTestCase):
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -140,11 +140,11 @@ class BuildTest(APITransactionTestCase):
             'dockerfile': "FROM scratch"
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
@@ -155,7 +155,7 @@ class BuildTest(APITransactionTestCase):
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build with procfile
@@ -169,11 +169,11 @@ class BuildTest(APITransactionTestCase):
             }
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'cmd')
@@ -184,7 +184,7 @@ class BuildTest(APITransactionTestCase):
         # start with a new app
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # post a new build with procfile
 
@@ -198,11 +198,11 @@ class BuildTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         container = response.data['results'][0]
         self.assertEqual(container['type'], 'web')
@@ -214,13 +214,13 @@ class BuildTest(APITransactionTestCase):
         """Test the text representation of a build."""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         build = Build.objects.get(uuid=response.data['uuid'])
         self.assertEqual(str(build), "{}-{}".format(
                          response.data['app'], str(response.data['uuid'])[:7]))
@@ -236,7 +236,7 @@ class BuildTest(APITransactionTestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build as admin
@@ -244,7 +244,7 @@ class BuildTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         build = Build.objects.get(uuid=response.data['uuid'])
         self.assertEqual(str(build), "{}-{}".format(
@@ -277,7 +277,7 @@ class BuildTest(APITransactionTestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -291,18 +291,18 @@ class BuildTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
 
         # scale to zero
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 0}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # post another build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -315,10 +315,10 @@ class BuildTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
     def test_build_image_in_registry(self, mock_requests):
@@ -332,7 +332,7 @@ class BuildTest(APITransactionTestCase):
         image = '{}/autotest/example'.format(settings.REGISTRY_HOST)
         body = {'image': image}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         build = Build.objects.get(uuid=response.data['uuid'])
         release = build.app.release_set.latest()
@@ -344,7 +344,7 @@ class BuildTest(APITransactionTestCase):
         image = '{}/autotest/example'.format(settings.REGISTRY_URL)
         body = {'image': image}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         build = Build.objects.get(uuid=response.data['uuid'])
         release = build.app.release_set.latest()
@@ -359,13 +359,13 @@ class BuildTest(APITransactionTestCase):
         url = "/v2/apps/test/builds"
         image = 'autotest/example'
         response = self.client.post(url, {'image': image})
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # set some registry information
         url = '/v2/apps/test/config'
         body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_release_create_failure(self, mock_requests):
         """
@@ -378,7 +378,7 @@ class BuildTest(APITransactionTestCase):
         url = "/v2/apps/test/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         with mock.patch('api.models.App.deploy') as mock_deploy:
@@ -387,7 +387,7 @@ class BuildTest(APITransactionTestCase):
             url = "/v2/apps/test/builds"
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
-            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.status_code, 400, response.data)
 
     def test_release_registry_create_failure(self, mock_requests):
         """
@@ -400,7 +400,7 @@ class BuildTest(APITransactionTestCase):
         url = "/v2/apps/test/builds"
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         with mock.patch('api.models.Release.publish') as mock_registry:
@@ -409,7 +409,7 @@ class BuildTest(APITransactionTestCase):
             url = "/v2/apps/test/builds"
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
-            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.status_code, 400, response.data)
 
     def test_build_deploy_kube_failure(self, mock_requests):
         """
@@ -424,4 +424,4 @@ class BuildTest(APITransactionTestCase):
             url = "/v2/apps/test/builds"
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
-            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.status_code, 400, response.data)

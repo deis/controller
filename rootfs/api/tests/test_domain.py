@@ -27,7 +27,7 @@ class DomainTest(APITestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.app_id = response.data['id']  # noqa
 
     def tearDown(self):
@@ -131,12 +131,12 @@ class DomainTest(APITestCase):
         ]
         for domain in test_domains:
             response = self.client.post(url, {'domain': domain})
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
         url = '/v2/apps/{app_id}/domains/{domain}'.format(domain=test_domains[0],
                                                           app_id=self.app_id)
         response = self.client.delete(url)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
         with self.assertRaises(Domain.DoesNotExist):
             Domain.objects.get(domain=test_domains[0])
 
@@ -184,12 +184,12 @@ class DomainTest(APITestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
         url = '/v2/apps/{}/domains'.format(self.app_id)
         response = self.client.post(url, {'domain': 'example.deis.example.com'})
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_unauthorized_user_cannot_modify_domain(self):
         """
@@ -222,16 +222,16 @@ class DomainTest(APITestCase):
             domain = 'foo.com'
             url = '/v2/apps/test/domains'
             response = self.client.post(url, {'domain': domain})
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)
 
         # scheduler._update_service exception
         with mock.patch('scheduler.KubeHTTPClient._update_service') as mock_kube:
             domain = 'foo.com'
             url = '/v2/apps/test/domains'
             response = self.client.post(url, {'domain': domain})
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
             mock_kube.side_effect = KubeException('Boom!')
             url = '/v2/apps/test/domains/{domain}'.format(domain=domain)
             response = self.client.delete(url)
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)

@@ -72,7 +72,7 @@ class CertificateUseCase5Test(APITestCase):
                     'key': certificate['key']
                 }
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
     def test_get_certificate_screens_data(self):
         """
@@ -89,14 +89,14 @@ class CertificateUseCase5Test(APITestCase):
                     'key': certificate['key']
                 }
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
             # Attach domain to certificate
             response = self.client.post(
                 '{}/{}/domain/'.format(self.url, certificate['name']),
                 {'domain': domain}
             )
-            self.assertEqual(response.status_code, 201)
+            self.assertEqual(response.status_code, 201, response.data)
 
             if certificate['san']:
                 for san in certificate['san']:
@@ -104,13 +104,13 @@ class CertificateUseCase5Test(APITestCase):
                         '{}/{}/domain/'.format(self.url, certificate['name']),
                         {'domain': san}
                     )
-                    self.assertEqual(response.status_code, 201)
+                    self.assertEqual(response.status_code, 201, response.data)
 
             # Assert data
             response = self.client.get(
                 '{}/{}'.format(self.url, certificate['name'])
             )
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 200, response.data)
 
             expected = {
                 'name': certificate['name'],
@@ -131,28 +131,28 @@ class CertificateUseCase5Test(APITestCase):
             response = self.client.delete(
                 '{}/{}/domain/{}'.format(self.url, certificate['name'], domain)
             )
-            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.status_code, 204, response.data)
 
             if certificate['san']:
                 for san in certificate['san']:
                     response = self.client.delete(
                         '{}/{}/domain/{}'.format(self.url, certificate['name'], san)
                     )
-                    self.assertEqual(response.status_code, 204)
+                    self.assertEqual(response.status_code, 204, response.data)
 
             # Assert data
             response = self.client.get(
                 '{}/{}'.format(self.url, certificate['name'])
             )
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 200, response.data)
             self.assertEqual(response.data['domains'], [])
 
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
         response = self.client.put(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
         response = self.client.patch(self.url)
-        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.status_code, 405, response.content)
 
     def test_delete_certificate(self):
         """Destroying a certificate should generate a 204 response"""
@@ -168,4 +168,4 @@ class CertificateUseCase5Test(APITestCase):
             # Remove certificate
             url = '/v2/certs/{}'.format(certificate['name'])
             response = self.client.delete(url)
-            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.status_code, 204, response.data)

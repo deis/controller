@@ -1,1 +1,1 @@
-from .dockerclient import publish_release, RegistryException  # noqa
+from .dockerclient import publish_release, get_port, RegistryException  # noqa

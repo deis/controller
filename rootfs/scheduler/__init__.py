@@ -8,7 +8,6 @@ from urllib.parse import urljoin
 import base64
 
 from django.conf import settings
-from docker import Client
 from docker.auth import auth as docker_auth
 from .states import PodState
 import requests
@@ -697,7 +696,7 @@ class KubeHTTPClient(object):
         if kwargs.get('healthcheck', None):
             self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['healthcheck'])
         else:
-            self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('port', None))
+            self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 
     def _set_image_secret(self, data, namespace, **kwargs):
         """
@@ -927,7 +926,7 @@ class KubeHTTPClient(object):
 
         logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))
 
-    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):
+    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -1054,6 +1053,8 @@ class KubeHTTPClient(object):
 
     def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
+        build_type = kwargs.get('build_type')
+
         container_name = namespace + '-' + app_type
         args = command.split()
         storageType = os.getenv("APP_STORAGE")
@@ -1076,7 +1077,7 @@ class KubeHTTPClient(object):
         }
 
         # Check if it is a slug builder image.
-        if kwargs.get('build_type') == "buildpack":
+        if build_type == "buildpack":
             # only buildpack apps need access to object storage
             try:
                 self._get_secret(namespace, 'objectstorage-keyfile')
@@ -1092,8 +1093,6 @@ class KubeHTTPClient(object):
         template = json.loads(string.Template(TEMPLATE).substitute(l))
         spec = template["spec"]["template"]["spec"]
 
-        spec = template["spec"]["template"]["spec"]
-
         # apply tags as needed to restrict pod to particular node(s)
         spec["nodeSelector"] = kwargs.get('tags', {})
 
@@ -1101,8 +1100,8 @@ class KubeHTTPClient(object):
         container = spec["containers"][0]
         container['args'] = args
 
-        kwargs['image'] = l['image']
         # set information to the application container
+        kwargs['image'] = l['image']
         self._set_container(namespace, container, **kwargs)
         # add image to the mix
         self._set_image_secret(spec, namespace, **kwargs)

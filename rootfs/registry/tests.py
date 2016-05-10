@@ -9,7 +9,7 @@ from unittest import mock
 
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
-from registry import publish_release, RegistryException
+from registry import publish_release, get_port, RegistryException
 from registry.dockerclient import DockerClient
 
 
@@ -19,6 +19,28 @@ class DockerClientTest(unittest.TestCase):
 
     def setUp(self):
         settings.REGISTRY_HOST, settings.REGISTRY_PORT = 'localhost', 5000
+
+    def test_get_port(self, mock_client):
+        self.client = DockerClient()
+
+        # Make sure login is not called when there are no creds
+        get_port('ozzy/embryo:git-f2a8020', False)
+        self.assertFalse(self.client.client.login.called)
+
+        creds = {
+            'username': 'fake',
+            'password': 'fake',
+            'email': 'fake',
+            'registry': 'quay.io'
+        }
+
+        client = {}
+        client['Status'] = 'Login Succeeded'
+        self.client.client.login.return_value = client
+        get_port('ozzy/embryo:git-f2a8020', False, creds)
+        self.assertTrue(self.client.client.login.called)
+        self.assertTrue(self.client.client.pull.called)
+        self.assertTrue(self.client.client.inspect_image.called)
 
     def test_publish_release(self, mock_client):
         self.client = DockerClient()

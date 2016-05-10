@@ -3,11 +3,7 @@ import logging
 from django.conf import settings
 from django.db import models
 
-import docker
-from docker import Client
-from retrying import retry
-
-from registry import publish_release, RegistryException
+from registry import publish_release, get_port as docker_get_port, RegistryException
 from api.utils import dict_diff
 from api.models import UuidAuditedModel, log_event, DeisException
 from scheduler import KubeHTTPException
@@ -137,32 +133,50 @@ class Release(UuidAuditedModel):
         deis_registry = bool(self.build.source_based)
         publish_release(source_image, self.image, deis_registry, self.get_registry_auth())
 
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
     def get_port(self, routable=False):
         """
-        Get a port from a Docker image
+        Get application port for a given release. If pulling from private registry
+        then use default port or read from ENV var, otherwise attempt to pull from
+        the docker image
         """
-        port = None
-        # Only care about port for routable application
-        if not routable:
+        try:
+            deis_registry = bool(self.build.source_based)
+            envs = self.config.values
+            creds = self.get_registry_auth()
+
+            port = None
+            # Only care about port for routable application
+            if not routable:
+                return port
+
+            if self.build.type == "buildpack":
+                msg = "Using default port 5000 for build pack image {}".format(self.image)
+                log_event(self.app, msg)
+                return 5000
+
+            # application has registry auth - $PORT is required
+            if creds is not None:
+                if envs.get('PORT', None) is None:
+                    log_event(self.app, 'Private registry detected but no $PORT defined. Defaulting to $PORT 5000', logging.WARNING)  # noqa
+                    return 5000
+
+                # User provided PORT
+                return envs.get('PORT')
+
+            # If the user provides PORT
+            if envs.get('PORT', None):
+                return envs.get('PORT')
+
+            # discover port from docker image
+            port = docker_get_port(self.image, deis_registry, creds)
+            if port is None:
+                msg = "Expose a port or make the app non routable by changing the process type"
+                log_event(self.app, msg, logging.ERROR)
+                raise DeisException(msg)
+
             return port
-
-        if self.build.type == "buildpack":
-            msg = "Using default port 5000 for build pack image {}".format(self.image)
-            log_event(self.app, msg)
-            return 5000
-
-        # get the target repository name and tag
-        repo, tag = docker.utils.parse_repository_tag(self.image)
-
-        docker_cli = Client(version="auto")
-        docker_cli.pull(repo, tag=tag, insecure_registry=True)
-        image_info = docker_cli.inspect_image(self.image)
-        if 'ExposedPorts' not in image_info['Config']:
-            return None
-
-        port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-        return port
+        except Exception as e:
+            raise DeisException(str(e)) from e
 
     def get_registry_auth(self):
         """

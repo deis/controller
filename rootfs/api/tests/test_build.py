@@ -25,7 +25,7 @@ import requests_mock
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
-@mock.patch('api.models.release.Release.get_port', mock_port)
+@mock.patch('api.models.release.docker_get_port', mock_port)
 class BuildTest(APITransactionTestCase):
 
     """Tests build notification from build system"""

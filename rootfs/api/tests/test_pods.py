@@ -42,13 +42,13 @@ class PodTest(APITransactionTestCase):
     def test_container_api_heroku(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         # post a new build
@@ -62,27 +62,27 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         # test setting one proc type at a time
         body = {'web': 4}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         body = {'worker': 2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 6)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # ensure the structure field is up-to-date
         self.assertEqual(response.data['structure']['web'], 4)
         self.assertEqual(response.data['structure']['worker'], 2)
@@ -90,14 +90,14 @@ class PodTest(APITransactionTestCase):
         # test listing/retrieving container info
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 4)
         self.assertEqual(len(response.data['results']), 4)
 
         name = response.data['results'][0]['name']
         url = "/v2/apps/{app_id}/pods/web/{name}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['name'], name)
 
@@ -106,16 +106,16 @@ class PodTest(APITransactionTestCase):
         # test setting two proc types at a time
         body = {'web': 2, 'worker': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 3)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # ensure the structure field is up-to-date
         self.assertEqual(response.data['structure']['web'], 2)
         self.assertEqual(response.data['structure']['worker'], 1)
@@ -124,27 +124,27 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 0, 'worker': 0}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
     def test_container_api_docker(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         # post a new build
@@ -154,69 +154,69 @@ class PodTest(APITransactionTestCase):
             'dockerfile': "FROM busybox\nCMD /bin/true"
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 6}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 6)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # test listing/retrieving container info
         url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 6)
 
         # scale down
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 3}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 3)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # scale down to 0
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'cmd': 0}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
     def test_release(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         # post a new build
@@ -230,17 +230,17 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v2')
 
@@ -254,12 +254,12 @@ class PodTest(APITransactionTestCase):
             }
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v3')
 
@@ -267,18 +267,18 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/config".format(**locals())
         body = {'values': json.dumps({'KEY': 'value'})}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
         self.assertEqual(response.data['results'][0]['release'], 'v4')
 
     def test_container_errors(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # create a release so we can scale
@@ -298,7 +298,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 'not_an_int'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(response.data, {'detail': "Invalid scaling format: invalid literal for "
                                                    "int() with base 10: 'not_an_int'"})
         body = {'invalid': 1}
@@ -309,7 +309,7 @@ class PodTest(APITransactionTestCase):
         """Test the text representation of a container."""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -323,18 +323,18 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 6)
         pods = response.data['results']
         for pod in pods:
@@ -347,7 +347,7 @@ class PodTest(APITransactionTestCase):
         # regression test for https://github.com/deis/deis/pull/1285
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -361,18 +361,18 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
 
         # verify that the app._get_command property got formatted
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
 
         pod = response.data['results'][0]
@@ -388,13 +388,13 @@ class PodTest(APITransactionTestCase):
     def test_scale_errors(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
         # post a new build
@@ -408,37 +408,37 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # scale to a negative number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': -1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # scale to something other than a number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 'one'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # scale to something other than a number
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': [1]}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # scale up to an integer as a sanity check
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         with mock.patch('scheduler.KubeHTTPClient.scale') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             url = "/v2/apps/{app_id}/scale".format(**locals())
             response = self.client.post(url, {'web': 10})
-            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.status_code, 503, response.data)
 
     def test_admin_can_manage_other_pods(self, mock_requests):
         """If a non-admin user creates a container, an administrator should be able to
@@ -450,7 +450,7 @@ class PodTest(APITransactionTestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -464,13 +464,13 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # login as admin, scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 2}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
     def test_scale_without_build_should_error(self, mock_requests):
         """A user should not be able to scale processes unless a build is present."""
@@ -482,14 +482,14 @@ class PodTest(APITransactionTestCase):
         url = '/v2/apps/{app_id}/scale'.format(**locals())
         body = {'web': '1'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(response.data, {'detail': 'No build associated with this release'})
 
     def test_command_good(self, mock_requests):
         """Test the default command for each container workflow"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
         user = User.objects.get(username='autotest')
@@ -547,7 +547,7 @@ class PodTest(APITransactionTestCase):
         """Test the run command for each container workflow"""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
 
@@ -577,7 +577,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
 
@@ -588,7 +588,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
 
@@ -598,7 +598,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/runner/init')
 
@@ -611,7 +611,7 @@ class PodTest(APITransactionTestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
 
@@ -641,7 +641,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
         self.assertEqual(entrypoint, '/bin/bash')
 
@@ -649,7 +649,7 @@ class PodTest(APITransactionTestCase):
         """Test that app info doesn't show transient "run" proctypes."""
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
         app = App.objects.get(id=app_id)
         user = User.objects.get(username='autotest')
@@ -680,18 +680,18 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/run".format(**locals())
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
 
         # scale up
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 3}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # test that "run" proctype isn't in the app info returned
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertNotIn('run', response.data['structure'])
 
     def test_scale_with_unauthorized_user_returns_403(self, mock_requests):
@@ -702,7 +702,7 @@ class PodTest(APITransactionTestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -730,7 +730,7 @@ class PodTest(APITransactionTestCase):
         """
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -748,7 +748,7 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         body = {
             'image': 'autotest/example',
@@ -758,7 +758,7 @@ class PodTest(APITransactionTestCase):
             })
         }
         response = self.client.post(build_url, body)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
 
         # make sure no pods are web
         application = App.objects.get(id=app_id)
@@ -768,7 +768,7 @@ class PodTest(APITransactionTestCase):
     def test_restart_pods(self, mock_requests):
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         # post a new build
@@ -786,26 +786,26 @@ class PodTest(APITransactionTestCase):
         url = "/v2/apps/{app_id}/scale".format(**locals())
         body = {'web': 4, 'worker': 8}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204, response.data)
 
         # setup app object
         application = App.objects.get(id=app_id)
 
         # restart all pods
         response = self.client.post('/v2/apps/{}/pods/restart'.format(app_id))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # Compare restarted pods to all pods
         self.assertEqual(len(response.data), 12)
 
         # restart only the workers
         response = self.client.post('/v2/apps/{}/pods/worker/restart'.format(app_id))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # Compare restarted pods to only worker pods
         self.assertEqual(len(response.data), 8)
 
         # restart only the web
         response = self.client.post('/v2/apps/{}/pods/web/restart'.format(app_id))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         # Compare restarted pods to only worker pods
         self.assertEqual(len(response.data), 4)
 
@@ -815,14 +815,14 @@ class PodTest(APITransactionTestCase):
 
         pod = pods.pop()
         response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, pod['name']))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['type'], 'web')
 
         # restart only one web port but using the short name of web-asdfg
         name = 'web-' + pod['name'].split('-').pop()
         response = self.client.post('/v2/apps/{}/pods/web/{}/restart'.format(app_id, name))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['type'], 'web')
 
@@ -833,7 +833,7 @@ class PodTest(APITransactionTestCase):
 
         url = '/v2/apps'
         response = self.client.post(url)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
         with mock.patch('scheduler.KubeHTTPClient._get_pod') as kube_pod:
@@ -842,4 +842,4 @@ class PodTest(APITransactionTestCase):
                 kube_pods.side_effect = KubeException('boom!')
                 url = "/v2/apps/{app_id}/pods".format(**locals())
                 response = self.client.get(url)
-                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.status_code, 503, response.data)

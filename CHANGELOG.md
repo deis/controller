@@ -1,3 +1,46 @@
+### v2.0.0-beta3 -> v2.0.0-beta4
+
+#### Features
+
+ - [`ff8f651`](https://github.com/deis/controller/commit/ff8f6514ab6e972ca00b2d0b4a21d3611c8d6932) scheduler: clean up stray pods when a release is deleted
+ - [`0a541e6`](https://github.com/deis/controller/commit/0a541e63ddf4efbea330466b3c0e80041a5b4fd8) scheduler: add 10 mins to deploy timeout if image pull is slow
+ - [`b5c545f`](https://github.com/deis/controller/commit/b5c545ffa3a7d78cbf2f67a841291d6e8aba9301) coverage: use yaml file for codecov.io
+ - [`5821726`](https://github.com/deis/controller/commit/58217262072343fd76a94fe35606e7deba1453be) deploy: support doing a larger number than 1 in, 1 out deployment
+
+#### Fixes
+
+ - [`226037f`](https://github.com/deis/controller/commit/226037f37659e9c0088ed08ee9afc9265e6b0c01) builds: should be able to do a deploy an app after a failed attempt
+ - [`d27cbff`](https://github.com/deis/controller/commit/d27cbff46818290a98cfdec7dd081a1030abe06b) scheduler: use CA cert to verify API SSL certficiate
+ - [`79d8d81`](https://github.com/deis/controller/commit/79d8d8144ade6aa589152d16091d3f5bbe95fadb) README: Kubernetes 1.2 is a minimum requirement now
+ - [`47c679f`](https://github.com/deis/controller/commit/47c679f565dccb7dd88d35b6741d63507afdb294) port: retry a fixed number of times to find the port
+ - [`370c21a`](https://github.com/deis/controller/commit/370c21af71e66b190140f84ae1bca5ababef444a) deploy: account for readiness initial delay when determining if a pod is ready
+ - [`01bb7e5`](https://github.com/deis/controller/commit/01bb7e55287a068ee0e741f5dbf5c3c2e9a4a745) tests: add missing tests for /readiness endpoint
+ - [`9ca6db7`](https://github.com/deis/controller/commit/9ca6db79ce4b61659f1d91a73440463d4d2115d4) config: proc type names validation should allow alphanumeric
+ - [`2c04868`](https://github.com/deis/controller/commit/2c04868058f4ebcb4925389345d58797ab3b4604) readinessprobe: container shouldn't be restarted if the database is unavailable
+ - [`5e008b5`](https://github.com/deis/controller/commit/5e008b5dd86eb2533bbbe086b9b3f8a6e7c022ad) healthcheck: URL is required but set_healthcheck did not account for that
+ - [`4fe5d7c`](https://github.com/deis/controller/commit/4fe5d7cb151c92698f491af6b71810d452b7fbf1) app: response object was not accessible if app verification threw request exception
+ - [`f15b194`](https://github.com/deis/controller/commit/f15b1943303137d02479acf5c9c47659a676089b) scheduler: check if the pods are ready in scale up operations before comparing to desired state
+ - [`f8f7927`](https://github.com/deis/controller/commit/f8f7927085c61d04db6bb98fb1edaad67ce7846d) app: catch a higher level python-requests exception for verify application health
+
+#### Documentation
+
+ - [`1ef5325`](https://github.com/deis/controller/commit/1ef53256f3da7319e5be76b6ab52e16f8012ecc3) helmc: update the docs to use helm classic instead of helm
+ - [`1ae1e35`](https://github.com/deis/controller/commit/1ae1e35dc4f5cd021d2ad418255f9308ae36cdd8) CHANGELOG.md: update for v2.0.0-beta3
+
+#### Maintenance
+
+ - [`3dd07ac`](https://github.com/deis/controller/commit/3dd07ac07cc8388d48b83796f6e198afac3ac099) tests: add long message to all assert functions that use status_code checks
+ - [`0bc5563`](https://github.com/deis/controller/commit/0bc556388b252aca8ad5b1e023f1eb3e6e4045fc) tests: output the content/data of the response when status code does not match
+ - [`4101dc3`](https://github.com/deis/controller/commit/4101dc33c4e8c9b99112a4e47ea312d6f4cf986a) requirements: update requests-toolbelt to 0.6.1
+ - [`60d9751`](https://github.com/deis/controller/commit/60d975187e58e2320e15d0262c5923a8b0ff6632) tests: improve coverage by triggering KubeExceptions (and other types
+ - [`36fa29b`](https://github.com/deis/controller/commit/36fa29b63fb300b82737b07669add6e9228c7c37) requirements: update docker-py to 1.8.1
+ - [`d7120c0`](https://github.com/deis/controller/commit/d7120c0f8dab1c2fa654de4eeb739ad417d1e77d) requirements: Update to python-requets 2.10.0
+ - [`6da742d`](https://github.com/deis/controller/commit/6da742d63ccd76015e00d6410d568231684222ed) requirements: Django 1.9.6
+ - [`224a177`](https://github.com/deis/controller/commit/224a177726bb7f29ee42363f3e007828688f1294) versioneye: add version eye integration
+ - [`6417a6c`](https://github.com/deis/controller/commit/6417a6ce92b293f818edb8b44ad7276591c33aae) requirements: update codecov lib to 2.0.3
+ - [`ae61790`](https://github.com/deis/controller/commit/ae6179094ca1aacb354925b2bcf1bdce472fa4df) requirements: update pytz to 2016.4
+ - [`2af0a5e`](https://github.com/deis/controller/commit/2af0a5e124c6b4c7e8f41d481c298c98b69b6819) settings: Allow for comma-delimited RESERVED_NAMES
+
 ### v2.0.0-beta2 -> v2.0.0-beta3
 
 #### Features

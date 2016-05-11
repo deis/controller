@@ -254,16 +254,7 @@ class Release(UuidAuditedModel):
         }
         controllers = self._scheduler._get_rcs(namespace, labels=labels).json()
         for controller in controllers['items']:
-            self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0)
-            self._scheduler._delete_rc(namespace, controller['metadata']['name'])
-            # Remove stray pods
-            labels = controller['metadata']['labels']
-            pods = self._scheduler._get_pods(namespace, labels=labels).json()
-            for pod in pods['items']:
-                if self._scheduler._pod_deleted(pod):
-                    continue
-
-                self._scheduler._delete_pod(namespace, pod['metadata']['name'])
+            self._scheduler._cleanup_release(namespace, controller)
 
         # remove secret that contains env vars for the release
         try:

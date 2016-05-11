@@ -27,17 +27,37 @@ class Build(UuidAuditedModel):
         ordering = ['-created']
         unique_together = (('app', 'uuid'),)
 
+    @property
+    def type(self):
+        """Figures out what kind of build type is being deal it with"""
+        if self.dockerfile:
+            return 'dockerfile'
+        elif self.sha:
+            return 'buildpack'
+        else:
+            # docker image (or any sort of image) used via deis pull
+            return 'image'
+
+    @property
+    def source_based(self):
+        """
+        Checks if a build is source (has a sha) based or not
+        If True then the Build is coming from the deis builder or something that
+        built from git / svn / hg / etc directly
+        """
+        return self.sha != ''
+
+    @property
+    def version(self):
+        return 'git-{}'.format(self.sha) if self.source_based else 'latest'
+
     def create(self, user, *args, **kwargs):
         latest_release = self.app.release_set.latest()
-        source_version = 'latest'
-        if self.sha:
-            source_version = 'git-{}'.format(self.sha)
-
         new_release = latest_release.new(
             user,
             build=self,
             config=latest_release.config,
-            source_version=source_version
+            source_version=self.version
         )
 
         try:
@@ -62,6 +82,7 @@ class Build(UuidAuditedModel):
             self.app.scale(self.owner, removed)
         except Build.DoesNotExist:
             pass
+
         return super(Build, self).save(**kwargs)
 
     def __str__(self):

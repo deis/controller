@@ -18,7 +18,7 @@ from deis import __version__ as deis_version
 from api.models import UuidAuditedModel, log_event, AlreadyExists, \
     DeisException, ServiceUnavailable
 
-from api.utils import generate_app_name, app_build_type
+from api.utils import generate_app_name
 from api.models.release import Release
 from api.models.config import Config
 from api.models.domain import Domain
@@ -307,7 +307,6 @@ class App(UuidAuditedModel):
 
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
-        build_type = app_build_type(release)
         for scale_type, replicas in scale_types.items():
             image = release.image
             version = "v{}".format(release.version)
@@ -319,7 +318,7 @@ class App(UuidAuditedModel):
                 'version': version,
                 'replicas': replicas,
                 'app_type': scale_type,
-                'build_type': build_type,
+                'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck(),
                 # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
                 'routable': True if scale_type in ['web', 'cmd'] else False
@@ -356,7 +355,6 @@ class App(UuidAuditedModel):
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
-        build_type = app_build_type(release)
         for scale_type, replicas in self.structure.items():
             deploys[scale_type] = {
                 'memory': release.config.memory,
@@ -367,7 +365,7 @@ class App(UuidAuditedModel):
                 'replicas': replicas,
                 'version': "v{}".format(release.version),
                 'app_type': scale_type,
-                'build_type': build_type,
+                'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck(),
                 # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
                 'routable': True if scale_type in ['web', 'cmd'] else False,

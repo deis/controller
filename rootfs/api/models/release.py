@@ -45,16 +45,16 @@ class Release(UuidAuditedModel):
             image = self.build.image.replace('{}/'.format(settings.REGISTRY_URL), '')
             return image.replace('{}/'.format(settings.REGISTRY_HOST), '')
 
-        if not self.build.dockerfile:
-            # Deis Pull
-            if not self.build.sha:
-                return '{}/{}:v{}'.format(settings.REGISTRY_URL, self.app.id, str(self.version))
-
+        # Sort out image information based on build type
+        if self.build.type == 'dockerfile':
+            # DockerFile
+            return '{}/{}:git-{}'.format(settings.REGISTRY_URL, self.app.id, str(self.build.sha))
+        elif self.build.type == 'image':
+            # Deis Pull, docker image in local registry
+            return '{}/{}:v{}'.format(settings.REGISTRY_URL, self.app.id, str(self.version))
+        elif self.build.type == 'buildpack':
             # Build Pack - Registry URL not prepended since slugrunner image will download slug
             return self.build.image
-
-        # DockerFile
-        return '{}/{}:git-{}'.format(settings.REGISTRY_URL, self.app.id, str(self.build.sha))
 
     def new(self, user, config, build, summary=None, source_version='latest'):
         """
@@ -83,12 +83,12 @@ class Release(UuidAuditedModel):
 
         return release
 
-    def publish(self, source_version='latest'):
+    def publish(self):
         if self.build is None:
             raise DeisException('No build associated with this release to publish')
 
         # If the build has a SHA, assume it's from deis-builder and in the deis-registry already
-        if self.build.dockerfile or self.build.sha:
+        if self.build.source_based:
             return
 
         source_image = self.build.image
@@ -102,8 +102,7 @@ class Release(UuidAuditedModel):
 
         # add tag if it was not provided
         if ':' not in source_image:
-            source_tag = 'git-{}'.format(self.build.sha) if self.build.sha else source_version
-            source_image = "{}:{}".format(source_image, source_tag)
+            source_image = "{}:{}".format(source_image, self.build.version)
 
         # gather custom login information for registry if needed
         auth = None
@@ -114,7 +113,8 @@ class Release(UuidAuditedModel):
                 'email': self.owner.email
             }
 
-        deis_registry = bool(self.build.sha)
+        # if build is source based then it was pushed into the deis registry
+        deis_registry = bool(self.build.source_based)
         publish_release(source_image, self.image, deis_registry, auth)
 
     def previous(self):

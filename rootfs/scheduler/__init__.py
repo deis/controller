@@ -142,7 +142,7 @@ RCD_TEMPLATE = """\
                 "value":"$id"
             },
             {
-                "name":"DEIS_RELEASE",
+                "name":"WORKFLOW_RELEASE",
                 "value":"$appversion"
             }
             ]
@@ -206,7 +206,7 @@ RCB_TEMPLATE = """\
                 "value":"$id"
             },
             {
-                "name":"DEIS_RELEASE",
+                "name":"WORKFLOW_RELEASE",
                 "value":"$appversion"
             },
             {

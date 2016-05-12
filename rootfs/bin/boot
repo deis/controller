@@ -7,7 +7,7 @@
 set -eo pipefail
 
 # set debug based on envvar
-[[ $DEBUG ]] && set -x
+[[ $DEIS_DEBUG ]] && set -x
 
 echo system information:
 echo "Django Version: $(./manage.py --version)"

@@ -607,7 +607,7 @@ class PodTest(APITransactionTestCase):
         do a run with DEBUG on - https://github.com/deis/controller/issues/583
         """
         env = EnvironmentVarGuard()
-        env['DEBUG'] = 'true'
+        env['DEIS_DEBUG'] = 'true'
 
         url = '/v2/apps'
         response = self.client.post(url)

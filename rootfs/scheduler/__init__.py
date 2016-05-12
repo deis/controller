@@ -565,11 +565,18 @@ class KubeHTTPClient(object):
         else:
             args = [command[1:-1]]
 
-        containers = template['spec']['containers'][0]
-        containers['command'] = [entrypoint]
-        containers['args'] = args
+        spec = template['spec']
 
-        self._set_environment(containers, namespace, **kwargs)
+        # apply tags as needed to restrict pod to particular node(s)
+        spec["nodeSelector"] = kwargs.get('tags', {})
+
+        container = spec['containers'][0]
+        container['command'] = [entrypoint]
+        container['args'] = args
+
+        # set information to the application container
+        kwargs['image'] = l['image']
+        self._set_container(namespace, container, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
@@ -613,7 +620,8 @@ class KubeHTTPClient(object):
 
         return 0, data
 
-    def _set_environment(self, data, namespace, **kwargs):
+    def _set_container(self, namespace, data, **kwargs):  # noqa
+        """Set app container information (env, healthcheck, etc) on a Pod"""
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
@@ -638,7 +646,7 @@ class KubeHTTPClient(object):
                     'version': kwargs.get('version'),
                     'type': 'env'
                 }
-                self._create_secret(namespace, secret_name, secrets_env, labels)
+                self._create_secret(namespace, secret_name, secrets_env, labels=labels)
             else:
                 self._update_secret(namespace, secret_name, secrets_env)
 
@@ -673,6 +681,12 @@ class KubeHTTPClient(object):
 
         if cpu:
             data["resources"]["limits"]["cpu"] = cpu
+
+        # add in healthchecks
+        if kwargs.get('healthcheck', None):
+            self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['healthcheck'])
+        else:
+            self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('image'))
 
     def resolve_state(self, pod):
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
@@ -870,9 +884,9 @@ class KubeHTTPClient(object):
 
             time.sleep(1)
 
-        logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))  # noqa
+        logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))
 
-    def _get_pod_ready_status(self, namespace, controller, labels, desired):
+    def _wait_until_pods_are_ready(self, namespace, controller, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -991,7 +1005,7 @@ class KubeHTTPClient(object):
             logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
         # Double check enough pods are in the required state to service the application
-        self._get_pod_ready_status(namespace, rc, labels, desired)
+        self._wait_until_pods_are_ready(namespace, rc, labels, desired)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):
@@ -1036,21 +1050,18 @@ class KubeHTTPClient(object):
 
         template = json.loads(string.Template(TEMPLATE).substitute(l))
 
-        # apply tags as needed
-        tags = kwargs.get('tags', {})
-        template["spec"]["template"]["spec"]["nodeSelector"] = tags
+        spec = template["spec"]["template"]["spec"]
+
+        # apply tags as needed to restrict pod to particular node(s)
+        spec["nodeSelector"] = kwargs.get('tags', {})
 
         # Deal with container information
-        container = template["spec"]["template"]["spec"]["containers"][0]
+        container = spec["containers"][0]
         container['args'] = args
 
-        self._set_environment(container, namespace, **kwargs)
-
-        # add in healthchecks
-        if kwargs.get('healthcheck'):
-            template = self._healthcheck(template, kwargs['routable'], **kwargs['healthcheck'])
-        else:
-            template = self._default_readiness_probe(template, image, kwargs.get('build_type'))
+        # set information to the application container
+        kwargs['image'] = l['image']
+        self._set_container(namespace, container, **kwargs)
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1098,8 +1109,9 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _healthcheck(self, controller, routable=False, path='/', port=5000, delay=30, timeout=5,
-                     period_seconds=1, success_threshold=1, failure_threshold=3):  # noqa
+    def _healthcheck(self, namespace, container, routable=False, path='/', port=5000,
+                     delay=30, timeout=5, period_seconds=1, success_threshold=1,
+                     failure_threshold=3):  # noqa
         """
         Apply HTTP GET healthcehck to the application container
 
@@ -1108,10 +1120,8 @@ class KubeHTTPClient(object):
         http://kubernetes.io/docs/user-guide/liveness/
         """
         if not routable:
-            return controller
+            return
 
-        namespace = controller['spec']['selector']['app']
-        # Inspect if a PORT env is already defined, make sure that's the port used
         try:
             service = self._get_service(namespace, namespace).json()
             port = service['spec']['ports'][0]['targetPort']
@@ -1119,7 +1129,7 @@ class KubeHTTPClient(object):
             pass
 
         # Only support HTTP checks for now
-        # http://kubernetes.io/v1.1/docs/user-guide/pod-states.html#container-probes
+        # http://kubernetes.io/docs/user-guide/pod-states/#container-probes
         healthcheck = {
             # defines the health checking
             'livenessProbe': {
@@ -1153,32 +1163,14 @@ class KubeHTTPClient(object):
         }
 
         # Update only the application container with the health check
-        app_type = controller['spec']['selector']['type']
-        container_name = '{}-{}'.format(namespace, app_type)
-        containers = controller['spec']['template']['spec']['containers']
-        for container in containers:
-            if container['name'] == container_name:
-                container.update(healthcheck)
+        container.update(healthcheck)
 
-        return controller
-
-    def _default_readiness_probe(self, controller, image, build_type):
-        if build_type == "buildpack":
-            readinessprobe = self._default_buildpack_readiness_probe()
-        else:
-            readinessprobe = self._default_dockerapp_readiness_probe(image)
-        if readinessprobe is None:
-            return controller
+    def _default_readiness_probe(self, container, build_type, image):
         # Update only the application container with the health check
-        app_type = controller['spec']['selector']['type']
-        namespace = controller['spec']['selector']['app']
-        container_name = '{}-{}'.format(namespace, app_type)
-        containers = controller['spec']['template']['spec']['containers']
-        for container in containers:
-            if container['name'] == container_name:
-                container.update(readinessprobe)
-
-        return controller
+        if build_type == "buildpack":
+            container.update(self._default_buildpack_readiness_probe())
+        else:
+            container.update(self._default_dockerapp_readiness_probe(image))
 
     '''
     Applies exec readiness probe to the slugrunner container.
@@ -1229,6 +1221,7 @@ class KubeHTTPClient(object):
                 return None
         except Exception:
             return None
+
         readinessprobe = {
             'readinessProbe': {
                 # an exec probe

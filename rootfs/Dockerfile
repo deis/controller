@@ -18,4 +18,4 @@ RUN DOCKER_BUILD=true /app/tmp/build.sh && rm -rf /app/*
 
 ADD . /app
 
-ENV DEIS_RELEASE 2.0.0-dev
+ENV WORKFLOW_RELEASE 2.0.0-dev

@@ -8,12 +8,10 @@ from urllib.parse import urljoin
 import base64
 
 from django.conf import settings
-from docker import Client
 from .states import JobState
 import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
-from retrying import retry
 
 from deis import __version__ as deis_version
 
@@ -343,22 +341,9 @@ class KubeHTTPClient(object):
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
         app_type = kwargs.get('app_type')
-        build_type = kwargs.get('build_type')
         routable = kwargs.get('routable', False)
-        port = None
-
-        try:
-            if routable:
-                if build_type == "buildpack":
-                    logger.debug("Using default port 5000 for build pack app {}".format(name))
-                    port = 5000
-                else:
-                    port = self._get_port(image)
-                    if port is None:
-                        raise Exception("Expose a port or make the app non routable by changing"
-                                        " the process type")
-        except Exception as e:
-            raise KubeException('{} (scheduler::deploy): {}'.format(name, e))
+        envs = kwargs.get('envs', {})
+        port = envs.get('PORT', None)
 
         # Fetch old RC and create the new one for a release
         old_rc = self._get_old_rc(namespace, app_type)
@@ -686,7 +671,7 @@ class KubeHTTPClient(object):
         if kwargs.get('healthcheck', None):
             self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['healthcheck'])
         else:
-            self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('image'))
+            self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('port', None))
 
     def resolve_state(self, pod):
         # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
@@ -721,19 +706,6 @@ class KubeHTTPClient(object):
             pod_state = pod['status']['phase']
 
         return states.get(pod_state, pod_state)
-
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
-    def _get_port(self, image):
-        # try thrice to find the port before raising exception as docker-py is flaky
-        repo = image.split(":")
-        # image already includes the tag, so we split it out here
-        docker_cli = Client(version="auto")
-        docker_cli.pull(repo[0]+":"+repo[1], tag=repo[2], insecure_registry=True)
-        image_info = docker_cli.inspect_image(image)
-        if 'ExposedPorts' not in image_info['Config']:
-            return None
-        port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
-        return port
 
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
@@ -1165,12 +1137,12 @@ class KubeHTTPClient(object):
         # Update only the application container with the health check
         container.update(healthcheck)
 
-    def _default_readiness_probe(self, container, build_type, image):
+    def _default_readiness_probe(self, container, build_type, port=None):
         # Update only the application container with the health check
         if build_type == "buildpack":
             container.update(self._default_buildpack_readiness_probe())
-        else:
-            container.update(self._default_dockerapp_readiness_probe(image))
+        elif port:
+            container.update(self._default_dockerapp_readiness_probe(port))
 
     '''
     Applies exec readiness probe to the slugrunner container.
@@ -1213,15 +1185,8 @@ class KubeHTTPClient(object):
     Applies tcp socket readiness probe to the docker app container only if some port is exposed
     by the docker image.
     '''
-    def _default_dockerapp_readiness_probe(self, image, delay=5, timeout=5, period_seconds=5,
+    def _default_dockerapp_readiness_probe(self, port, delay=5, timeout=5, period_seconds=5,
                                            success_threshold=1, failure_threshold=1):
-        try:
-            port = self._get_port(image)
-            if port is None:
-                return None
-        except Exception:
-            return None
-
         readinessprobe = {
             'readinessProbe': {
                 # an exec probe

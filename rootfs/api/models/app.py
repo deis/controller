@@ -307,21 +307,26 @@ class App(UuidAuditedModel):
 
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
+        envs = release.config.values
         for scale_type, replicas in scale_types.items():
+            # only web / cmd are routable
+            # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+            routable = True if scale_type in ['web', 'cmd'] else False
+            # fetch application port and inject into ENV Vars as needed
+            envs['PORT'] = release.get_port(routable)
+
             image = release.image
-            version = "v{}".format(release.version)
             kwargs = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
-                'envs': release.config.values,
-                'version': version,
+                'envs': envs,
+                'version': "v{}".format(release.version),
                 'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck(),
-                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-                'routable': True if scale_type in ['web', 'cmd'] else False
+                'routable': routable
             }
 
             command = self._get_command(scale_type)
@@ -355,20 +360,26 @@ class App(UuidAuditedModel):
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
+        envs = release.config.values
         for scale_type, replicas in self.structure.items():
+            # only web / cmd are routable
+            # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+            routable = True if scale_type in ['web', 'cmd'] else False
+            # fetch application port and inject into ENV Vars as needed
+            envs['PORT'] = release.get_port(routable)
+
             deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
-                'envs': release.config.values,
+                'envs': envs,
                 # only used if there is no previous RC
                 'replicas': replicas,
                 'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck(),
-                # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-                'routable': True if scale_type in ['web', 'cmd'] else False,
+                'routable': routable,
                 'batches': batches
             }
 

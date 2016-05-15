@@ -3,6 +3,10 @@ import logging
 from django.conf import settings
 from django.db import models
 
+import docker
+from docker import Client
+from retrying import retry
+
 from registry import publish_release, RegistryException
 from api.utils import dict_diff
 from api.models import UuidAuditedModel, log_event, DeisException
@@ -104,18 +108,51 @@ class Release(UuidAuditedModel):
         if ':' not in source_image:
             source_image = "{}:{}".format(source_image, self.build.version)
 
-        # gather custom login information for registry if needed
+        # if build is source based then it was pushed into the deis registry
+        deis_registry = bool(self.build.source_based)
+        publish_release(source_image, self.image, deis_registry, self.get_registry_auth())
+
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    def get_port(self, routable=False):
+        """
+        Get a port from a Docker image
+        """
+        port = None
+        # Only care about port for routable application
+        if not routable:
+            return port
+
+        if self.build.type == "buildpack":
+            msg = "Using default port 5000 for build pack image {}".format(self.image)
+            log_event(self.app, msg)
+            return 5000
+
+        # get the target repository name and tag
+        repo, tag = docker.utils.parse_repository_tag(self.image)
+
+        docker_cli = Client(version="auto")
+        docker_cli.pull(repo, tag=tag, insecure_registry=True)
+        image_info = docker_cli.inspect_image(self.image)
+        if 'ExposedPorts' not in image_info['Config']:
+            return None
+
+        port = int(list(image_info['Config']['ExposedPorts'].keys())[0].split("/")[0])
+        return port
+
+    def get_registry_auth(self):
+        """
+        Gather login information for private registry if needed
+        """
         auth = None
-        if self.config.registry.get('username', None):
+        registry = self.config.registry
+        if registry.get('username', None):
             auth = {
-                'username': self.config.registry.get('username', None),
-                'password': self.config.registry.get('password', None),
+                'username': registry.get('username', None),
+                'password': registry.get('password', None),
                 'email': self.owner.email
             }
 
-        # if build is source based then it was pushed into the deis registry
-        deis_registry = bool(self.build.source_based)
-        publish_release(source_image, self.image, deis_registry, auth)
+        return auth
 
     def previous(self):
         """

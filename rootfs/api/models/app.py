@@ -123,6 +123,24 @@ class App(UuidAuditedModel):
             # handle special case for Dockerfile deployments
             return '' if container_type == 'cmd' else 'start {}'.format(container_type)
 
+    def _get_command_run(self, command):
+        # SECURITY: shell-escape user input
+        command = command.replace("'", "'\\''")
+
+        # if this is a procfile-based app, switch the entrypoint to slugrunner's default
+        # FIXME: remove slugrunner's hardcoded entrypoint
+        release = self.release_set.latest()
+        if release.build.procfile and \
+           release.build.sha and not \
+           release.build.dockerfile:
+            entrypoint = '/runner/init'
+            command = "'{}'".format(command)
+        else:
+            entrypoint = '/bin/bash'
+            command = "-c '{}'".format(command)
+
+        return entrypoint, command
+
     def log(self, message, level=logging.INFO):
         """Logs a message in the context of this application.
 
@@ -555,24 +573,10 @@ class App(UuidAuditedModel):
             raise DeisException('No build associated with this release to run this command')
 
         # TODO: add support for interactive shell
-        # SECURITY: shell-escape user input
-        command = command.replace("'", "'\\''")
-
-        # if this is a procfile-based app, switch the entrypoint to slugrunner's default
-        # FIXME: remove slugrunner's hardcoded entrypoint
-        if release.build.procfile and \
-           release.build.sha and not \
-           release.build.dockerfile:
-            entrypoint = '/runner/init'
-            command = "'{}'".format(command)
-        else:
-            entrypoint = '/bin/bash'
-            command = "-c '{}'".format(command)
+        entrypoint, command = self._get_command_run(command)
 
         name = self._get_job_id('run') + '-' + pod_name()
-
-        msg = "{} on {} runs '{}'".format(user.username, name, command)
-        log_event(self, msg)
+        log_event(self, "{} on {} runs '{}'".format(user.username, name, command))
 
         kwargs = {
             'memory': release.config.memory,
@@ -580,10 +584,11 @@ class App(UuidAuditedModel):
             'tags': release.config.tags,
             'envs': release.config.values,
             'version': "v{}".format(release.version),
+            'build_type': release.build.type,
         }
 
         try:
-            rc, output = self._scheduler.run(
+            exit_code, output = self._scheduler.run(
                 self.id,
                 name,
                 release.image,
@@ -592,7 +597,7 @@ class App(UuidAuditedModel):
                 **kwargs
             )
 
-            return rc, output
+            return exit_code, output
         except Exception as e:
             err = '{} (run): {}'.format(name, e)
             log_event(self, err, logging.ERROR)
@@ -615,7 +620,7 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
-                state = self._scheduler.resolve_state(p)
+                state = self._scheduler._pod_state(p).name
 
                 # follows kubelete convention - these are hidden unless show-all is set
                 if state in ['down', 'crashed']:

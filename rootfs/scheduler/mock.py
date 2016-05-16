@@ -21,11 +21,14 @@ resources = [
 ]
 
 
+def jit():
+    # 2 second jitter is the highest
+    return random.randint(1, 20) * 0.1
+
+
 def jitter():
     """Introduce random jitter (sleep)"""
-    # 5 second jitter is the highest
-    jit = random.randint(1, 50) * 0.1
-    time.sleep(jit)
+    time.sleep(jit())
 
 
 def pod_name(size=5, chars=string.ascii_lowercase + string.digits):
@@ -47,6 +50,58 @@ def get_type(key, pos=-1):
     return 'unknown'
 
 
+def pod_state_transitions(pod_url=None):
+    """
+    Move pods through the various states while maintaining
+    how long a pod should stay in a certain state as well
+
+    http://kubernetes.io/docs/user-guide/pod-states/
+    """
+    pods = cache.get('pods_states', {})
+    # Is there a new pod?
+    if pod_url:
+        state_time = datetime.utcnow() + timedelta(seconds=jit())
+        pods[pod_url] = state_time
+
+        # Initial state is Pending
+        new_phase = 'Pending'
+        pod = cache.get(pod_url)
+        pod['status']['phase'] = new_phase
+        cache.set(pod_url, pod)
+
+    # Loops through all the pods to see if next phase needs to be done
+    for pod_url, state_time in pods.items():
+        if datetime.utcnow() < state_time:
+            # it is now time yet!
+            continue
+
+        # Look at the current phase
+        pod = cache.get(pod_url, None)
+        if pod is None:
+            continue
+
+        # this needs to be done from "most advanced phase" to "earliest phase"
+
+        # Is this Pod part of an RC or not
+        if pod['status']['phase'] == 'Running':
+            # Try to determine the connected RC to readjust pod count
+            # One way is to look at annotations:kubernetes.io/created-by and read
+            # the serialized reference but that looks clunky right now
+            controllers = filter_data({'labels': pod['metadata']['labels']}, 'replicationcontrollers')  # noqa
+            # If Pod is in an RC then do nothing
+            if not controllers:
+                # If Pod is not in an RC then it needs to move forward
+                pod['status']['phase'] = 'Succeeded'
+
+        # Transition from Pending to Running
+        if pod['status']['phase'] == 'Pending':
+            pod['status']['phase'] = 'Running'
+
+        cache.set(pod_url, pod)
+
+    cache.set('pods_states', pods)
+
+
 def cleanup_pods():
     """Can be called during any sort of access, it will cleanup pods as needed"""
     pods = cache.get('cleanup_pods', {})
@@ -56,6 +111,7 @@ def cleanup_pods():
 
         del pods[pod]
         remove_cache_item(pod, 'pods')
+        cache.delete(pod + '_log')
     cache.set('cleanup_pods', pods)
 
 
@@ -72,7 +128,8 @@ def add_cleanup_pod(url):
 
     # add grace period timestamp
     pod = cache.get(url)
-    pd = datetime.utcnow() + timedelta(seconds=settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+    grace = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
+    pd = datetime.utcnow() + timedelta(seconds=grace)
     timestamp = str(pd.strftime(settings.DEIS_DATETIME_FORMAT))
     pod['metadata']['deletionTimestamp'] = timestamp
     cache.set(url, pod)
@@ -83,11 +140,15 @@ def delete_pod(url, data, request):
     # One way is to look at annotations:kubernetes.io/created-by and read
     # the serialized reference but that looks clunky right now
     controllers = filter_data({'labels': data['metadata']['labels']}, 'replicationcontrollers')
-    controller = controllers.pop()
-    upsert_pods(controller, cache_key(request.path))
+    if controllers:
+        controller = controllers.pop()
+        upsert_pods(controller, cache_key(request.path))
+    else:
+        # delete individual item
+        delete_pods([url], 1, 0)
 
 
-def delete_pods(url, pods, current, desired):
+def delete_pods(pods, current, desired):
     if not pods:
         return
 
@@ -122,11 +183,11 @@ def create_pods(url, labels, base, new_pods):
         data['metadata']['creationTimestamp'] = timestamp
 
         # generate the pod name and combine with RC name
-        data['metadata']['name'] = data['metadata']['generateName'] + pod_name()
+        if 'generateName' in data['metadata']:
+            data['metadata']['name'] = data['metadata']['generateName'] + pod_name()
 
         timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
         data['status'] = {
-            'phase': 'Running',
             'startTime': timestamp,
             'conditions': [
                 # TODO status can be True or False (string)
@@ -148,7 +209,9 @@ def create_pods(url, labels, base, new_pods):
         }
 
         # Create the single resource with all its information
-        pod_key = cache_key(url + '_' + data['metadata']['name'])
+        pod_key = url
+        if cache_key(data['metadata']['name']) not in url:
+            pod_key = cache_key(url + '_' + data['metadata']['name'])
         cache.set(pod_key, data, None)
 
         # Keep track of what resources are in a given resource type
@@ -157,10 +220,20 @@ def create_pods(url, labels, base, new_pods):
             items.append(pod_key)
             cache.set('pods', items, None)
 
-        items = cache.get(url, [])  # pods within the namespace
+        # make sure url only has up to "_pods"
+        namespaced_url = url[0:(url.find("_pods") + 5)]
+        items = cache.get(namespaced_url, [])  # pods within the namespace
         if pod_key not in items:
             items.append(pod_key)
-            cache.set(url, items, None)
+            cache.set(namespaced_url, items, None)
+
+        # set up a fake log for the pod
+        log = "I did stuff today"
+        pod_log_key = pod_key + '_log'
+        cache.set(pod_log_key, log, None)
+
+        # Add it to the transition loop
+        pod_state_transitions(pod_key)
 
 
 def upsert_pods(controller, url):
@@ -195,7 +268,7 @@ def upsert_pods(controller, url):
 
     # If operation is scale down then pods needs to be removed
     if current > desired:
-        return delete_pods(url, items, current, desired)
+        return delete_pods(items, current, desired)
 
     create_pods(url, data['metadata']['labels'], data, delta)
 
@@ -301,11 +374,6 @@ def post(request, context):
         namespace = namespace.split('/')[0]
         data['metadata']['namespace'] = namespace
 
-    # deis run is the only thing that creates pods directly
-    if resource_type == 'pods':
-        # need to make the pod Succeed instead of be just running
-        data.update({'status': {'phase': 'Succeeded'}})
-
     if resource_type == 'replicationcontrollers':
         data['status'] = {
             'observedGeneration': 1
@@ -314,20 +382,24 @@ def post(request, context):
 
         upsert_pods(data, url)
 
-    cache.set(url, data, None)
+    # deis run is the only thing that creates pods directly
+    if resource_type == 'pods':
+        create_pods(url, data['metadata']['labels'], data, 1)
+    else:
+        cache.set(url, data, None)
 
-    # Keep track of what resources are in a given resource
-    items = cache.get(resource_type, [])
-    if url not in items:
-        items.append(url)
-        cache.set(resource_type, items, None)
+        # Keep track of what resources are in a given resource
+        items = cache.get(resource_type, [])
+        if url not in items:
+            items.append(url)
+            cache.set(resource_type, items, None)
 
-    # Keep track of what resources exist under other resources (mostly namespace)
-    other = cache_key(request.url)
-    items = cache.get(other, [])
-    if url not in items:
-        items.append(url)
-        cache.set(other, items, None)
+        # Keep track of what resources exist under other resources (mostly namespace)
+        other = cache_key(request.url)
+        items = cache.get(other, [])
+        if url not in items:
+            items.append(url)
+            cache.set(other, items, None)
 
     context.status_code = 201
     context.reason = 'Created'
@@ -423,6 +495,8 @@ def remove_cache_item(url, resource_type):
 def mock(request, context):
     # always cleanup pods
     cleanup_pods()
+    # always transition pods
+    pod_state_transitions()
 
     # What to do about context
     if request.method == 'POST':

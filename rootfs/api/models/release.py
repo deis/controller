@@ -254,7 +254,12 @@ class Release(UuidAuditedModel):
         }
         secrets = self._scheduler._get_secrets(self.app.id, labels=labels).json()
         for secret in secrets['items']:
-            current_version = secret['metadata']['labels']['version']
+            # earlier iterations did not have version labels
+            if 'version' not in secret['metadata']['labels']:
+                current_version = 'v0'
+            else:
+                current_version = secret['metadata']['labels']['version']
+
             # skip the latest release
             if current_version == latest_version:
                 continue

@@ -578,7 +578,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
+        data = App.objects.get(id=app_id)
+        entrypoint, _ = data._get_command_run('echo hi')
         self.assertEqual(entrypoint, '/bin/bash')
 
         # docker image workflow
@@ -589,7 +590,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
+        data = App.objects.get(id=app_id)
+        entrypoint, _ = data._get_command_run('echo hi')
         self.assertEqual(entrypoint, '/bin/bash')
 
         # procfile workflow
@@ -599,12 +601,13 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
+        data = App.objects.get(id=app_id)
+        entrypoint, _ = data._get_command_run('echo hi')
         self.assertEqual(entrypoint, '/runner/init')
 
     def test_run_not_fail_on_debug(self, mock_requests):
         """
-        do a run with DEBUG on - https://github.com/deis/controller/issues/583
+        do a run with DEIS_DEBUG on - https://github.com/deis/controller/issues/583
         """
         env = EnvironmentVarGuard()
         env['DEIS_DEBUG'] = 'true'
@@ -642,7 +645,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        entrypoint = json.loads(response.data['output'])['spec']['containers'][0]['command'][0]
+        data = App.objects.get(id=app_id)
+        entrypoint, _ = data._get_command_run('echo hi')
         self.assertEqual(entrypoint, '/bin/bash')
 
     def test_scaling_does_not_add_run_proctypes_to_structure(self, mock_requests):

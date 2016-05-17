@@ -1,7 +1,34 @@
-import enum
+from enum import Enum, unique
 
 
-class JobState(enum.Enum):
+class OrderedEnum(Enum):
+    def __ge__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value >= other.value
+
+        return NotImplemented
+
+    def __gt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value > other.value
+
+        return NotImplemented
+
+    def __le__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value <= other.value
+
+        return NotImplemented
+
+    def __lt__(self, other):
+        if self.__class__ is other.__class__:
+            return self.value < other.value
+
+        return NotImplemented
+
+
+@unique
+class PodState(OrderedEnum):
     initializing = 1
     creating = 2
     starting = 3
@@ -11,3 +38,7 @@ class JobState(enum.Enum):
     destroyed = 7
     crashed = 8
     error = 9
+
+    def __str__(self):
+        """Return the name of the state"""
+        return self.name

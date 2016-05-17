@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 import base64
 
 from django.conf import settings
-from .states import JobState
+from .states import PodState
 import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
@@ -24,7 +24,13 @@ POD_BTEMPLATE = """\
   "kind": "Pod",
   "apiVersion": "$version",
   "metadata": {
-    "name": "$id"
+    "name": "$id",
+    "labels": {
+      "app": "$app",
+      "version": "$appversion",
+      "type": "$type",
+      "heritage": "deis"
+    }
   },
   "spec": {
     "containers": [
@@ -81,7 +87,13 @@ POD_TEMPLATE = """\
   "kind": "Pod",
   "apiVersion": "$version",
   "metadata": {
-    "name": "$id"
+    "name": "$id",
+    "labels": {
+      "app": "$app",
+      "version": "$appversion",
+      "type": "$type",
+      "heritage": "deis"
+    }
   },
   "spec": {
     "containers": [
@@ -527,6 +539,9 @@ class KubeHTTPClient(object):
         POD = POD_TEMPLATE
         l = {
             'id': name,
+            'app': namespace,
+            'appversion': kwargs.get('version'),
+            'type': 'run',
             'version': self.apiversion,
             'image': image,
             'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
@@ -568,42 +583,51 @@ class KubeHTTPClient(object):
         if unhealthy(response.status_code):
             error(response, 'create Pod in Namespace "{}"', namespace)
 
-        data = ''
-        duration = 30
-        iteration = 1
-        while (iteration < duration):
-            try:
+        labels = {
+            'app': namespace,
+            'type': 'run',
+            'version': kwargs.get('version'),
+            'heritage': 'deis',
+        }
+        # wait for run pod to start - use the same function as scale
+        self._wait_until_pods_are_ready(namespace, container, labels, desired=1)
+
+        try:
+            # give pod 20 minutes to execute (after it got into ready state)
+            # this is a fairly arbitrary limit but the gunicorn worker / LBs
+            # will make this timeout around 20 anyway.
+            # TODO: Revisit in the future so it can run longer
+            state = 'up'  # pod is still running
+            waited = 0
+            timeout = 1200  # 20 minutes
+            while (state == 'up' and waited < timeout):
                 response = self._get_pod(namespace, name)
-                data = response.text
                 pod = response.json()
-                if pod['status']['phase'] == 'Succeeded':
-                    response = self._pod_log(namespace, name)
-                    response.encoding = 'utf-8'  # defaults to "ISO-8859-1" otherwise...
-                    log = response.text
-                    self._delete_pod(namespace, name)
-                    return 0, log
+                state = self._pod_state(pod).name
+                # default data
+                exit_code = 0
 
-                elif pod['status']['phase'] == 'Running':
-                    if iteration > 28:
-                        duration += 1
+                waited += 1
+                time.sleep(1)
 
-                elif pod['status']['phase'] == 'Failed':
-                    pod_state = pod['status']['containerStatuses'][0]['state']
-                    err_code = pod_state['terminated']['exitCode']
-                    self._delete_pod(namespace, name)
-                    return err_code, data
+            if state == 'down':  # run finished successfully
+                exit_code = 0  # successful run
+            elif state == 'crashed':  # run failed
+                pod_state = pod['status']['containerStatuses'][0]['state']
+                exit_code = pod_state['terminated']['exitCode']
 
-            except KubeException:
-                break
+            # timed out!
+            if waited == timeout:
+                raise KubeException('Timed out (20 mins) while running')
 
-            iteration += 1
-            time.sleep(1)
+            # grab log information
+            log = self._pod_log(namespace, name)
+            log.encoding = 'utf-8'  # defaults to "ISO-8859-1" otherwise...
 
-        if iteration >= duration:
-            error(response, 'Pod start took more than 30 seconds', namespace)
-            return 0, data
-
-        return 0, data
+            return exit_code, log.text
+        finally:
+            # cleanup
+            self._delete_pod(namespace, name)
 
     def _set_container(self, namespace, data, **kwargs):  # noqa
         """Set app container information (env, healthcheck, etc) on a Pod"""
@@ -671,20 +695,20 @@ class KubeHTTPClient(object):
         else:
             self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('port', None))
 
-    def resolve_state(self, pod):
-        # See "Pod Phase" at http://kubernetes.io/v1.1/docs/user-guide/pod-states.html
+    def _pod_state(self, pod):
+        # See "Pod Phase" at http://kubernetes.io/docs/user-guide/pod-states/
         if pod is None:
-            return JobState.destroyed
+            return PodState.destroyed
 
         states = {
-            'Pending': JobState.initializing.name,
-            'ContainerCreating': JobState.creating.name,
-            'Starting': JobState.starting.name,
-            'Running': JobState.up.name,
-            'Terminating': JobState.terminating.name,
-            'Succeeded': JobState.down.name,
-            'Failed': JobState.crashed.name,
-            'Unknown': JobState.error.name,
+            'Pending': PodState.initializing,
+            'ContainerCreating': PodState.creating,
+            'Starting': PodState.starting,
+            'Running': PodState.up,
+            'Terminating': PodState.terminating,
+            'Succeeded': PodState.down,
+            'Failed': PodState.crashed,
+            'Unknown': PodState.error,
         }
 
         # being in a Pending state can mean different things, introspecting app container first
@@ -856,7 +880,7 @@ class KubeHTTPClient(object):
 
         logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))
 
-    def _wait_until_pods_are_ready(self, namespace, controller, labels, desired):  # noqa
+    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -867,17 +891,10 @@ class KubeHTTPClient(object):
         # this is to account for kubernetes having readiness check report as failure until
         # the initial delay period is up
         delay = 0
-        container_name = '{}-{}'.format(
-            controller['metadata']['labels']['app'],
-            controller['metadata']['labels']['type']
-        )
-        # get health info from spec
-        for container in controller['spec']['template']['spec']['containers']:
-            if container['name'] != container_name or 'readinessProbe' not in container:
-                continue
-
+        # get health info from container
+        if 'readinessProbe' in container:
             delay = int(container['readinessProbe']['initialDelaySeconds'])
-            logger.debug("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe for the RC".format(delay, timeout, controller['metadata']['name']))  # noqa
+            logger.debug("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
             timeout += delay
 
         logger.debug("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
@@ -918,6 +935,13 @@ class KubeHTTPClient(object):
 
                 # now that state is running time to see if probes are passing
                 if self._pod_ready(pod):
+                    count += 1
+
+                # Find out if any pod goes beyond the Running (up) state
+                # Allow that to happen to account for very fast `deis run` as
+                # an example. Code using this function will account for it
+                state = self._pod_state(pod)
+                if isinstance(state, PodState) and state > PodState.up:
                     count += 1
 
             if count == desired:
@@ -974,8 +998,18 @@ class KubeHTTPClient(object):
 
             logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
+        # Get application container
+        container_name = '{}-{}'.format(
+            rc['metadata']['labels']['app'],
+            rc['metadata']['labels']['type']
+        )
+        # get health info from spec
+        for container in rc['spec']['template']['spec']['containers']:
+            if container['name'] == container_name:
+                break
+
         # Double check enough pods are in the required state to service the application
-        self._wait_until_pods_are_ready(namespace, rc, labels, desired)
+        self._wait_until_pods_are_ready(namespace, container, labels, desired)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):

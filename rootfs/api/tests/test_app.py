@@ -282,7 +282,7 @@ class AppTest(APITestCase):
         body = {'command': 'ls -al'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data['rc'], 0)
+        self.assertEqual(response.data['exit_code'], 0)
         self.assertEqual(response.data['output'], 'mock')
 
     def test_run_failure(self, mock_requests):

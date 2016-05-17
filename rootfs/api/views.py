@@ -227,7 +227,7 @@ class AppViewSet(BaseDeisViewSet):
     def run(self, request, **kwargs):
         app = self.get_object()
         rc, output = app.run(self.request.user, request.data['command'])
-        return Response({'rc': rc, 'output': str(output)})
+        return Response({'exit_code': rc, 'output': str(output)})
 
     def update(self, request, **kwargs):
         app = self.get_object()

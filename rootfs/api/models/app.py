@@ -333,12 +333,12 @@ class App(UuidAuditedModel):
             # fetch application port and inject into ENV Vars as needed
             envs['PORT'] = release.get_port(routable)
 
-            image = release.image
             kwargs = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': envs,
+                'registry': release.config.registry,
                 'version': "v{}".format(release.version),
                 'replicas': replicas,
                 'app_type': scale_type,
@@ -352,7 +352,7 @@ class App(UuidAuditedModel):
                 self._scheduler.scale(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=image,
+                    image=release.image,
                     command=command,
                     **kwargs
                 )
@@ -383,7 +383,7 @@ class App(UuidAuditedModel):
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             routable = True if scale_type in ['web', 'cmd'] else False
-            # fetch application port and inject into ENV Vars as needed
+            # fetch application port and inject into ENV vars as needed
             envs['PORT'] = release.get_port(routable)
 
             deploys[scale_type] = {
@@ -391,6 +391,7 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': envs,
+                'registry': release.config.registry,
                 # only used if there is no previous RC
                 'replicas': replicas,
                 'version': "v{}".format(release.version),
@@ -583,6 +584,7 @@ class App(UuidAuditedModel):
             'cpu': release.config.cpu,
             'tags': release.config.tags,
             'envs': release.config.values,
+            'registry': release.config.registry,
             'version': "v{}".format(release.version),
             'build_type': release.build.type,
         }

@@ -8,6 +8,7 @@ from urllib.parse import urljoin
 import base64
 
 from django.conf import settings
+from docker.auth import auth as docker_auth
 from .states import PodState
 import requests
 from requests_toolbelt import user_agent
@@ -296,7 +297,7 @@ SECRET_TEMPLATE = """\
       "app": "$id"
     }
   },
-  "type": "Opaque",
+  "type": "$type",
   "data": {}
 }
 """
@@ -351,7 +352,7 @@ class KubeHTTPClient(object):
         self.session = session
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
-        logger.debug('deploy {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
+        logger.debug('deploy {}, img {}, cmd "{}"'.format(name, image, command))
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -475,10 +476,10 @@ class KubeHTTPClient(object):
         except Exception as e:
             # Fix service to old port and app type
             self._update_service(namespace, namespace, data=old_service)
-            raise KubeException('{} (scheduler::deploy::service_update): {}'.format(name, e))
+            raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, command, **kwargs):
-        logger.debug('scale {}, img {}, params {}, cmd "{}"'.format(name, image, kwargs, command))
+        logger.debug('scale {}, img {}, cmd "{}"'.format(name, image, command))
         replicas = kwargs.pop('replicas')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
@@ -487,8 +488,8 @@ class KubeHTTPClient(object):
                 kwargs['replicas'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
             except KubeException as e:
-                logger.debug("Creating RC failed because of: {}".format(str(e)))
-                raise KubeException('{} (RC): {}'.format(name, e))
+                logger.debug("Creating RC {} failed because of: {}".format(name, str(e)))
+                raise
 
         try:
             self._scale_rc(namespace, name, replicas)
@@ -496,7 +497,7 @@ class KubeHTTPClient(object):
             logger.debug("Scaling failed because of: {}".format(str(e)))
             old = self._get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
-            raise KubeException('{} (Scale): {}'.format(name, e))
+            raise
 
     def create(self, namespace, **kwargs):
         """Create a basic structure for an application in k8s"""
@@ -577,6 +578,8 @@ class KubeHTTPClient(object):
         # set information to the application container
         kwargs['image'] = l['image']
         self._set_container(namespace, container, **kwargs)
+        # add image to the mix
+        self._set_image_secret(spec, namespace, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
@@ -693,7 +696,50 @@ class KubeHTTPClient(object):
         if kwargs.get('healthcheck', None):
             self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['healthcheck'])
         else:
-            self._default_readiness_probe(data, kwargs.get('build_type'), kwargs.get('port', None))
+            self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
+
+    def _set_image_secret(self, data, namespace, **kwargs):
+        """
+        Take registry information and set as an imagePullSecret for an RC
+        http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
+        """
+        registry = kwargs.get('registry', {})
+        if not registry:
+            return
+
+        # try to get the hostname information
+        hostname = registry.get('hostname', None)
+        if not hostname:
+            hostname, _ = docker_auth.split_repo_name(kwargs.get('image'))
+
+        # create / update private registry secret
+        auth = bytes('{}:{}'.format(registry.get('username'), registry.get('password')), 'UTF-8')
+        # value has to be a base64 encoded JSON
+        docker_config = json.dumps({
+            "auths": {
+                hostname: {
+                    "auth": base64.b64encode(auth).decode(encoding='UTF-8'),
+                    "email": 'not@valid.id'
+                }
+            }
+        })
+        secret_data = {'.dockerconfigjson': docker_config}
+
+        secret_name = 'private-registry'
+        try:
+            self._get_secret(namespace, secret_name)
+        except KubeHTTPException:
+            self._create_secret(
+                namespace,
+                secret_name,
+                secret_data,
+                secret_type='kubernetes.io/dockerconfigjson'
+            )
+        else:
+            self._update_secret(namespace, secret_name, secret_data)
+
+        # apply image pull secret to a Pod spec
+        data['imagePullSecrets'] = [{'name': secret_name}]
 
     def _pod_state(self, pod):
         # See "Pod Phase" at http://kubernetes.io/docs/user-guide/pod-states/
@@ -713,7 +759,7 @@ class KubeHTTPClient(object):
 
         # being in a Pending state can mean different things, introspecting app container first
         if pod['status']['phase'] == 'Pending':
-            pod_state = self._pod_pending_status(pod)
+            pod_state, _ = self._pod_pending_status(pod)
         # being in a running state can mean a pod is starting, actually running or terminating
         elif pod['status']['phase'] == 'Running':
             # is the readiness probe passing?
@@ -880,7 +926,7 @@ class KubeHTTPClient(object):
 
         logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))
 
-    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):
+    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -902,36 +948,22 @@ class KubeHTTPClient(object):
         # has timeout been increased or not within the loop
         timeout_padded = False
         # Ensure the minimum desired number of pods are available
-        while True:
-            # timed out, time to bail
-            if waited > timeout:
-                logger.debug('timed out waiting for pods to come up in namespace {}'.format(namespace))  # noqa
-                break
-
+        while waited < timeout:
             count = 0  # ready pods
             pods = self._get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
-                # If pulling an image is taking long then increase the timeout
-                if (
-                    pod['status']['phase'] == 'Pending' and
-                    self._pod_pending_status(pod) == 'Pulling' and
-                    not timeout_padded
-                ):
-                    # last event should be Pulling in this case
-                    event = self._pod_events(pod).pop()
-                    # see if pull operation has been happening for over 1 minute
-                    start = datetime.strptime(
-                        event['firstTimestamp'],
-                        settings.DEIS_DATETIME_FORMAT
-                    )
+                # Get more information on why a pod is pending
+                if pod['status']['phase'] == 'Pending':
+                    reason, message = self._pod_pending_status(pod)
+                    # If pulling an image is taking long then increase the timeout
+                    if not timeout_padded:
+                        pull = self._handle_pod_long_image_pulling(pod, reason)
+                        if pull:
+                            timeout_padded = True
+                            timeout += pull
 
-                    seconds = 60
-                    if (start + timedelta(seconds=seconds)) < datetime.utcnow():
-                        # add 10 minutes to timeout to allow a pull image operation to finish
-                        logger.debug('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
-                        logger.debug('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
-                        timeout += (60 * 10)
-                        timeout_padded = True
+                    # handle errors and bubble up if need be
+                    self._handle_pod_image_errors(pod, reason, message)
 
                 # now that state is running time to see if probes are passing
                 if self._pod_ready(pod):
@@ -953,6 +985,10 @@ class KubeHTTPClient(object):
             # increase wait time without dealing with jitters from above code
             waited += 1
             time.sleep(1)
+
+        # timed out
+        if waited > timeout:
+            logger.debug('timed out ({}s) waiting for pods to come up in namespace {}'.format(timeout, namespace))  # noqa
 
         logger.debug("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
 
@@ -1017,6 +1053,8 @@ class KubeHTTPClient(object):
 
     def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
+        build_type = kwargs.get('build_type')
+
         container_name = namespace + '-' + app_type
         args = command.split()
         storageType = os.getenv("APP_STORAGE")
@@ -1039,7 +1077,7 @@ class KubeHTTPClient(object):
         }
 
         # Check if it is a slug builder image.
-        if kwargs.get('build_type') == "buildpack":
+        if build_type == "buildpack":
             # only buildpack apps need access to object storage
             try:
                 self._get_secret(namespace, 'objectstorage-keyfile')
@@ -1053,7 +1091,6 @@ class KubeHTTPClient(object):
             TEMPLATE = RCB_TEMPLATE
 
         template = json.loads(string.Template(TEMPLATE).substitute(l))
-
         spec = template["spec"]["template"]["spec"]
 
         # apply tags as needed to restrict pod to particular node(s)
@@ -1066,6 +1103,8 @@ class KubeHTTPClient(object):
         # set information to the application container
         kwargs['image'] = l['image']
         self._set_container(namespace, container, **kwargs)
+        # add image to the mix
+        self._set_image_secret(spec, namespace, **kwargs)
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
@@ -1262,11 +1301,16 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_secret(self, namespace, name, data, labels={}):
+    def _create_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
+        secret_types = ['Opaque', 'kubernetes.io/dockerconfigjson']
+        if secret_type not in secret_types:
+            raise KubeException('{} is not a supported secret type. Use one of the following: '.format(secret_type, ', '.join(secret_types)))  # noqa
+
         template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
             "id": namespace,
-            "name": name
+            "name": name,
+            "type": secret_type
         }))
 
         # add in any additional label info
@@ -1285,11 +1329,8 @@ class KubeHTTPClient(object):
         return response
 
     def _update_secret(self, namespace, name, data):
-        template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
-            "version": self.apiversion,
-            "id": namespace,
-            "name": name
-        }))
+        # only update the data attribute
+        template = self._get_secret(namespace, name).json()
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
@@ -1410,7 +1451,7 @@ class KubeHTTPClient(object):
     def _pod_pending_status(self, pod):
         """Introspect the pod containers when pod is in Pending state"""
         if 'containerStatuses' not in pod['status']:
-            return 'Pending'
+            return 'Pending', ''
 
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         for container in pod['status']['containerStatuses']:
@@ -1420,13 +1461,16 @@ class KubeHTTPClient(object):
 
             if 'waiting' in container['state']:
                 reason = container['state']['waiting']['reason']
+                message = container['state']['waiting']['message']
                 if reason == 'ContainerCreating':
                     # get the last event
                     event = self._pod_events(pod).pop()
-                    return event['reason']
+                    return event['reason'], event['message']
+
+                return reason, message
 
         # Return Pending if nothing else can be found
-        return 'Pending'
+        return 'Pending', ''
 
     def _pod_events(self, pod):
         """Process events for a given Pod to find if Pulling is happening, among other events"""
@@ -1502,6 +1546,68 @@ class KubeHTTPClient(object):
                 return True
 
         return False
+
+    def _handle_pod_image_errors(self, pod, reason, message):
+        """
+        Handle potential pod image errors based on the Pending
+        reason passed into the function
+        """
+        # image error reported on the container level
+        image_container_errors = [
+            'ErrImagePull',
+            'ImagePullBackOff',
+            'RegistryUnavailable',
+            'ErrImageInspect',
+        ]
+        # Image event reason mapping
+        image_event_errors = {
+            "Failed": "FailedToPullImage",
+            "InspectFailed": "FailedToInspectImage",
+            "ErrImageNeverPull": "ErrImageNeverPullPolicy",
+            # Not including this one for now as the message is not useful
+            # "BackOff": "BackOffPullImage",
+        }
+        if reason in image_container_errors:
+            # Nicer error than from the event
+            # Often this gets to ImageBullBackOff before we can introspect tho
+            if reason == 'ErrImagePull':
+                raise KubeException(message)
+
+            # collect all error messages relevant to images
+            messages = []
+            for event in self._pod_events(pod):
+                if event['reason'] in image_event_errors.keys():
+                    # remove new lines and any extra white space
+                    message = ' '.join(event['message'].split())
+                    messages.append(message)
+            raise KubeException("\n".join(messages))
+
+    def _handle_pod_long_image_pulling(self, reason, pod):
+        """
+        If pulling an image is taking long (1 minute) then return how many seconds
+        the pod ready state timeout should be extended by
+
+        Return value is an int that represents seconds
+        """
+        if reason is not 'Pulling':
+            return 0
+
+        # last event should be Pulling in this case
+        event = self._pod_events(pod).pop()
+        # see if pull operation has been happening for over 1 minute
+        start = datetime.strptime(
+            event['firstTimestamp'],
+            settings.DEIS_DATETIME_FORMAT
+        )
+
+        seconds = 60  # time threshold before padding timeout
+        if (start + timedelta(seconds=seconds)) < datetime.utcnow():
+            # add 10 minutes to timeout to allow a pull image operation to finish
+            logger.debug('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
+            logger.debug('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
+            return 600
+
+        return 0
 
     # NODES #
 

@@ -7,6 +7,7 @@ import os
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 from simpleflock import SimpleFlock
+from retrying import retry
 
 import docker
 import docker.constants
@@ -58,6 +59,28 @@ class DockerClient(object):
             raise PermissionDenied('Could not log into {} with username {}'.format(repository, registry_auth['username']))  # noqa
 
         logger.info('Successfully logged into {} with {}'.format(repository, registry_auth['username']))  # noqa
+
+    def get_port(self, target, deis_registry=False, creds=None):
+        """
+        Get a port from a Docker image
+        """
+        # get the target repository name and tag
+        name, _ = docker.utils.parse_repository_tag(target)
+
+        # strip any "http://host.domain:port" prefix from the target repository name,
+        # since we always publish to the Deis registry
+        repo, name = auth.split_repo_name(name)
+
+        # log into pull repo
+        if not deis_registry:
+            self.login(repo, creds)
+
+        info = self.inspect_image(target, deis_registry)
+        if 'ExposedPorts' not in info['Config']:
+            return None
+
+        port = int(list(info['Config']['ExposedPorts'].keys())[0].split('/')[0])
+        return port
 
     def publish_release(self, source, target, deis_registry=False, creds=None):
         """Update a source Docker image with environment config and publish it to deis-registry."""
@@ -121,6 +144,22 @@ class DockerClient(object):
         if not self.client.tag(image, repo, tag=tag, force=True):
             raise RegistryException('Tagging {} as {}:{} failed'.format(image, repo, tag))
 
+    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    def inspect_image(self, target, insecure_registry=True):
+        """
+        Inspect docker image to gather information from it
+
+        try thrice to find the port before raising exception as docker-py is flaky
+        """
+        # image already includes the tag, so we split it out here
+        repo, tag = docker.utils.parse_repository_tag(target)
+
+        # make sure image is pulled locally already
+        self.pull(repo, tag=tag, insecure_registry=insecure_registry)
+
+        # inspect the image
+        return self.client.inspect_image(target)
+
 
 def check_blacklist(repo):
     """Check a Docker repository name for collision with deis/* components."""
@@ -156,3 +195,7 @@ def stream_error(chunk, operation, repo, tag):
 
 def publish_release(source, target, deis_registry, creds=None):
     return DockerClient().publish_release(source, target, deis_registry, creds)
+
+
+def get_port(target, deis_registry, creds=None):
+    return DockerClient().get_port(target, deis_registry, creds)

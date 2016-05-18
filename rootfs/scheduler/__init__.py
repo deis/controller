@@ -603,7 +603,7 @@ class KubeHTTPClient(object):
             while (state == 'up' and waited < timeout):
                 response = self._get_pod(namespace, name)
                 pod = response.json()
-                state = self._pod_state(pod).name
+                state = str(self._pod_state(pod))
                 # default data
                 exit_code = 0
 

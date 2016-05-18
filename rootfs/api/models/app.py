@@ -620,7 +620,7 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
-                state = self._scheduler._pod_state(p).name
+                state = str(self._scheduler._pod_state(p))
 
                 # follows kubelete convention - these are hidden unless show-all is set
                 if state in ['down', 'crashed']:

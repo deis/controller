@@ -164,14 +164,6 @@ REST_FRAMEWORK = {
 # URLs that end with slashes are ugly
 APPEND_SLASH = False
 
-# Determine where to send syslog messages
-if os.path.exists('/dev/log'):           # Linux rsyslog
-    SYSLOG_ADDRESS = '/dev/log'
-elif os.path.exists('/var/log/syslog'):  # Mac OS X syslog
-    SYSLOG_ADDRESS = '/var/log/syslog'
-else:                                    # default SysLogHandler address
-    SYSLOG_ADDRESS = ('localhost', 514)
-
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to
 # the site admins on every HTTP 500 error when DEBUG=False.
@@ -208,11 +200,6 @@ LOGGING = {
             'filters': ['require_debug_false'],
             'class': 'django.utils.log.AdminEmailHandler'
         },
-        'rsyslog': {
-            'class': 'logging.handlers.SysLogHandler',
-            'address': SYSLOG_ADDRESS,
-            'facility': 'local0',
-        },
     },
     'loggers': {
         'django': {
@@ -226,17 +213,17 @@ LOGGING = {
             'propagate': True,
         },
         'api': {
-            'handlers': ['console', 'mail_admins', 'rsyslog'],
+            'handlers': ['console', 'mail_admins'],
             'level': 'INFO',
             'propagate': True,
         },
         'registry': {
-            'handlers': ['console', 'mail_admins', 'rsyslog'],
+            'handlers': ['console', 'mail_admins'],
             'level': 'INFO',
             'propagate': True,
         },
         'scheduler': {
-            'handlers': ['console', 'mail_admins', 'rsyslog'],
+            'handlers': ['console', 'mail_admins'],
             'level': 'DEBUG',
             'propagate': True,
         },

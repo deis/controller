@@ -1490,7 +1490,7 @@ class KubeHTTPClient(object):
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         for container in pod['status']['containerStatuses']:
             # find the right container in case there are many on the pod
-            if container['name'] != name:
+            if container['name'] != name and not name.endswith("-run"):
                 continue
 
             if not container['ready']:

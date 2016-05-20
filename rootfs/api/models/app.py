@@ -15,8 +15,7 @@ from rest_framework.exceptions import ValidationError, NotFound
 from jsonfield import JSONField
 
 from deis import __version__ as deis_version
-from api.models import UuidAuditedModel, log_event, AlreadyExists, \
-    DeisException, ServiceUnavailable
+from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
 
 from api.utils import generate_app_name
 from api.models.release import Release
@@ -86,7 +85,7 @@ class App(UuidAuditedModel):
                 if self._scheduler._get_namespace(self.id).status_code == 200:
                     # Namespace already exists
                     err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
-                    log_event(self, err, logging.INFO)
+                    self.log(err, logging.INFO)
                     raise AlreadyExists(err)
             except KubeHTTPException:
                 pass
@@ -174,7 +173,7 @@ class App(UuidAuditedModel):
         try:
             self._scheduler.create(self.id)
         except KubeException as e:
-            raise ServiceUnavailable(str(e)) from e
+            raise ServiceUnavailable('Kubernetes resources could not be created') from e
 
         # Attach the platform specific application sub domain to the k8s service
         # Only attach it on first release in case a customer has remove the app domain
@@ -183,11 +182,12 @@ class App(UuidAuditedModel):
 
     def delete(self, *args, **kwargs):
         """Delete this application including all containers"""
+        self.log("deleting environment")
         try:
             # attempt to remove application from kubernetes
             self._scheduler.destroy(self.id)
         except KubeException as e:
-            raise ServiceUnavailable(str(e)) from e
+            raise ServiceUnavailable('Could not delete Kubernetes Namespace {}'.format(self.id)) from e  # noqa
 
         self._clean_app_logs()
         return super(App, self).delete(*args, **kwargs)
@@ -226,7 +226,7 @@ class App(UuidAuditedModel):
                 self._scheduler._delete_pod(self.id, pod['name'])
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
-            log_event(self, err, logging.WARNING)
+            self.log(err, logging.WARNING)
 
         # Wait for pods to start
         try:
@@ -258,7 +258,7 @@ class App(UuidAuditedModel):
                 time.sleep(5)
         except Exception as e:
             err = "warning, some pods failed to start:\n{}".format(str(e))
-            log_event(self, err, logging.WARNING)
+            self.log(err, logging.WARNING)
 
         # Return the new pods
         pods = self.list_pods(**kwargs)
@@ -274,7 +274,7 @@ class App(UuidAuditedModel):
             # Ignore errors deleting application logs.  An error here should not interfere with
             # the overall success of deleting an application, but we should log it.
             err = 'Error deleting existing application logs: {}'.format(e)
-            log_event(self, err, logging.WARNING)
+            self.log(err, logging.WARNING)
 
     def scale(self, user, structure):  # noqa
         """Scale containers up or down to match requested structure."""
@@ -317,7 +317,7 @@ class App(UuidAuditedModel):
 
             msg = '{} scaled pods '.format(user.username) + ' '.join(
                 "{}={}".format(k, v) for k, v in list(structure.items()))
-            log_event(self, msg)
+            self.log(msg)
 
             return True
 
@@ -358,7 +358,7 @@ class App(UuidAuditedModel):
                 )
             except Exception as e:
                 err = '{} (scale): {}'.format(self._get_job_id(scale_type), e)
-                log_event(self, err, logging.ERROR)
+                self.log(err, logging.ERROR)
                 raise ServiceUnavailable(e) from e
 
     def deploy(self, release):
@@ -423,7 +423,7 @@ class App(UuidAuditedModel):
 
             except Exception as e:
                 err = '{} (app::deploy): {}'.format(self._get_job_id(scale_type), e)
-                log_event(self, err, logging.ERROR)
+                self.log(err, logging.ERROR)
                 raise ServiceUnavailable(err) from e
 
         # cleanup old releases from kubernetes
@@ -577,7 +577,7 @@ class App(UuidAuditedModel):
         entrypoint, command = self._get_command_run(command)
 
         name = self._get_job_id('run') + '-' + pod_name()
-        log_event(self, "{} on {} runs '{}'".format(user.username, name, command))
+        self.log("{} on {} runs '{}'".format(user.username, name, command))
 
         kwargs = {
             'memory': release.config.memory,
@@ -602,8 +602,7 @@ class App(UuidAuditedModel):
             return exit_code, output
         except Exception as e:
             err = '{} (run): {}'.format(name, e)
-            log_event(self, err, logging.ERROR)
-            raise ServiceUnavailable(str(e)) from e
+            raise ServiceUnavailable(err) from e
 
     def list_pods(self, *args, **kwargs):
         """Used to list basic information about pods running for a given application"""
@@ -653,7 +652,7 @@ class App(UuidAuditedModel):
             pass
         except Exception as e:
             err = '(list pods): {}'.format(e)
-            log_event(self, err, logging.ERROR)
+            self.log(err, logging.ERROR)
             raise ServiceUnavailable(err) from e
 
     def _scheduler_filter(self, **kwargs):

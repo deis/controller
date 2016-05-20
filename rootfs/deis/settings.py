@@ -159,19 +159,18 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 100,
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler'
 }
 
 # URLs that end with slashes are ugly
 APPEND_SLASH = False
 
-# A sample logging configuration. The only tangible logging
-# performed by this configuration is to send an email to
-# the site admins on every HTTP 500 error when DEBUG=False.
 # See http://docs.djangoproject.com/en/dev/topics/logging for
 # more details on how to customize your logging configuration.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'root': {'level': 'DEBUG' if DEBUG else 'INFO'},
     'formatters': {
         'verbose': {
             'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
@@ -183,6 +182,9 @@ LOGGING = {
     'filters': {
         'require_debug_false': {
             '()': 'django.utils.log.RequireDebugFalse'
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue'
         }
     },
     'handlers': {
@@ -194,37 +196,30 @@ LOGGING = {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
-        },
-        'mail_admins': {
-            'level': 'ERROR',
-            'filters': ['require_debug_false'],
-            'class': 'django.utils.log.AdminEmailHandler'
-        },
+        }
     },
     'loggers': {
         'django': {
-            'handlers': ['null'],
-            'level': 'INFO',
+            'handlers': ['console'],
+            'filters': ['require_debug_true'],
             'propagate': True,
         },
         'django.request': {
-            'handlers': ['console', 'mail_admins'],
+            'handlers': ['console'],
             'level': 'WARNING',
+            'filters': ['require_debug_true'],
             'propagate': True,
         },
         'api': {
-            'handlers': ['console', 'mail_admins'],
-            'level': 'INFO',
+            'handlers': ['console'],
             'propagate': True,
         },
         'registry': {
-            'handlers': ['console', 'mail_admins'],
-            'level': 'INFO',
+            'handlers': ['console'],
             'propagate': True,
         },
         'scheduler': {
-            'handlers': ['console', 'mail_admins'],
-            'level': 'DEBUG',
+            'handlers': ['console'],
             'propagate': True,
         },
     }

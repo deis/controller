@@ -1,5 +1,4 @@
 # Deis controller requirements
-#
 Django==1.9.6
 django-cors-headers==1.1.0
 django-guardian==1.4.4

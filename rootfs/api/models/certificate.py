@@ -188,7 +188,9 @@ class Certificate(AuditedModel):
                 try:
                     self._scheduler._update_secret(app, name, data)
                 except KubeException as e:
-                    raise ServiceUnavailable(str(e)) from e
+                    msg = 'There was a problem updating the certificate secret ' \
+                          '{} for {}'.format(name, app)
+                    raise ServiceUnavailable(msg) from e
 
         # get config for the service
         config = self._load_service_config(app, 'router')

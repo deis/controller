@@ -14,32 +14,14 @@ from django.db import models
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from rest_framework.exceptions import ValidationError, APIException
+from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 
+from api.exceptions import DeisException, AlreadyExists, ServiceUnavailable  # noqa
 from api.utils import dict_merge
 from scheduler import KubeException
 
 logger = logging.getLogger(__name__)
-
-
-class DeisException(APIException):
-    status_code = 400
-
-
-class AlreadyExists(APIException):
-    status_code = 409
-
-
-class ServiceUnavailable(APIException):
-    status_code = 503
-    default_detail = 'Service temporarily unavailable, try again later.'
-
-
-def log_event(app, msg, level=logging.INFO):
-    # controller needs to know which app this log comes from
-    logger.log(level, "{}: {}".format(app.id, msg))
-    app.log(msg, level)
 
 
 def validate_label(value):
@@ -72,7 +54,7 @@ class AuditedModel(models.Model):
             # Get the service from k8s to attach the domain correctly
             svc = self._scheduler._get_service(app, app).json()
         except KubeException as e:
-            raise ServiceUnavailable(str(e)) from e
+            raise ServiceUnavailable('Could not fetch Kubernetes Service {}'.format(app)) from e
 
         # Get minimum structure going if it is missing on the service
         if 'metadata' not in svc or 'annotations' not in svc['metadata']:
@@ -109,7 +91,7 @@ class AuditedModel(models.Model):
         try:
             self._scheduler._update_service(app, app, svc)
         except KubeException as e:
-            raise ServiceUnavailable(str(e)) from e
+            raise ServiceUnavailable('Could not update Kubernetes Service {}'.format(app)) from e
 
 
 class UuidAuditedModel(AuditedModel):
@@ -144,14 +126,12 @@ def _log_build_created(**kwargs):
     if kwargs.get('created'):
         build = kwargs['instance']
         # log only to the controller; this event will be logged in the release summary
-        logger.info("{}: build {} created".format(build.app, build))
+        build.app.log("build {} created".format(build))
 
 
 def _log_release_created(**kwargs):
     if kwargs.get('created'):
         release = kwargs['instance']
-        # log only to the controller; this event will be logged in the release summary
-        logger.info("{}: release {} created".format(release.app, release))
         # append release lifecycle logs to the app
         release.app.log(release.summary)
 
@@ -159,20 +139,18 @@ def _log_release_created(**kwargs):
 def _log_config_updated(**kwargs):
     config = kwargs['instance']
     # log only to the controller; this event will be logged in the release summary
-    logger.info("{}: config {} updated".format(config.app, config))
+    config.app.log("config {} updated".format(config))
 
 
 def _log_domain_added(**kwargs):
     if kwargs.get('created'):
         domain = kwargs['instance']
-        msg = "domain {} added".format(domain)
-        log_event(domain.app, msg)
+        domain.app.log("domain {} added".format(domain))
 
 
 def _log_domain_removed(**kwargs):
     domain = kwargs['instance']
-    msg = "domain {} removed".format(domain)
-    log_event(domain.app, msg)
+    domain.app.log("domain {} removed".format(domain))
 
 
 def _log_cert_added(**kwargs):

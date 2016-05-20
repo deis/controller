@@ -105,7 +105,7 @@ class KeyTest(APITestCase):
 
     def test_bad_key(self):
         response = self._check_bad_key(BAD_KEY)
-        self.assertEqual(response.data, {'public': ['Incorrect padding']})
+        self.assertEqual(response.data, {'public': ['Key contains invalid base64 chars']})
 
     def _check_duplicate_key(self, pubkey, pubkey2):
         """

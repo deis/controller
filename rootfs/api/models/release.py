@@ -5,7 +5,7 @@ from django.db import models
 
 from registry import publish_release, get_port as docker_get_port, RegistryException
 from api.utils import dict_diff
-from api.models import UuidAuditedModel, log_event, DeisException
+from api.models import UuidAuditedModel, DeisException
 from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
@@ -87,10 +87,10 @@ class Release(UuidAuditedModel):
             release.publish()
         except DeisException as e:
             # If we cannot publish this app, just log and carry on
-            log_event(self.app, e)
+            self.app.log(e)
             pass
         except RegistryException as e:
-            log_event(self.app, e)
+            self.app.log(e)
             raise DeisException(str(e)) from e
 
         return release
@@ -113,7 +113,7 @@ class Release(UuidAuditedModel):
             # hostname tells Builder where to push images
             not registry.get('hostname', None)
         ):
-            log_event(self.app, '{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
+            self.app.log('{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
             return
 
         # return image if it is already in the registry, test host and then host + port
@@ -121,7 +121,7 @@ class Release(UuidAuditedModel):
             self.build.image.startswith(settings.REGISTRY_HOST) or
             self.build.image.startswith(settings.REGISTRY_URL)
         ):
-            log_event(self.app, '{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
+            self.app.log('{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
             return
 
         # add tag if it was not provided
@@ -151,13 +151,13 @@ class Release(UuidAuditedModel):
 
             if self.build.type == "buildpack":
                 msg = "Using default port 5000 for build pack image {}".format(self.image)
-                log_event(self.app, msg)
+                self.app.log(msg)
                 return 5000
 
             # application has registry auth - $PORT is required
             if creds is not None:
                 if envs.get('PORT', None) is None:
-                    log_event(self.app, 'Private registry detected but no $PORT defined. Defaulting to $PORT 5000', logging.WARNING)  # noqa
+                    self.app.log('Private registry detected but no $PORT defined. Defaulting to $PORT 5000', logging.WARNING)  # noqa
                     return 5000
 
                 # User provided PORT
@@ -171,7 +171,7 @@ class Release(UuidAuditedModel):
             port = docker_get_port(self.image, deis_registry, creds)
             if port is None:
                 msg = "Expose a port or make the app non routable by changing the process type"
-                log_event(self.app, msg, logging.ERROR)
+                self.app.log(msg, logging.ERROR)
                 raise DeisException(msg)
 
             return port
@@ -233,7 +233,7 @@ class Release(UuidAuditedModel):
         except Exception as e:
             if 'new_release' in locals():
                 new_release.delete()
-            raise DeisException(str(e))
+            raise DeisException(str(e)) from e
 
     def delete(self, *args, **kwargs):
         """Delete release DB record and any RCs from the affect release"""
@@ -244,7 +244,7 @@ class Release(UuidAuditedModel):
             if e.response.status_code is not 404:
                 # Another problem came up
                 message = 'Could not to cleanup RCs for release {}'.format(self.version)
-                log_event(self.app, message)
+                self.app.log(message, level=logging.WARNING)
                 logger.warning(message + ' - ' + str(e))
         finally:
             super(Release, self).delete(*args, **kwargs)
@@ -252,8 +252,7 @@ class Release(UuidAuditedModel):
     def cleanup_old(self):
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
-        log_event(
-            self.app,
+        self.app.log(
             'Cleaning up RCS for releases older than {} (latest)'.format(latest_version),
             level=logging.DEBUG
         )
@@ -275,8 +274,7 @@ class Release(UuidAuditedModel):
                 controller_removal.append(current_version)
 
         if controller_removal:
-            log_event(
-                self.app,
+            self.app.log(
                 'Found the following versions to cleanup: {}'.format(', '.join(controller_removal)),  # noqa
                 level=logging.DEBUG
             )
@@ -285,7 +283,7 @@ class Release(UuidAuditedModel):
             self._delete_release_in_scheduler(self.app.id, version)
 
         # find stray env secrets to remove that may have been missed
-        log_event(self.app, 'Cleaning up orphaned environment var secrets', level=logging.DEBUG)
+        self.app.log('Cleaning up orphaned environment var secrets', level=logging.DEBUG)
         labels = {
             'heritage': 'deis',
             'app': self.app.id,

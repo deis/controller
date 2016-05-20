@@ -352,7 +352,7 @@ class KubeHTTPClient(object):
         self.session = session
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
-        logger.debug('deploy {}, img {}, cmd "{}"'.format(name, image, command))
+        logger.info('deploy {}, img {}, cmd "{}"'.format(name, image, command))
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -364,7 +364,7 @@ class KubeHTTPClient(object):
         # If an RC already exists then stop processing of the deploy
         try:
             self._get_rc(namespace, name)
-            logger.debug('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
+            logger.info('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
             return
         except KubeHTTPException:
             new_rc = self._create_rc(namespace, name, image, command, **kwargs).json()
@@ -374,7 +374,7 @@ class KubeHTTPClient(object):
             desired = int(old_rc["spec"]["replicas"])
         else:
             desired = kwargs['replicas']
-            logger.debug('No prior RC could be found for {}-{}'.format(namespace, app_type))
+            logger.info('No prior RC could be found for {}-{}'.format(namespace, app_type))
 
         # see if application or global deploy batches are defined
         if not kwargs.get('batches', None):
@@ -399,22 +399,19 @@ class KubeHTTPClient(object):
             new_name = new_rc["metadata"]["name"]
             for batch in batches:
                 count += batch
-                logger.debug('scaling release {} to {} out of final {}'.format(
+                logger.info('scaling release {} to {} out of final {}'.format(
                     new_name, count, desired
                 ))
                 self._scale_rc(namespace, new_name, count)
 
                 if old_rc:
                     old_name = old_rc["metadata"]["name"]
-                    logger.debug('scaling old release {} from original {} to {}'.format(
+                    logger.info('scaling old release {} from original {} to {}'.format(
                         old_name, desired, (desired-count))
                     )
                     self._scale_rc(namespace, old_name, (desired-count))
         except Exception as e:
             # New release is broken. Clean up
-            logger.error('Could not scale {} to {}. Deleting and going back to old release'.format(
-                new_rc["metadata"]["name"], desired)
-            )
 
             # Remove new release of the RC
             self._cleanup_release(namespace, new_rc)
@@ -423,7 +420,12 @@ class KubeHTTPClient(object):
             if old_rc:
                 self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
 
-            raise KubeException(str(e))
+            raise KubeException(
+                'Could not scale {} to {}. '
+                'Deleting and going back to old release'.format(
+                    new_rc["metadata"]["name"], desired
+                )
+            ) from e
 
         # New release is live and kicking. Clean up old release
         if old_rc:
@@ -479,7 +481,7 @@ class KubeHTTPClient(object):
             raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, command, **kwargs):
-        logger.debug('scale {}, img {}, cmd "{}"'.format(name, image, command))
+        logger.info('scale {}, img {}, cmd "{}"'.format(name, image, command))
         replicas = kwargs.pop('replicas')
         if unhealthy(self._get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
@@ -487,21 +489,21 @@ class KubeHTTPClient(object):
                 # Create RC with scale as 0 and then scale to get pod monitoring
                 kwargs['replicas'] = 0
                 self._create_rc(namespace, name, image, command, **kwargs)
-            except KubeException as e:
-                logger.debug("Creating RC {} failed because of: {}".format(name, str(e)))
+            except KubeException:
+                logger.exception("Creating RC {} failed}".format(name))
                 raise
 
         try:
             self._scale_rc(namespace, name, replicas)
-        except KubeException as e:
-            logger.debug("Scaling failed because of: {}".format(str(e)))
+        except KubeException:
+            logger.exception("Scaling failed for {}".format(name))
             old = self._get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
             raise
 
     def create(self, namespace, **kwargs):
         """Create a basic structure for an application in k8s"""
-        logger.debug('create {}'.format(namespace))
+        logger.debug('creating Namespace {} and services'.format(namespace))
         try:
             # Create essential resources
             try:
@@ -513,15 +515,14 @@ class KubeHTTPClient(object):
                 self._get_service(namespace, namespace)
             except KubeException:
                 self._create_service(namespace, namespace)
-        except KubeException as e:
+        except KubeException:
             # Blow it all away only if something horrible happens
-            logger.debug(e)
             self._delete_namespace(namespace)
             raise
 
     def destroy(self, namespace):
         """Destroy a application by deleting its namespace."""
-        logger.debug("destroy {}".format(namespace))
+        logger.debug("destroying Namespace {}".format(namespace))
         self._delete_namespace(namespace)
 
         # wait 30 seconds for termination
@@ -533,7 +534,7 @@ class KubeHTTPClient(object):
 
     def run(self, namespace, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
-        logger.debug('run {}, img {}, entrypoint {}, cmd "{}"'.format(
+        logger.info('run {}, img {}, entrypoint {}, cmd "{}"'.format(
             name, image, entrypoint, command)
         )
 
@@ -903,7 +904,7 @@ class KubeHTTPClient(object):
 
         timeout = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
         delta = current - desired
-        logger.debug("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
+        logger.info("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
         for waited in range(timeout):
             pods = self._get_pods(namespace, labels=labels).json()
             count = len(pods['items'])
@@ -922,11 +923,11 @@ class KubeHTTPClient(object):
                 break
 
             if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s and {} pods out of {} are fully terminated".format(waited, (delta - count), delta))  # noqa
+                logger.info("waited {}s and {} pods out of {} are fully terminated".format(waited, (delta - count), delta))  # noqa
 
             time.sleep(1)
 
-        logger.debug("{} pods in namespace {} are terminated".format(delta, namespace))
+        logger.info("{} pods in namespace {} are terminated".format(delta, namespace))
 
     def _wait_until_pods_are_ready(self, namespace, container, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
@@ -942,10 +943,10 @@ class KubeHTTPClient(object):
         # get health info from container
         if 'readinessProbe' in container:
             delay = int(container['readinessProbe']['initialDelaySeconds'])
-            logger.debug("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
+            logger.info("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
             timeout += delay
 
-        logger.debug("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
+        logger.info("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
 
         # has timeout been increased or not within the loop
         timeout_padded = False
@@ -982,7 +983,7 @@ class KubeHTTPClient(object):
                 break
 
             if waited > 0 and (waited % 10) == 0:
-                logger.debug("waited {}s and {} pods are in service".format(waited, count))
+                logger.info("waited {}s and {} pods are in service".format(waited, count))
 
             # increase wait time without dealing with jitters from above code
             waited += 1
@@ -990,9 +991,9 @@ class KubeHTTPClient(object):
 
         # timed out
         if waited > timeout:
-            logger.debug('timed out ({}s) waiting for pods to come up in namespace {}'.format(timeout, namespace))  # noqa
+            logger.info('timed out ({}s) waiting for pods to come up in namespace {}'.format(timeout, namespace))  # noqa
 
-        logger.debug("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
+        logger.info("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
 
     def _scale_rc(self, namespace, name, desired):
         rc = self._get_rc(namespace, name).json()
@@ -1012,29 +1013,29 @@ class KubeHTTPClient(object):
                 current += 1
 
         if desired == current:
-            logger.debug("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
+            logger.info("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
             return
         elif desired != rc['spec']['replicas']:  # RC needs new replica count
             # Set the new desired replica count
             rc['spec']['replicas'] = desired
 
-            logger.debug("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+            logger.info("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
             self._update_rc(namespace, name, rc)
 
             resource_ver = rc['metadata']['resourceVersion']
-            logger.debug("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
+            logger.info("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
             for waited in range(30):
                 js_template = self._get_rc(namespace, name).json()
                 if js_template["metadata"]["resourceVersion"] != resource_ver:
                     break
 
                 if waited > 0 and (waited % 10) == 0:
-                    logger.debug("waited {}s so far for a new resource version".format(waited))
+                    logger.info("waited {}s so far for a new resource version".format(waited))
 
                 time.sleep(1)
 
-            logger.debug("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
+            logger.info("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
 
         # Get application container
         container_name = '{}-{}'.format(
@@ -1608,8 +1609,8 @@ class KubeHTTPClient(object):
         seconds = 60  # time threshold before padding timeout
         if (start + timedelta(seconds=seconds)) < datetime.utcnow():
             # add 10 minutes to timeout to allow a pull image operation to finish
-            logger.debug('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
-            logger.debug('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
+            logger.info('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
+            logger.info('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
             return 600
 
         return 0

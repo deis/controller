@@ -36,7 +36,7 @@ POD_BTEMPLATE = """\
   "spec": {
     "containers": [
       {
-        "name": "$id",
+        "name": "$containername",
         "image": "$image",
         "env": [
         {
@@ -99,7 +99,7 @@ POD_TEMPLATE = """\
   "spec": {
     "containers": [
       {
-        "name": "$id",
+        "name": "$containername",
         "image": "$image",
         "env": []
       }
@@ -537,9 +537,11 @@ class KubeHTTPClient(object):
             name, image, entrypoint, command)
         )
 
+        app_type = 'run'
         POD = POD_TEMPLATE
         l = {
             'id': name,
+            'containername': namespace + '-' + app_type,
             'app': namespace,
             'appversion': kwargs.get('version'),
             'type': 'run',
@@ -588,7 +590,7 @@ class KubeHTTPClient(object):
 
         labels = {
             'app': namespace,
-            'type': 'run',
+            'type': app_type,
             'version': kwargs.get('version'),
             'heritage': 'deis',
         }

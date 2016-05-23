@@ -17,11 +17,8 @@ mkdir -p /app/data/logs
 chmod -R 777 /app/data/logs
 
 # allow deis user group permission to Docker socket
-if addgroup -g "$(stat -c "%g" /var/run/docker.sock)" docker; then
-	addgroup deis docker
-else
-	addgroup deis "$(stat -c "%G" /var/run/docker.sock)"
-fi
+groupadd -g "$(stat -c "%g" /var/run/docker.sock)" docker || true
+usermod -a -G docker deis || true
 
 echo "Django checks:"
 python /app/manage.py check --deploy api

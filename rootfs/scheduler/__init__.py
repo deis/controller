@@ -1463,7 +1463,10 @@ class KubeHTTPClient(object):
 
             if 'waiting' in container['state']:
                 reason = container['state']['waiting']['reason']
-                message = container['state']['waiting']['message']
+                message = ''
+                # message is not always available
+                if 'message' in container['state']['waiting']:
+                    message = container['state']['waiting']['message']
                 if reason == 'ContainerCreating':
                     # get the last event
                     event = self._pod_events(pod).pop()

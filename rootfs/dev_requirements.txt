@@ -13,3 +13,6 @@ codecov==2.0.3
 
 # tblib is needed to pickle tracebacks for `make test-unit-quick`
 tblib==1.3.0
+
+# tail a log and pipe into tbgrep to find all tracebacks
+tbgrep==0.3.0

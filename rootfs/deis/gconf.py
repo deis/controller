@@ -1,4 +1,6 @@
 import os
+import faulthandler
+faulthandler.enable()
 
 bind = '0.0.0.0'
 try:

@@ -13,7 +13,7 @@ def validate_base64(value):
     try:
         base64.b64decode(value.split()[1])
     except Exception as e:
-        raise ValidationError(str(e))
+        raise ValidationError('Key contains invalid base64 chars') from e
 
 
 class Key(UuidAuditedModel):

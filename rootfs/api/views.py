@@ -34,11 +34,7 @@ class ReadinessCheckView(View):
             with django.db.connection.cursor() as c:
                 c.execute("SELECT 0")
         except django.db.Error as e:
-            logger.critical("Database health check failed")
-            # FIXME why is turning on DEBUG=true in env not outputting this error?
-            logger.debug(str(e))
-
-            raise ServiceUnavailable("Database health check failed")
+            raise ServiceUnavailable("Database health check failed") from e
 
         return HttpResponse("OK")
     head = get
@@ -265,7 +261,7 @@ class ConfigViewSet(ReleasableViewSet):
                 config.app.deploy(self.release)
         except Exception as e:
             self.release.delete()
-            raise DeisException(str(e))
+            raise DeisException(str(e)) from e
 
 
 class PodViewSet(AppResourceViewSet):
@@ -509,7 +505,7 @@ class AppPermsViewSet(BaseDeisViewSet):
 
         user = get_object_or_404(User, username=request.data['username'])
         assign_perm(self.perm, user, app)
-        models.log_event(app, "User {} was granted access to {}".format(user, app))
+        app.log("User {} was granted access to {}".format(user, app))
         return Response(status=status.HTTP_201_CREATED)
 
     def destroy(self, request, **kwargs):
@@ -525,7 +521,7 @@ class AppPermsViewSet(BaseDeisViewSet):
                                                                  request, self, app)):
             raise PermissionDenied()
         remove_perm(self.perm, user, app)
-        models.log_event(app, "User {} was revoked access to {}".format(user, app))
+        app.log("User {} was revoked access to {}".format(user, app))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

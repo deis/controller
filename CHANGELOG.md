@@ -1,3 +1,26 @@
+### v2.0.0-beta4 -> v2.0.0-rc1
+
+#### Features
+
+ - [`9979523`](https://github.com/deis/controller/commit/9979523faf255c6123c430d1afcda858602993c6) images: use imagePullSecret when pulling a private image
+
+#### Fixes
+
+ - [`9531c15`](https://github.com/deis/controller/commit/9531c150c53d87a622d2ccf441cd4a57b519399d) scheduler: waiting state does not always have a message
+ - [`32dc550`](https://github.com/deis/controller/commit/32dc550ef79300e0d1286c8ad11bbbded6647dd8) scheduler: run pod container name did not match how app containers are done
+ - [`746e364`](https://github.com/deis/controller/commit/746e364a02c8a3292261e78d5b5268719eb50141) scheduler: cast PodState to string to get state name
+ - [`c6ad9f6`](https://github.com/deis/controller/commit/c6ad9f69fe68ae704a02d766e3d11bbf5ad0d698) scheduler: do not update env secret if it already exists
+ - [`b13152a`](https://github.com/deis/controller/commit/b13152ac0bf0c0dfeeca3eefc1937cbadac008aa) scheduler: move _get_port to use docker functions to split image info
+
+
+#### Maintenance
+
+ - [`56e77ab`](https://github.com/deis/controller/commit/56e77abd7d5a92178a3e1e58cc3a9351bdb613ec) requirements: update coverage to 4.1
+ - [`84ccc4c`](https://github.com/deis/controller/commit/84ccc4cc63812b28faf25a00a929d58cc69ef0f7) Dockerfile: Refactor image to use ubuntu-slim
+ - [`b5c6b8b`](https://github.com/deis/controller/commit/b5c6b8b5340607f919357e8f8da289abac9f97bf) requirements: update requests-mock to 1.0.0 (and the forked branch
+ - [`40752a2`](https://github.com/deis/controller/commit/40752a269172e62ff3236fb3c8e153e3c6772981) requirements: Update Gunicorn to 19.5.0
+ - [`267bab7`](https://github.com/deis/controller/commit/267bab7775dccbfb85e20467cba74f99ec8a3e73) Dockerfile,__init__.py: DEIS_RELEASE -> WORKFLOW_RELEASE
+
 ### v2.0.0-beta3 -> v2.0.0-beta4
 
 #### Features

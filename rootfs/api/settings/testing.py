@@ -1,6 +1,6 @@
 import random
 import string
-from deis.settings.production import *  # noqa
+from api.settings.production import *  # noqa
 
 # A boolean that turns on/off debug mode.
 # https://docs.djangoproject.com/en/1.9/ref/settings/#debug

@@ -87,7 +87,7 @@ MIDDLEWARE_CLASSES = (
 ROOT_URLCONF = 'deis.urls'
 
 # Python dotted path to the WSGI application used by Django's runserver.
-WSGI_APPLICATION = 'deis.wsgi.application'
+WSGI_APPLICATION = 'api.wsgi.application'
 
 INSTALLED_APPS = (
     'django.contrib.auth',

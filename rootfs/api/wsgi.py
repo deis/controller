@@ -1,5 +1,5 @@
 """
-WSGI config for deis project.
+WSGI config for Deis Workflow Controller project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 

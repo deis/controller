@@ -1,4 +1,5 @@
 import os
+from os.path import dirname, realpath
 import faulthandler
 faulthandler.enable()
 
@@ -15,10 +16,10 @@ except (NameError, ValueError):
     except NotImplementedError:
         workers = 8
 
-pythonpath = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+pythonpath = dirname(dirname(dirname(realpath(__file__))))
 timeout = 1200
 pidfile = '/tmp/gunicorn.pid'
-logger_class = 'deis.logging.Logging'
+logger_class = 'deis.gunicorn.logging.Logging'
 loglevel = 'info'
 errorlog = '-'
 accesslog = '-'

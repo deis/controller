@@ -217,6 +217,8 @@ class Release(UuidAuditedModel):
 
             if version < 1:
                 raise DeisException('version cannot be below 0')
+            elif version == 1:
+                raise DeisException('Cannot roll back to initial release.')
 
             prev = self.app.release_set.get(version=version)
             new_release = self.new(

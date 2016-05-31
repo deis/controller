@@ -14,7 +14,7 @@ from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from api.models import Release
+from api.models import App, Release
 from scheduler import KubeHTTPException
 from . import adapter
 from . import mock_port
@@ -136,83 +136,62 @@ class ReleaseTest(APITransactionTestCase):
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
+        app = App.objects.get(id=app_id)
         # try to rollback with only 1 release extant, expecting 400
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         response = self.client.post(url)
         self.assertEqual(response.status_code, 400, response.data)
         self.assertEqual(response.data, {'detail': 'version cannot be below 0'})
         self.assertEqual(response.get('content-type'), 'application/json')
-        # update config to roll a new release
+        # update the build to roll a new release
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        # update config to roll another release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
-        #  TODO: edge case that fails becasue version 1 has no build object.
-        # update the build to roll a new release
-        # url = '/v2/apps/{app_id}/builds'.format(**locals())
-        # body = {'image': 'autotest/example'}
-        # response = self.client.post(url, body)
-        # self.assertEqual(response.status_code, 201, response.data)
-        # rollback and check to see that a 4th release was created
-        # with the build and config of release #2
+        # create another release with a different build
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'autotest/example:canary'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        # rollback and check to see that a 5th release was created
+        # with the build and config of release #3
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         response = self.client.post(url)
         self.assertEqual(response.status_code, 201, response.data)
-        url = '/v2/apps/{app_id}/releases'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data['count'], 3)
-        url = '/v2/apps/{app_id}/releases/v1'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        release1 = response.data
-        self.assertEqual(release1['version'], 1)
-        url = '/v2/apps/{app_id}/releases/v3'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        release3 = response.data
-        self.assertEqual(release3['version'], 3)
-        self.assertNotEqual(release1['uuid'], release3['uuid'])
-        self.assertEqual(release1['build'], release3['build'])
-        self.assertEqual(release1['config'], release3['config'])
-        # rollback explicitly to release #1 and check that a 5th release
-        # was created with the build and config of release #1
+        self.assertEqual(Release.objects.count(), 5)
+        release1 = Release.objects.get(app=app, version=1)
+        release2 = Release.objects.get(app=app, version=2)
+        release3 = Release.objects.get(app=app, version=3)
+        release4 = Release.objects.get(app=app, version=4)
+        release5 = Release.objects.get(app=app, version=5)
+        # verify the rollback to v3
+        self.assertNotEqual(release5.uuid, release3.uuid)
+        self.assertNotEqual(release5.build, release4.build)
+        self.assertEqual(release5.build, release3.build)
+        self.assertEqual(release5.config.values, release3.config.values)
+        # double-check to see that the current build and config is the same as v3
+        self.assertEqual(release5.build.image, 'autotest/example')
+        self.assertEqual(release5.config.values, {'NEW_URL1': 'http://localhost:8080/'})
+        # try to rollback to v1 and verify that the rollback failed
+        # (v1 is an initial release with no build)
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         body = {'version': 1}
         response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201, response.data)
-        url = '/v2/apps/{app_id}/releases'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data['count'], 4)
-        url = '/v2/apps/{app_id}/releases/v1'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        release1 = response.data
-        url = '/v2/apps/{app_id}/releases/v4'.format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        release4 = response.data
-        self.assertEqual(release4['version'], 4)
-        self.assertNotEqual(release1['uuid'], release4['uuid'])
-        self.assertEqual(release1['build'], release4['build'])
-        self.assertEqual(release1['config'], release4['config'])
-        # check to see that the current config is actually the initial one
-        url = "/v2/apps/{app_id}/config".format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data['values'], {})
-        # rollback to #2 and see that it has the correct config
+        self.assertContains(response, 'Cannot roll back to initial release.', status_code=400)
+        # roll back to v2 so we can verify config gets rolled back too
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
         body = {'version': 2}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
-        url = "/v2/apps/{app_id}/config".format(**locals())
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200, response.data)
-        values = response.data['values']
-        self.assertIn('NEW_URL1', values)
-        self.assertEqual('http://localhost:8080/', values['NEW_URL1'])
+        self.assertEqual(Release.objects.count(), 6)
+        release6 = Release.objects.get(app=app, version=6)
+        self.assertEqual(release6.build.image, 'autotest/example')
+        self.assertEqual(release6.config.values, {})
 
     def test_release_str(self, mock_requests):
         """Test the text representation of a release."""

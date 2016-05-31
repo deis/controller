@@ -2,6 +2,7 @@ import os
 import faulthandler
 faulthandler.enable()
 
+
 bind = '0.0.0.0'
 try:
     workers = int(os.environ.get('GUNICORN_WORKERS', 'not set'))
@@ -13,8 +14,11 @@ except (NameError, ValueError):
         workers = multiprocessing.cpu_count() * 2 + 1
     except NotImplementedError:
         workers = 8
+
+pythonpath = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 timeout = 1200
 pidfile = '/tmp/gunicorn.pid'
+logger_class = 'deis.logging.Logging'
 loglevel = 'info'
 errorlog = '-'
 accesslog = '-'

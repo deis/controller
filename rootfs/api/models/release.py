@@ -150,8 +150,7 @@ class Release(UuidAuditedModel):
                 return port
 
             if self.build.type == "buildpack":
-                msg = "Using default port 5000 for build pack image {}".format(self.image)
-                self.app.log(msg)
+                self.app.log('buildpack type detected. Defaulting to $PORT 5000')
                 return 5000
 
             # application has registry auth - $PORT is required

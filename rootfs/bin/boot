@@ -30,7 +30,7 @@ echo "Database Migrations:"
 sudo -E -u deis python /app/manage.py migrate --noinput
 
 # spawn a gunicorn server in the background
-sudo -E -u deis gunicorn -c /app/deis/gunicorn/config.py deis.wsgi &
+sudo -E -u deis gunicorn -c /app/deis/gunicorn/config.py api.wsgi &
 
 python /app/manage.py load_db_state_to_k8s
 

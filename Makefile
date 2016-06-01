@@ -67,12 +67,12 @@ test-style:
 
 test-unit:
 	cd rootfs \
-		&& coverage run manage.py test --settings=deis.testing --noinput registry api \
+		&& coverage run manage.py test --settings=api.settings.testing --noinput registry api \
 		&& coverage report -m
 
 test-unit-quick:
 	cd rootfs \
-		&& ./manage.py test --settings=deis.testing --noinput --parallel ${TEST_PROCS} --noinput registry api
+		&& ./manage.py test --settings=api.settings.testing --noinput --parallel ${TEST_PROCS} --noinput registry api
 
 test-functional:
 	@echo "Implement functional tests in _tests directory"

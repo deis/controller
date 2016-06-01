@@ -10,11 +10,7 @@ try:
     if workers < 1:
         raise ValueError()
 except (NameError, ValueError):
-    import multiprocessing
-    try:
-        workers = multiprocessing.cpu_count() * 2 + 1
-    except NotImplementedError:
-        workers = 8
+    workers = (os.cpu_count() or 4) * 2 + 1
 
 pythonpath = dirname(dirname(dirname(realpath(__file__))))
 timeout = 1200

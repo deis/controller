@@ -331,7 +331,9 @@ class App(UuidAuditedModel):
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             routable = True if scale_type in ['web', 'cmd'] else False
             # fetch application port and inject into ENV Vars as needed
-            envs['PORT'] = release.get_port(routable)
+            port = release.get_port(routable)
+            if port:
+                envs['PORT'] = port
 
             kwargs = {
                 'memory': release.config.memory,
@@ -384,7 +386,9 @@ class App(UuidAuditedModel):
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             routable = True if scale_type in ['web', 'cmd'] else False
             # fetch application port and inject into ENV vars as needed
-            envs['PORT'] = release.get_port(routable)
+            port = release.get_port(routable)
+            if port:
+                envs['PORT'] = port
 
             deploys[scale_type] = {
                 'memory': release.config.memory,

@@ -20,7 +20,7 @@ RUN apt-get update \
 		python3-dev \
 		sudo \
 	&& ln -s /usr/bin/python3 /usr/bin/python \
-	&& curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.1 \
+	&& curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.2 \
 	&& mkdir -p /configs && chown -R deis:deis /configs \
 	&& pip install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt \
 	&& apt-get remove -y --auto-remove --purge \

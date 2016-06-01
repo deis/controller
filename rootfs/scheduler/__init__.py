@@ -664,7 +664,7 @@ class KubeHTTPClient(object):
                 self._create_secret(namespace, secret_name, secrets_env, labels=labels)
 
             for key in env.keys():
-                data["env"].append({
+                item = {
                     "name": key,
                     "valueFrom": {
                         "secretKeyRef": {
@@ -673,7 +673,14 @@ class KubeHTTPClient(object):
                             "key": key.lower().replace('_', '-')
                         }
                     }
-                })
+                }
+
+                # add value to env hash. Overwrite hardcoded values if need be
+                match = next((k for k, e in enumerate(data["env"]) if e['name'] == key), None)
+                if match is not None:
+                    data["env"][match] = item
+                else:
+                    data["env"].append(item)
 
         # Inject debugging if workflow is in debug mode
         if os.environ.get("DEIS_DEBUG", False):

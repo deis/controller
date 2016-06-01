@@ -40,10 +40,6 @@ POD_BTEMPLATE = """\
         "image": "$image",
         "env": [
         {
-            "name":"PORT",
-            "value":"5000"
-        },
-        {
             "name":"SLUG_URL",
             "value":"$slug_url"
         },
@@ -204,10 +200,6 @@ RCB_TEMPLATE = """\
             "image": "$image",
             "imagePullPolicy": "$image_pull_policy",
             "env": [
-            {
-                "name":"PORT",
-                "value":"5000"
-            },
             {
                 "name":"SLUG_URL",
                 "value":"$slug_url"

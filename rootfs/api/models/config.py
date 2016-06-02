@@ -102,7 +102,8 @@ class Config(UuidAuditedModel):
         if old_tags:
             old = ['{}={}'.format(key, value) for key, value in old_tags.items()]
             new = set(labels) - set(old)
-            message += ' - Addition of {} is the cause'.format(', '.join(new))
+            if new:
+                message += ' - Addition of {} is the cause'.format(', '.join(new))
 
         raise DeisException(message)
 

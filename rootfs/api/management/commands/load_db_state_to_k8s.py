@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 from django.shortcuts import get_object_or_404
 
 from api.models import Key, App, Domain, Certificate, Config
+from api.exceptions import DeisException
 
 
 class Command(BaseCommand):
@@ -13,7 +14,11 @@ class Command(BaseCommand):
         print("Publishing DB state to kubernetes...")
         for model in (Key, App, Domain, Certificate, Config):
             for obj in model.objects.all():
-                obj.save()
+                try:
+                    obj.save()
+                except DeisException as error:
+                    print('ERROR: Problem saving to model {} for {}'
+                          'due to {}'.format(str(model.__name__), str(obj), str(error)))
 
         # certificates have to be attached to domains to create k8s secrets
         for cert in Certificate.objects.all():
@@ -29,6 +34,11 @@ class Command(BaseCommand):
                 print('WARNING: {} has no build associated with '
                       'its latest release. Skipping deployment...'.format(application))
                 continue
-            application.deploy(rel)
+
+            try:
+                application.deploy(rel)
+            except DeisException as error:
+                print('ERROR: There was a problem deploying {} '
+                      'due to {}'.format(application, str(error)))
 
         print("Done Publishing DB state to kubernetes.")

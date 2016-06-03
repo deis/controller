@@ -464,7 +464,7 @@ class KubeHTTPClient(object):
                 for pos, item in enumerate(service['spec']['ports']):
                     if item['port'] == 80 and port != item['targetPort']:
                         # port 80 is the only one we care about right now
-                        service['spec']['ports'][pos]['targetPort'] = port
+                        service['spec']['ports'][pos]['targetPort'] = int(port)
 
             self._update_service(namespace, namespace, data=service)
         except Exception as e:
@@ -1181,7 +1181,7 @@ class KubeHTTPClient(object):
                 # an http probe
                 'httpGet': {
                     'path': path,
-                    'port': port
+                    'port': int(port)
                 },
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
@@ -1195,7 +1195,7 @@ class KubeHTTPClient(object):
                 # an http probe
                 'httpGet': {
                     'path': path,
-                    'port': port
+                    'port': int(port)
                 },
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking
@@ -1264,7 +1264,7 @@ class KubeHTTPClient(object):
             'readinessProbe': {
                 # an exec probe
                 'tcpSocket': {
-                    "port": port
+                    "port": int(port)
                 },
                 # length of time to wait for a pod to initialize
                 # after pod startup, before applying health checking

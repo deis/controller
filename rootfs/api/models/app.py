@@ -1,3 +1,4 @@
+import backoff
 from collections import OrderedDict
 from datetime import datetime
 import logging
@@ -541,6 +542,7 @@ class App(UuidAuditedModel):
             level=logging.DEBUG
         )
 
+    @backoff.on_exception(backoff.expo, ServiceUnavailable, max_tries=3)
     def logs(self, log_lines=str(settings.LOG_LINES)):
         """Return aggregated log data for this application."""
         try:

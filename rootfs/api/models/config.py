@@ -38,7 +38,6 @@ class Config(UuidAuditedModel):
         path = self.values.get('HEALTHCHECK_URL', '/')
         timeout = int(self.values.get('HEALTHCHECK_TIMEOUT', 50))
         delay = int(self.values.get('HEALTHCHECK_INITIAL_DELAY', 50))
-        port = int(self.values.get('HEALTHCHECK_PORT', 5000))
         period_seconds = int(self.values.get('HEALTHCHECK_PERIOD_SECONDS', 10))
         success_threshold = int(self.values.get('HEALTHCHECK_SUCCESS_THRESHOLD', 1))
         failure_threshold = int(self.values.get('HEALTHCHECK_FAILURE_THRESHOLD', 3))
@@ -47,7 +46,6 @@ class Config(UuidAuditedModel):
             'path': path,
             'timeout': timeout,
             'delay': delay,
-            'port': port,
             'period_seconds': period_seconds,
             'success_threshold': success_threshold,
             'failure_threshold': failure_threshold,
@@ -66,7 +64,6 @@ class Config(UuidAuditedModel):
 
         # HTTP GET related
         self.values['HEALTHCHECK_URL'] = health['path']
-        self.values['HEALTHCHECK_PORT'] = health['port']
 
         # Number of seconds after which the probe times out.
         # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes

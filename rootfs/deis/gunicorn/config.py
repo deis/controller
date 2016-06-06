@@ -11,7 +11,7 @@ try:
         raise ValueError()
 except (NameError, ValueError):
     workers = (os.cpu_count() or 4) * 2 + 1
-
+worker_class = 'gaiohttp'
 pythonpath = dirname(dirname(dirname(realpath(__file__))))
 timeout = 1200
 pidfile = '/tmp/gunicorn.pid'

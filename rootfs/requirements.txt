@@ -1,4 +1,5 @@
 # Deis controller requirements
+aiohttp==0.21.6
 backoff==1.2.1
 Django==1.9.7
 django-cors-headers==1.1.0

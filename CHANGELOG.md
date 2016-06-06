@@ -1,3 +1,17 @@
+### v2.0.0-rc1 -> v2.0.0-rc2
+
+#### Fixes
+
+- [`a43f1d6`](https://github.com/deis/controller/commit/a43f1d60df49f5dade2bc2b736dbfda3ec3205c1) gunicorn: silence healthcheck points in access logs
+- [`ab5f680`](https://github.com/deis/controller/commit/ab5f680d9b04014958a28d88561d875269ce685f) scheduler: update instead of appending env vars so hardcoded values can be overwritten
+- [`28b92eb`](https://github.com/deis/controller/commit/28b92eb4eac3f860ab7b15147bf28bce7fbb3eab) scheduler: remove the hardcoded port from RC template
+- [`c9cb586`](https://github.com/deis/controller/commit/c9cb586deee211e5b8fdc0e1af8aa21aa6b3b1e2) app: only add a PORT env var if there is a value
+
+#### Maintenance
+
+- [`08ee64c`](https://github.com/deis/controller/commit/08ee64ceb81330bbbad27468fdefdbf95d953bab) requirements: update to Gunicorn 19.6.0
+- [`b6195a3`](https://github.com/deis/controller/commit/b6195a3cfedc194a6e5b9c93e6b09487ff35373e) Dockerfile: update pip to 8.1.2
+
 ### v2.0.0-beta4 -> v2.0.0-rc1
 
 #### Features

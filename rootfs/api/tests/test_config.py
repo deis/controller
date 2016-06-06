@@ -624,6 +624,18 @@ class ConfigTest(APITransactionTestCase):
         self.assertIn('registry', response.data)
         self.assertEqual(response.data['registry'], {})
 
+        # set some registry information without PORT
+        body = {'registry': json.dumps({'username': 'bob'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+        registry1 = response.data
+
+        # set required PORT
+        body = {'values': json.dumps({'PORT': '80'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        registry1 = response.data
+
         # set some registry information
         body = {'registry': json.dumps({'username': 'bob'})}
         response = self.client.post(url, body)
@@ -693,7 +705,13 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
-        # Set healthcheck URL to get defaults set
+        # Set mandatory PORT
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'PORT': '4999'})}
+        )
+
+        # Set registry information
         body = {'registry': json.dumps({
             'username': 'bob',
             'password': 's3cur3pw1'

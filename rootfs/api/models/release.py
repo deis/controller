@@ -5,7 +5,8 @@ from django.db import models
 
 from registry import publish_release, get_port as docker_get_port, RegistryException
 from api.utils import dict_diff
-from api.models import UuidAuditedModel, DeisException
+from api.models import UuidAuditedModel
+from api.exceptions import DeisException, AlreadyExists
 from scheduler import KubeHTTPException
 
 logger = logging.getLogger(__name__)
@@ -423,5 +424,7 @@ class Release(UuidAuditedModel):
                 if self.version == 1:
                     self.summary = "{} created the initial release".format(self.owner)
                 else:
-                    self.summary = "{} changed nothing".format(self.owner)
+                    # There were no changes to this release
+                    raise AlreadyExists("{} changed nothing - release stopped".format(self.owner))
+
         super(Release, self).save(*args, **kwargs)

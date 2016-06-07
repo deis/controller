@@ -276,6 +276,25 @@ class ConfigTest(APITransactionTestCase):
             resp = self.client.post(url, body)
             self.assertEqual(resp.status_code, 400)
 
+    def test_invalid_config_values(self, mock_requests):
+        """
+        Test that invalid config values are rejected.
+        Right now only PORT is checked
+        """
+        data = [
+            {'field': 'PORT', 'value': 'dog'},
+            {'field': 'PORT', 'value': 99999}
+        ]
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        for row in data:
+            body = {'values': json.dumps({row['field']: row['value']})}
+            resp = self.client.post(url, body)
+            self.assertEqual(resp.status_code, 400, response.data)
+
     def test_admin_can_create_config_on_other_apps(self, mock_requests):
         """If a non-admin creates an app, an administrator should be able to set config
         values for that app.
@@ -727,33 +746,77 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that healthchecks can be applied
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
+        response = self.client.post('/v2/apps')
         self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
-        # Set healthcheck URL to get defaults set
-        body = {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': '25'})}
+        # Set a healthcheck option before URL is around (URL is required for full setting)
         resp = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
-            body
+            {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': '25'})}
         )
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 201, response.data)
         self.assertIn('HEALTHCHECK_INITIAL_DELAY', resp.data['values'])
         self.assertEqual(resp.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
 
         # Set healthcheck URL to get defaults set
-        body = {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
         resp = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
-            body
+            {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
         )
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 201, response.data)
         self.assertIn('HEALTHCHECK_URL', resp.data['values'])
         self.assertEqual(resp.data['values']['HEALTHCHECK_URL'], '/health')
 
         # post a new build
-        url = "/v2/apps/{app_id}/builds".format(**locals())
-        body = {'image': 'quay.io/autotest/example'}
-        response = self.client.post(url, body)
+        response = self.client.post(
+            "/v2/apps/{app_id}/builds".format(**locals()),
+            {'image': 'quay.io/autotest/example'}
+        )
         self.assertEqual(response.status_code, 201, response.data)
+
+    def test_healthchecks_validations(self, mock_requests):
+        """
+        Test that healthchecks validations work
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set one of the values that require a numeric value to a string
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': 'horse'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # test URL - Path is the only allowed thing
+        # Try setting various things such as query param
+
+        # query param
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_URL': '/health?testing=0'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # fragment
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_URL': '/health#db'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # netloc
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com/health/'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # no path
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)

@@ -4,6 +4,7 @@ Classes to serialize the RESTful representation of Deis API models.
 
 import json
 import re
+from urllib.parse import urlparse
 
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -138,6 +139,39 @@ class ConfigSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Config keys must start with a letter or underscore and "
                     "only contain [A-z0-9_]")
+
+            # Validate PORT
+            if key == 'PORT':
+                if not str(value).isnumeric():
+                    raise serializers.ValidationError('PORT can only be a numeric value')
+                elif int(value) not in range(1, 65536):
+                    # check if hte port is between 1 and 65535. One extra added for range()
+                    # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_serviceport
+                    raise serializers.ValidationError('PORT needs to be between 1 and 65535')
+
+            # Validate HEALTHCHECK_*
+            if key == 'HEALTHCHECK_URL':
+                # Only Path information is supported, not query / anchor or anything else
+                # Path is the only thing Kubernetes supports right now
+                # See https://github.com/deis/controller/issues/774
+                uri = urlparse(value)
+
+                if not uri.path:
+                    raise serializers.ValidationError(
+                        '{} is missing a URI path (such as /healthz). '
+                        'Without it no health check can be done'.format(key)
+                    )
+
+                # Disallow everything but path
+                # https://docs.python.org/3/library/urllib.parse.html
+                if uri.query or uri.fragment or uri.netloc:
+                    raise serializers.ValidationError(
+                        '{} can only be a URI path (such as /healthz) that does not contain '
+                        'other things such as query params'.format(key)
+                    )
+            elif key.startswith('HEALTHCHECK_') and not str(value).isnumeric():
+                # all other healthchecks are integers
+                raise serializers.ValidationError('{} can only be a numeric value'.format(key))
 
         return data
 

@@ -4,10 +4,10 @@
 import logging
 import os
 
+import backoff
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
 from simpleflock import SimpleFlock
-from retrying import retry
 
 import docker
 import docker.constants
@@ -144,7 +144,7 @@ class DockerClient(object):
         if not self.client.tag(image, repo, tag=tag, force=True):
             raise RegistryException('Tagging {} as {}:{} failed'.format(image, repo, tag))
 
-    @retry(stop_max_attempt_number=3, wait_fixed=1000)
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def inspect_image(self, target, insecure_registry=True):
         """
         Inspect docker image to gather information from it

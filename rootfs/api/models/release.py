@@ -18,13 +18,13 @@ class Release(UuidAuditedModel):
     Releases contain a :class:`Build` and a :class:`Config`.
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
-    app = models.ForeignKey('App')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    app = models.ForeignKey('App', on_delete=models.CASCADE)
     version = models.PositiveIntegerField()
     summary = models.TextField(blank=True, null=True)
 
-    config = models.ForeignKey('Config')
-    build = models.ForeignKey('Build', null=True)
+    config = models.ForeignKey('Config', on_delete=models.CASCADE)
+    build = models.ForeignKey('Build', null=True, on_delete=models.CASCADE)
 
     class Meta:
         get_latest_by = 'created'

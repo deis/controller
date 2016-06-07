@@ -12,8 +12,8 @@ class Config(UuidAuditedModel):
     during runtime execution of the Application.
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
-    app = models.ForeignKey('App')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    app = models.ForeignKey('App', on_delete=models.CASCADE)
     values = JSONField(default={}, blank=True)
     memory = JSONField(default={}, blank=True)
     cpu = JSONField(default={}, blank=True)

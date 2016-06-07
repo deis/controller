@@ -13,8 +13,8 @@ class Build(UuidAuditedModel):
     Instance of a software build used by runtime nodes
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
-    app = models.ForeignKey('App')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    app = models.ForeignKey('App', on_delete=models.CASCADE)
     image = models.TextField()
 
     # optional fields populated by builder

@@ -1004,12 +1004,7 @@ class KubeHTTPClient(object):
             'version': rc['spec']['selector']['version']
         }
 
-        # Are there any pods running (and verified as ready) available?
-        pods = self._get_pods(namespace, labels=labels).json()['items']
-        current = 0
-        for pod in pods:
-            if self._pod_ready(pod):
-                current += 1
+        current = int(rc['spec']['replicas'])
 
         if desired == current:
             logger.info("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
 
+from api.models.release import Release
 from api.models import UuidAuditedModel, DeisException
 
 
@@ -110,7 +111,14 @@ class Config(UuidAuditedModel):
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
-            previous_config = self.app.config_set.latest()
+            # Get config from the latest available release
+            try:
+                previous_config = self.app.release_set.latest().config
+            except Release.DoesNotExist:
+                # If that doesn't exist then fallback on app config
+                # usually means a totally new app
+                previous_config = self.app.config_set.latest()
+
             for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
                 data = getattr(previous_config, attr, {}).copy()
                 new_data = getattr(self, attr, {}).copy()

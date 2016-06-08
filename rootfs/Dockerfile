@@ -7,7 +7,7 @@ RUN adduser --system \
 	--group \
 	deis
 
-COPY . /app
+COPY requirements.txt /app/requirements.txt
 
 RUN buildDeps='gcc git libffi-dev libpq-dev python3-dev'; \
 	apt-get update && \
@@ -16,13 +16,15 @@ RUN buildDeps='gcc git libffi-dev libpq-dev python3-dev'; \
         libpq5 \
         python3 \
         sudo && \
-	ln -s /usr/bin/python3 /usr/bin/python && \
+    ln -s /usr/bin/python3 /usr/bin/python && \
 	curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.2 && \
 	mkdir -p /configs && chown -R deis:deis /configs && \
 	pip install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt && \
 	apt-get purge -y --auto-remove $buildDeps && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/man /usr/share/doc
+
+COPY . /app
 
 # define execution environment
 WORKDIR /app

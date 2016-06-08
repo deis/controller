@@ -359,7 +359,10 @@ class KubeHTTPClient(object):
             logger.info('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
             return
         except KubeHTTPException:
-            new_rc = self._create_rc(namespace, name, image, command, **kwargs).json()
+            # make replicas 0 so scaling handles the work
+            replicas = kwargs.pop('replicas')
+            new_rc = self._create_rc(namespace, name, image, command, replicas=0, **kwargs).json()
+            kwargs['replicas'] = replicas
 
         # Get the desired number to scale to
         if old_rc:

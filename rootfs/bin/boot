@@ -16,6 +16,9 @@ python --version
 mkdir -p /app/data/logs
 chmod -R 777 /app/data/logs
 
+# HACK(bacongobbler): explicitly add the docker socket to the deis group
+chgrp deis /var/run/docker.sock
+
 # allow deis user group permission to Docker socket
 groupadd -g "$(stat -c "%g" /var/run/docker.sock)" docker || true
 usermod -a -G docker deis || true

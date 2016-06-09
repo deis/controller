@@ -1,3 +1,19 @@
+### v2.0.0-rc2 -> v2.0.0
+
+#### Fixes
+
+- [`c6686e9`](https://github.com/deis/controller/commit/c6686e90fa39526c1051ec0035621452d7625f67) scheduler: cast ports to int before passing them on to k8s
+
+#### Documentation
+
+- [`b001515`](https://github.com/deis/controller/commit/b0015157ba5288d3fdd6dde104efa879305bd4e2) CHANGELOG.md: add entry for v2.0.0-rc2
+
+#### Maintenance
+
+- [`bf35966`](https://github.com/deis/controller/commit/bf359660be57858a6343cb4206aedf98fbc38761) requirements: update codecov to 2.0.5
+- [`3a6ee54`](https://github.com/deis/controller/commit/3a6ee546da5f36279fad4576c8a30eb4cea13bcc) README: remove references to beta in README
+- [`04049b4`](https://github.com/deis/controller/commit/04049b43cc56eecbd1d9fb76dd1c588aceffc379) version: update platform version to 2.0.0
+
 ### v2.0.0-rc1 -> v2.0.0-rc2
 
 #### Fixes

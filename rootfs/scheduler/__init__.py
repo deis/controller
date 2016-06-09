@@ -657,6 +657,8 @@ class KubeHTTPClient(object):
                     'type': 'env'
                 }
                 self._create_secret(namespace, secret_name, secrets_env, labels=labels)
+            else:
+                self._update_secret(namespace, secret_name, secrets_env)
 
             for key in env.keys():
                 item = {

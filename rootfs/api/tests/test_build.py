@@ -361,11 +361,33 @@ class BuildTest(APITransactionTestCase):
         response = self.client.post(url, {'image': image})
         self.assertEqual(response.status_code, 201, response.data)
 
+        # add the required PORT information
+        url = '/v2/apps/test/config'
+        body = {'values': json.dumps({'PORT': '80'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
         # set some registry information
         url = '/v2/apps/test/config'
         body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
+
+    def test_build_image_in_registry_with_auth_no_port(self, mock_requests):
+        """add authentication to the build but with no PORT config"""
+        self.client.post('/v2/apps', {'id': 'test'})
+
+        # post an image as a build using registry hostname
+        url = "/v2/apps/test/builds"
+        image = 'autotest/example'
+        response = self.client.post(url, {'image': image})
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # set some registry information
+        url = '/v2/apps/test/config'
+        body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
 
     def test_release_create_failure(self, mock_requests):
         """

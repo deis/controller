@@ -85,6 +85,13 @@ class Config(UuidAuditedModel):
         # lower case all registry options for consistency
         self.registry = {key.lower(): value for key, value in self.registry.copy().items()}
 
+        # PORT must be set if private registry is being used
+        if self.registry and self.values.get('PORT', None) is None:
+            # only thing that can get past post_save in the views
+            raise DeisException(
+                'PORT needs to be set in the config '
+                'when using a private registry')
+
     def set_tags(self, previous_config):
         """verify the tags exist on any nodes as labels"""
         if not self.tags:

@@ -31,7 +31,7 @@ docker-build: check-docker
 	docker tag -f ${IMAGE} ${MUTABLE_IMAGE}
 
 deploy: docker-build docker-push
-	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
+	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | sed 's#\(imagePullPolicy:\) .*#\1 Always#' | kubectl apply --validate=true -f -
 	kubectl scale rc deis-$(COMPONENT) --replicas 0 --namespace deis
 	kubectl scale rc deis-$(COMPONENT) --replicas $(DESIRED_REPLICAS) --namespace deis
 

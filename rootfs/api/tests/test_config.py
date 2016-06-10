@@ -106,6 +106,17 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         self.assertNotIn('NEW_URL1', json.dumps(response.data['values']))
 
+        # set a port and then unset it to make sure validation ignores the unset
+        body = {'values': json.dumps({'PORT': '5000'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('PORT', response.data['values'])
+
+        body = {'values': json.dumps({'PORT': None})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotIn('PORT', response.data['values'])
+
         # disallow put/patch/delete
         response = self.client.put(url)
         self.assertEqual(response.status_code, 405, response.data)

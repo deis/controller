@@ -135,6 +135,9 @@ class ConfigSerializer(serializers.ModelSerializer):
 
     def validate_values(self, data):
         for key, value in data.items():
+            if value is None:  # use NoneType to unset an item
+                continue
+
             if not re.match(CONFIGKEY_MATCH, key):
                 raise serializers.ValidationError(
                     "Config keys must start with a letter or underscore and "
@@ -239,6 +242,9 @@ class ConfigSerializer(serializers.ModelSerializer):
 
     def validate_registry(self, data):
         for key, value in data.items():
+            if value is None:  # use NoneType to unset an item
+                continue
+
             if not re.match(CONFIGKEY_MATCH, key):
                 raise serializers.ValidationError(
                     "Config keys must start with a letter or underscore and "

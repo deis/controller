@@ -19,7 +19,7 @@ def validate_base64(value):
 class Key(UuidAuditedModel):
     """An SSH public key."""
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     id = models.CharField(max_length=128)
     public = models.TextField(unique=True, validators=[validate_base64])
     fingerprint = models.CharField(max_length=128, editable=False)

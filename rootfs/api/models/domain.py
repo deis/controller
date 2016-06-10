@@ -5,12 +5,12 @@ from api.models import AuditedModel
 
 
 class Domain(AuditedModel):
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
-    app = models.ForeignKey('App')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    app = models.ForeignKey('App', on_delete=models.CASCADE)
     domain = models.TextField(blank=False, null=False, unique=True)
     certificate = models.ForeignKey(
         'Certificate',
-        models.SET_NULL,
+        on_delete=models.SET_NULL,
         blank=True,
         null=True
     )

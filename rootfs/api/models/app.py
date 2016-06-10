@@ -62,7 +62,7 @@ class App(UuidAuditedModel):
     Application used to service requests on behalf of end-users
     """
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     id = models.SlugField(max_length=24, unique=True, null=True,
                           validators=[validate_id_is_docker_compatible,
                                       validate_reserved_names])

@@ -8,8 +8,8 @@ class Push(UuidAuditedModel):
     """
     Instance of a push used to trigger an application build
     """
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL)
-    app = models.ForeignKey('App')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    app = models.ForeignKey('App', on_delete=models.CASCADE)
     sha = models.CharField(max_length=40)
 
     fingerprint = models.CharField(max_length=255)

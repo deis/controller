@@ -7,7 +7,7 @@ import tempfile
 
 # A boolean that turns on/off debug mode.
 # https://docs.djangoproject.com/en/1.9/ref/settings/#debug
-DEBUG = False
+DEBUG = bool(os.environ.get('DEIS_DEBUG', False))
 
 # If set to True, Django's normal exception handling of view functions
 # will be suppressed, and exceptions will propagate upwards

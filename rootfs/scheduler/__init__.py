@@ -10,6 +10,7 @@ import base64
 from django.conf import settings
 from docker.auth import auth as docker_auth
 from .states import PodState
+import ruamel.yaml
 import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
@@ -21,277 +22,183 @@ logger = logging.getLogger(__name__)
 
 # Used for one off command runs on pods
 POD_BTEMPLATE = """\
-{
-  "kind": "Pod",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$id",
-    "labels": {
-      "app": "$app",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    }
-  },
-  "spec": {
-    "containers": [
-      {
-        "name": "$containername",
-        "image": "$image",
-        "env": [
-        {
-            "name":"SLUG_URL",
-            "value":"$slug_url"
-        },
-        {
-            "name": "BUILDER_STORAGE",
-            "value":"$storagetype"
-        },
-        {
-            "name": "DEIS_MINIO_SERVICE_HOST",
-            "value":"$mHost"
-        },
-        {
-            "name": "DEIS_MINIO_SERVICE_PORT",
-            "value":"$mPort"
-        }
-        ],
-        "volumeMounts":[
-        {
-            "name":"objectstorage-keyfile",
-            "mountPath":"/var/run/secrets/deis/objectstore/creds",
-            "readOnly":true
-        }
-        ]
-      }
-    ],
-    "volumes":[
-      {
-        "name":"objectstorage-keyfile",
-        "secret":{
-        "secretName":"objectstorage-keyfile"
-        }
-      }
-    ],
-    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
-    "restartPolicy": "Never"
-  }
-}
+kind: Pod
+apiVersion: $version
+metadata:
+  name: $id
+  labels:
+    app: $app
+    version: $appversion
+    type: $type
+    heritage: deis
+spec:
+  containers:
+    - name: $containername
+      image: $image
+      env:
+        - name: SLUG_URL
+          value: $slug_url
+        - name: BUILDER_STORAGE
+          value: $storagetype
+        - name: DEIS_MINIO_SERVICE_HOST
+          value: $mHost
+        - name: DEIS_MINIO_SERVICE_PORT
+          value: "$mPort"
+      volumeMounts:
+        - name: objectstorage-keyfile
+          mountPath: /var/run/secrets/deis/objectstore/creds
+          readOnly: true
+  volumes:
+    - name: "objectstorage-keyfile"
+      secret:
+        secretName: objectstorage-keyfile
+  terminationGracePeriodSeconds: $terminationGracePeriodSeconds
+  restartPolicy: Never
 """
 
 POD_TEMPLATE = """\
-{
-  "kind": "Pod",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$id",
-    "labels": {
-      "app": "$app",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    }
-  },
-  "spec": {
-    "containers": [
-      {
-        "name": "$containername",
-        "image": "$image",
-        "env": []
-      }
-    ],
-    "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
-    "restartPolicy": "Never"
-  }
-}
+kind: Pod
+apiVersion: $version
+metadata:
+  name: $id
+  labels:
+    app: $app
+    version: $appversion
+    type: $type
+    heritage: deis
+spec:
+  containers:
+    - name: $containername
+      image: $image
+      env: []
+  terminationGracePeriodSeconds: $terminationGracePeriodSeconds
+  restartPolicy: Never
 """
 
 RCD_TEMPLATE = """\
-{
-  "kind": "ReplicationController",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$name",
-    "labels": {
-      "app": "$id",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    }
-  },
-  "spec": {
-    "replicas": $replicas,
-    "selector": {
-      "app": "$id",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    },
-    "template": {
-      "metadata": {
-        "labels": {
-          "app": "$id",
-          "version": "$appversion",
-          "type": "$type",
-          "heritage": "deis"
-        }
-      },
-      "spec": {
-        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
-        "containers": [
-          {
-            "name": "$containername",
-            "image": "$image",
-            "imagePullPolicy": "$image_pull_policy",
-            "env": [
-            {
-                "name":"DEIS_APP",
-                "value":"$id"
-            },
-            {
-                "name":"WORKFLOW_RELEASE",
-                "value":"$appversion"
-            }
-            ]
-          }
-        ],
-        "nodeSelector": {}
-      }
-    }
-  }
-}
+kind: ReplicationController
+apiVersion: $version
+metadata:
+  name: $name
+  labels:
+    app: $id
+    version: $appversion
+    type: $type
+    heritage: deis
+spec:
+  replicas: $replicas
+  selector:
+    app: $id
+    version: $appversion
+    type: $type
+    heritage: deis
+  template:
+    metadata:
+      labels:
+        app: $id
+        version: $appversion
+        type: $type
+        heritage: deis
+    spec:
+      terminationGracePeriodSeconds: $terminationGracePeriodSeconds
+      containers:
+        - name: $containername
+          image: $image
+          imagePullPolicy: $image_pull_policy
+          env:
+            - name: DEIS_APP
+              value: $id
+            - name: WORKFLOW_RELEASE
+              value: $appversion
+      nodeSelector: {}
 """
 
 RCB_TEMPLATE = """\
-{
-  "kind": "ReplicationController",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$name",
-    "labels": {
-      "app": "$id",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    }
-  },
-  "spec": {
-    "replicas": $replicas,
-    "selector": {
-      "app": "$id",
-      "version": "$appversion",
-      "type": "$type",
-      "heritage": "deis"
-    },
-    "template": {
-      "metadata": {
-        "labels": {
-          "app": "$id",
-          "version": "$appversion",
-          "type": "$type",
-          "heritage": "deis"
-        }
-      },
-      "spec": {
-        "terminationGracePeriodSeconds": "$terminationGracePeriodSeconds",
-        "containers": [
-          {
-            "name": "$containername",
-            "image": "$image",
-            "imagePullPolicy": "$image_pull_policy",
-            "env": [
-            {
-                "name":"SLUG_URL",
-                "value":"$slug_url"
-            },
-            {
-                "name":"DEIS_APP",
-                "value":"$id"
-            },
-            {
-                "name":"WORKFLOW_RELEASE",
-                "value":"$appversion"
-            },
-            {
-                "name": "BUILDER_STORAGE",
-                "value":"$storagetype"
-            },
-            {
-                "name": "DEIS_MINIO_SERVICE_HOST",
-                "value":"$mHost"
-            },
-            {
-                "name": "DEIS_MINIO_SERVICE_PORT",
-                "value":"$mPort"
-            }
-            ],
-            "volumeMounts":[
-              {
-                "name":"objectstorage-keyfile",
-                "mountPath":"/var/run/secrets/deis/objectstore/creds",
-                "readOnly":true
-              }
-            ]
-          }
-        ],
-        "nodeSelector": {},
-        "volumes":[
-        {
-            "name":"objectstorage-keyfile",
-            "secret":{
-            "secretName":"objectstorage-keyfile"
-            }
-        }
-        ]
-      }
-    }
-  }
-}
+kind: ReplicationController
+apiVersion: $version
+metadata:
+  name: $name
+  labels:
+    app: $id
+    version: $appversion
+    type: $type
+    heritage: deis
+spec:
+  replicas: $replicas
+  selector:
+    app: $id
+    version: $appversion
+    type: $type
+    heritage: deis
+  template:
+    metadata:
+      labels:
+        app: $id
+        version: $appversion
+        type: $type
+        heritage: deis
+    spec:
+      terminationGracePeriodSeconds: $terminationGracePeriodSeconds
+      containers:
+        - name: $containername
+          image: $image
+          imagePullPolicy: $image_pull_policy
+          env:
+            - name: SLUG_URL
+              value: $slug_url
+            - name: DEIS_APP
+              value: $id
+            - name: WORKFLOW_RELEASE
+              value: $appversion
+            - name: BUILDER_STORAGE
+              value: $storagetype
+            - name: DEIS_MINIO_SERVICE_HOST
+              value: $mHost
+            - name: DEIS_MINIO_SERVICE_PORT
+              value: "$mPort"
+          volumeMounts:
+            - name: "objectstorage-keyfile"
+              mountPath: /var/run/secrets/deis/objectstore/creds
+              readOnly: true
+      nodeSelector: {}
+      volumes:
+        - name: objectstorage-keyfile
+          secret:
+            secretName: objectstorage-keyfile
 """
 
 # Ports and app type will be overwritten as required
 SERVICE_TEMPLATE = """\
-{
-  "kind": "Service",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$name",
-    "labels": {
-      "app": "$name"
-    },
-    "annotations": {}
-  },
-  "spec": {
-    "ports": [
-      {
-        "name": "http",
-        "port": 80,
-        "targetPort": 8080,
-        "protocol": "TCP"
-      }
-    ],
-    "selector": {
-      "app": "$name",
-      "heritage": "deis"
-    }
-  }
-}
+kind: Service
+apiVersion: $version
+metadata:
+  name: $name
+  labels:
+    app: $name
+    heritage: deis
+  annotations: {}
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+  selector:
+    app: $name
+    heritage: deis
 """
 
 SECRET_TEMPLATE = """\
-{
-  "kind": "Secret",
-  "apiVersion": "$version",
-  "metadata": {
-    "name": "$name",
-    "namespace": "$id",
-    "labels": {
-      "app": "$id"
-    }
-  },
-  "type": "$type",
-  "data": {}
-}
+kind: Secret
+apiVersion: $version
+metadata:
+  name: $name
+  namespace: $id
+  labels:
+    app: $id
+    heritage: deis
+type: $type
+data: {}
 """
 
 
@@ -552,7 +459,7 @@ class KubeHTTPClient(object):
             l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
             l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
 
-        template = json.loads(string.Template(POD).substitute(l))
+        template = ruamel.yaml.load(string.Template(POD).substitute(l))
 
         if command.startswith('-c '):
             args = command.split(' ', 1)
@@ -1094,7 +1001,7 @@ class KubeHTTPClient(object):
             l["image"] = settings.SLUGRUNNER_IMAGE
             TEMPLATE = RCB_TEMPLATE
 
-        template = json.loads(string.Template(TEMPLATE).substitute(l))
+        template = ruamel.yaml.load(string.Template(TEMPLATE).substitute(l))
         spec = template["spec"]["template"]["spec"]
 
         # apply tags as needed to restrict pod to particular node(s)
@@ -1117,7 +1024,7 @@ class KubeHTTPClient(object):
                 resp,
                 'create ReplicationController "{}" in Namespace "{}"', name, namespace
             )
-            logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
+            logger.debug('template used: {}'.format(ruamel.yaml.dump(template)))
 
         self._wait_for_rc_ready(namespace, name)
 
@@ -1318,7 +1225,7 @@ class KubeHTTPClient(object):
         if secret_type not in secret_types:
             raise KubeException('{} is not a supported secret type. Use one of the following: '.format(secret_type, ', '.join(secret_types)))  # noqa
 
-        template = json.loads(string.Template(SECRET_TEMPLATE).substitute({
+        template = ruamel.yaml.load(string.Template(SECRET_TEMPLATE).substitute({
             "version": self.apiversion,
             "id": namespace,
             "name": name,
@@ -1402,7 +1309,7 @@ class KubeHTTPClient(object):
         }
 
         # Merge external data on to the prefined template
-        template = json.loads(string.Template(SERVICE_TEMPLATE).substitute(l))
+        template = ruamel.yaml.load(string.Template(SERVICE_TEMPLATE).substitute(l))
         data = dict_merge(template, data)
         url = self._api("/namespaces/{}/services", namespace)
         response = self.session.post(url, json=data)

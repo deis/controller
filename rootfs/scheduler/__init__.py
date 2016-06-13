@@ -930,20 +930,7 @@ class KubeHTTPClient(object):
             logger.info("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
             self._update_rc(namespace, name, rc)
-
-            resource_ver = rc['metadata']['resourceVersion']
-            logger.info("waiting for RC {} to get a newer resource version than {} (30s timeout)".format(name, resource_ver))  # noqa
-            for waited in range(30):
-                js_template = self._get_rc(namespace, name).json()
-                if js_template["metadata"]["resourceVersion"] != resource_ver:
-                    break
-
-                if waited > 0 and (waited % 10) == 0:
-                    logger.info("waited {}s so far for a new resource version".format(waited))
-
-                time.sleep(1)
-
-            logger.info("RC {} has a new resource version {}".format(name, js_template["metadata"]["resourceVersion"]))  # noqa
+            self._wait_for_rc_ready(namespace, name)
 
         # Get application container
         container_name = '{}-{}'.format(
@@ -1032,16 +1019,21 @@ class KubeHTTPClient(object):
 
     def _wait_for_rc_ready(self, namespace, name):
         """
-        Waits for status/observedGeneration and metadata/generation to match
-        Indicates RC is ready
+        Looks at status/observedGeneration and metadata/generation and
+        waits for observedGeneration >= generation to happen, indicates RC is ready
+
+        More information is also available at:
+        https://github.com/kubernetes/kubernetes/blob/master/docs/devel/api-conventions.md#metadata
         """
+        logger.debug("waiting for ReplicationController {} to get a newer generation (30s timeout)".format(name))  # noqa
         for _ in range(30):
             try:
                 rc = self._get_rc(namespace, name).json()
                 if (
                     "observedGeneration" in rc["status"] and
-                    rc["metadata"]["generation"] == rc["status"]["observedGeneration"]
+                    rc["status"]["observedGeneration"] >= rc["metadata"]["generation"]
                 ):
+                    logger.debug("ReplicationController {} got a newer generation (30s timeout)".format(name))  # noqa
                     break
 
                 time.sleep(1)

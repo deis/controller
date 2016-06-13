@@ -320,11 +320,13 @@ class ReleaseTest(APITransactionTestCase):
             with mock.patch('api.models.Release._delete_release_in_scheduler') as mock_kube:
                 # instead of full request mocking, fake it out in a simple way
                 class Response(object):
-                    pass
+                    def json(self):
+                        return '{}'
 
                 response = Response()
                 response.status_code = 404
-                kube_exception = KubeHTTPException(response=response)
+                response.reason = "Not Found"
+                kube_exception = KubeHTTPException(response, 'big boom')
                 mock_kube.side_effect = kube_exception
 
                 url = "/v2/apps/test/releases/rollback/"

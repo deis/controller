@@ -301,21 +301,17 @@ class KubeException(Exception):
 
 
 class KubeHTTPException(KubeException):
-    def __init__(self, *args, **kwargs):
-        self.response = kwargs.pop('response', object)
-        KubeException.__init__(self, *args, **kwargs)
+    def __init__(self, response, errmsg, *args, **kwargs):
+        self.response = response
 
-
-def error(response, errmsg, *args):
-    errmsg = errmsg.format(*args)
-    errmsg = "failed to {}: {} {}\n{}".format(
-        errmsg,
-        response.status_code,
-        response.reason,
-        response.json()
-    )
-
-    raise KubeHTTPException(errmsg, response=response)
+        msg = errmsg.format(*args)
+        msg = "failed to {}: {} {}\n{}".format(
+            msg,
+            response.status_code,
+            response.reason,
+            response.json()
+        )
+        KubeException.__init__(self, msg, *args, **kwargs)
 
 
 def unhealthy(status_code):
@@ -582,7 +578,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/pods", namespace)
         response = self.session.post(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'create Pod in Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
 
         labels = {
             'app': namespace,
@@ -820,7 +816,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/events", namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, "get Events in Namespace {}", namespace)
+            raise KubeHTTPException(response, "get Events in Namespace {}", namespace)
 
         return response
 
@@ -828,7 +824,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/", namespace)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'get Namespace "{}"', namespace)
 
         return response
 
@@ -836,7 +832,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces")
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get Namespaces')
+            raise KubeHTTPException(response, 'get Namespaces')
 
         return response
 
@@ -852,7 +848,7 @@ class KubeHTTPClient(object):
 
         response = self.session.post(url, json=data)
         if not response.status_code == 201:
-            error(response, "create Namespace {}".format(namespace))
+            raise KubeHTTPException(response, "create Namespace {}".format(namespace))
 
         return response
 
@@ -862,7 +858,7 @@ class KubeHTTPClient(object):
         if response.status_code == 404:
             logger.warn('delete Namespace "{}": not found'.format(namespace))
         elif response.status_code != 200:
-            error(response, 'delete Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'delete Namespace "{}"', namespace)
 
         return response
 
@@ -888,7 +884,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get ReplicationController "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'get ReplicationController "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -896,7 +895,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get ReplicationControllers in Namespace "{}"', namespace)
+            raise KubeHTTPException(
+                response,
+                'get ReplicationControllers in Namespace "{}"', namespace
+            )
 
         return response
 
@@ -1111,7 +1113,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.session.post(url, json=template)
         if unhealthy(resp.status_code):
-            error(resp, 'create ReplicationController "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                resp,
+                'create ReplicationController "{}" in Namespace "{}"', name, namespace
+            )
             logger.debug('template used: {}'.format(json.dumps(template, indent=4)))
 
         self._wait_for_rc_ready(namespace, name)
@@ -1141,7 +1146,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.put(url, json=data)
         if unhealthy(response.status_code):
-            error(response, 'scale ReplicationController "{}"', name)
+            raise KubeHTTPException(response, 'scale ReplicationController "{}"', name)
 
         return response
 
@@ -1149,8 +1154,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
-            error(response, 'delete ReplicationController "{}" in Namespace "{}"',
-                  name, namespace)
+            raise KubeHTTPException(
+                response,
+                'delete ReplicationController "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1283,7 +1290,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get Secret "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'get Secret "{}" in Namespace "{}"', name, namespace
+            )
 
         # decode the base64 data
         secrets = response.json()
@@ -1299,7 +1309,7 @@ class KubeHTTPClient(object):
         url = self._api('/namespaces/{}/secrets', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get Secrets in Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'get Secrets in Namespace "{}"', namespace)
 
         return response
 
@@ -1326,7 +1336,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets", namespace)
         response = self.session.post(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'failed to create Secret "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'failed to create Secret "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1342,7 +1355,11 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.put(url, json=template)
         if unhealthy(response.status_code):
-            error(response, 'failed to update Secret "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'failed to update Secret "{}" in Namespace "{}"',
+                name, namespace
+            )
 
         return response
 
@@ -1350,7 +1367,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
-            error(response, 'delete Secret "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'delete Secret "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1360,7 +1380,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get Service "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'get Service "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1368,7 +1391,7 @@ class KubeHTTPClient(object):
         url = self._api('/namespaces/{}/services', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get Services in Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'get Services in Namespace "{}"', namespace)
 
         return response
 
@@ -1384,7 +1407,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/services", namespace)
         response = self.session.post(url, json=data)
         if unhealthy(response.status_code):
-            error(response, 'create Service "{}" in Namespace "{}"', namespace, namespace)
+            raise KubeHTTPException(
+                response,
+                'create Service "{}" in Namespace "{}"', namespace, namespace
+            )
 
         return response
 
@@ -1392,7 +1418,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.put(url, json=data)
         if unhealthy(response.status_code):
-            error(response, 'update Service "{}" in Namespace "{}"', namespace, name)
+            raise KubeHTTPException(
+                response,
+                'update Service "{}" in Namespace "{}"', namespace, name
+            )
 
         return response
 
@@ -1400,7 +1429,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
-            error(response, 'delete Service "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'delete Service "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1410,7 +1442,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/pods/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get Pod "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(response, 'get Pod "{}" in Namespace "{}"', name, namespace)
 
         return response
 
@@ -1418,7 +1450,7 @@ class KubeHTTPClient(object):
         url = self._api('/namespaces/{}/pods', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get Pods in Namespace "{}"', namespace)
+            raise KubeHTTPException(response, 'get Pods in Namespace "{}"', namespace)
 
         return response
 
@@ -1426,7 +1458,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/pods/{}", namespace, name)
         resp = self.session.delete(url)
         if unhealthy(resp.status_code):
-            error(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
         # Verify the pod has been deleted
         # Only wait as long as the grace period is - k8s will eventually GC
@@ -1446,7 +1478,10 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces/{}/pods/{}/log", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get logs for Pod "{}" in Namespace "{}"', name, namespace)
+            raise KubeHTTPException(
+                response,
+                'get logs for Pod "{}" in Namespace "{}"', name, namespace
+            )
 
         return response
 
@@ -1620,7 +1655,7 @@ class KubeHTTPClient(object):
         url = self._api('/nodes')
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
-            error(response, 'get Nodes')
+            raise KubeHTTPException(response, 'get Nodes')
 
         return response
 
@@ -1628,7 +1663,7 @@ class KubeHTTPClient(object):
         url = self._api('/nodes/{}'.format(name))
         response = self.session.get(url)
         if unhealthy(response.status_code):
-            error(response, 'get Node {} in Nodes'.format(name))
+            raise KubeHTTPException(response, 'get Node {} in Nodes', name)
 
         return response
 

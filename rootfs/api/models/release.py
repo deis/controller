@@ -261,7 +261,7 @@ class Release(UuidAuditedModel):
             'heritage': 'deis'
         }
         controller_removal = []
-        controllers = self._scheduler._get_rcs(self.app.id, labels=labels).json()
+        controllers = self._scheduler.get_rcs(self.app.id, labels=labels).json()
         for controller in controllers['items']:
             current_version = controller['metadata']['labels']['version']
             # skip the latest release
@@ -288,22 +288,22 @@ class Release(UuidAuditedModel):
             'app': self.app.id,
             'type': 'env'
         }
-        secrets = self._scheduler._get_secrets(self.app.id, labels=labels).json()
+        secrets = self._scheduler.get_secrets(self.app.id, labels=labels).json()
         for secret in secrets['items']:
             current_version = secret['metadata']['labels']['version']
             # skip the latest release
             if current_version == latest_version:
                 continue
 
-            self._scheduler._delete_secret(self.app.id, secret['metadata']['name'])
+            self._scheduler.delete_secret(self.app.id, secret['metadata']['name'])
 
         # Remove stray pods
         labels = {
             'heritage': 'deis'
         }
-        pods = self._scheduler._get_pods(self.app.id, labels=labels).json()
+        pods = self._scheduler.get_pods(self.app.id, labels=labels).json()
         for pod in pods['items']:
-            if self._scheduler._pod_deleted(pod):
+            if self._scheduler.pod_deleted(pod):
                 continue
 
             current_version = pod['metadata']['labels']['version']
@@ -311,7 +311,7 @@ class Release(UuidAuditedModel):
             if current_version == latest_version:
                 continue
 
-            self._scheduler._delete_pod(self.app.id, pod['metadata']['name'])
+            self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
 
     def _delete_release_in_scheduler(self, namespace, version):
         """
@@ -325,14 +325,14 @@ class Release(UuidAuditedModel):
             'app': namespace,
             'version': 'v{}'.format(version)
         }
-        controllers = self._scheduler._get_rcs(namespace, labels=labels).json()
+        controllers = self._scheduler.get_rcs(namespace, labels=labels).json()
         for controller in controllers['items']:
-            self._scheduler._cleanup_release(namespace, controller)
+            self._scheduler.cleanup_release(namespace, controller)
 
         # remove secret that contains env vars for the release
         try:
             secret_name = "{}-{}-env".format(namespace, version)
-            self._scheduler._delete_secret(namespace, secret_name)
+            self._scheduler.delete_secret(namespace, secret_name)
         except KubeHTTPException:
             pass
 

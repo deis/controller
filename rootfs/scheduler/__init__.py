@@ -254,17 +254,17 @@ class KubeHTTPClient(object):
         port = envs.get('PORT', None)
 
         # Fetch old RC and create the new one for a release
-        old_rc = self._get_old_rc(namespace, app_type)
+        old_rc = self.get_old_rc(namespace, app_type)
 
         # If an RC already exists then stop processing of the deploy
         try:
-            self._get_rc(namespace, name)
+            self.get_rc(namespace, name)
             logger.info('RC {} already exists under Namespace {}. Stopping deploy'.format(name, namespace))  # noqa
             return
         except KubeHTTPException:
             # make replicas 0 so scaling handles the work
             replicas = kwargs.pop('replicas')
-            new_rc = self._create_rc(namespace, name, image, command, replicas=0, **kwargs).json()
+            new_rc = self.create_rc(namespace, name, image, command, replicas=0, **kwargs).json()
             kwargs['replicas'] = replicas
 
         # Get the desired number to scale to
@@ -278,7 +278,7 @@ class KubeHTTPClient(object):
         if not kwargs.get('batches', None):
             # figure out how many nodes the application can go on
             tags = kwargs.get('tags', {})
-            steps = len(self._get_nodes(labels=tags).json()['items'])
+            steps = len(self.get_nodes(labels=tags).json()['items'])
         else:
             steps = int(kwargs.get('batches'))
 
@@ -312,7 +312,7 @@ class KubeHTTPClient(object):
             # New release is broken. Clean up
 
             # Remove new release of the RC
-            self._cleanup_release(namespace, new_rc)
+            self.cleanup_release(namespace, new_rc)
 
             # If there was a previous release then bring that back
             if old_rc:
@@ -327,34 +327,34 @@ class KubeHTTPClient(object):
 
         # New release is live and kicking. Clean up old release
         if old_rc:
-            self._cleanup_release(namespace, old_rc)
+            self.cleanup_release(namespace, old_rc)
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
         self._update_application_service(namespace, name, app_type, port, routable)
 
-    def _cleanup_release(self, namespace, controller):
+    def cleanup_release(self, namespace, controller):
         """
         Cleans up resources related to an application deployment
         """
         # Have the RC scale down pods and delete itself
         self._scale_rc(namespace, controller['metadata']['name'], 0)
-        self._delete_rc(namespace, controller['metadata']['name'])
+        self.delete_rc(namespace, controller['metadata']['name'])
 
         # Remove stray pods that the scale down will have missed (this can occassionally happen)
-        pods = self._get_pods(namespace, labels=controller['metadata']['labels']).json()
+        pods = self.get_pods(namespace, labels=controller['metadata']['labels']).json()
         for pod in pods['items']:
-            if self._pod_deleted(pod):
+            if self.pod_deleted(pod):
                 continue
 
-            self._delete_pod(namespace, pod['metadata']['name'])
+            self.delete_pod(namespace, pod['metadata']['name'])
 
     def _update_application_service(self, namespace, name, app_type, port, routable=False):
         """Update application service with all the various required information"""
         try:
             # Fetch service
-            service = self._get_service(namespace, namespace).json()
+            service = self.get_service(namespace, namespace).json()
             old_service = service.copy()  # in case anything fails for rollback
 
             # Update service information
@@ -372,21 +372,21 @@ class KubeHTTPClient(object):
                         # port 80 is the only one we care about right now
                         service['spec']['ports'][pos]['targetPort'] = int(port)
 
-            self._update_service(namespace, namespace, data=service)
+            self.update_service(namespace, namespace, data=service)
         except Exception as e:
             # Fix service to old port and app type
-            self._update_service(namespace, namespace, data=old_service)
+            self.update_service(namespace, namespace, data=old_service)
             raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, command, **kwargs):
         logger.info('scale {}, img {}, cmd "{}"'.format(name, image, command))
         replicas = kwargs.pop('replicas')
-        if unhealthy(self._get_rc_status(namespace, name)):
+        if unhealthy(self.get_rc_status(namespace, name)):
             # add RC if it is missing for the namespace
             try:
                 # Create RC with scale as 0 and then scale to get pod monitoring
                 kwargs['replicas'] = 0
-                self._create_rc(namespace, name, image, command, **kwargs)
+                self.create_rc(namespace, name, image, command, **kwargs)
             except KubeException:
                 logger.exception("Creating RC {} failed}".format(name))
                 raise
@@ -395,7 +395,7 @@ class KubeHTTPClient(object):
             self._scale_rc(namespace, name, replicas)
         except KubeException:
             logger.exception("Scaling failed for {}".format(name))
-            old = self._get_rc(namespace, name).json()
+            old = self.get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
             raise
 
@@ -405,28 +405,28 @@ class KubeHTTPClient(object):
         try:
             # Create essential resources
             try:
-                self._get_namespace(namespace)
+                self.get_namespace(namespace)
             except KubeException:
-                self._create_namespace(namespace)
+                self.create_namespace(namespace)
 
             try:
-                self._get_service(namespace, namespace)
+                self.get_service(namespace, namespace)
             except KubeException:
-                self._create_service(namespace, namespace)
+                self.create_service(namespace, namespace)
         except KubeException:
             # Blow it all away only if something horrible happens
-            self._delete_namespace(namespace)
+            self.delete_namespace(namespace)
             raise
 
     def destroy(self, namespace):
         """Destroy a application by deleting its namespace."""
         logger.debug("destroying Namespace {}".format(namespace))
-        self._delete_namespace(namespace)
+        self.delete_namespace(namespace)
 
         # wait 30 seconds for termination
         for _ in range(30):
             try:
-                self._get_namespace(namespace).json()
+                self.get_namespace(namespace).json()
             except KubeException:
                 break
 
@@ -505,9 +505,9 @@ class KubeHTTPClient(object):
             waited = 0
             timeout = 1200  # 20 minutes
             while (state == 'up' and waited < timeout):
-                response = self._get_pod(namespace, name)
+                response = self.get_pod(namespace, name)
                 pod = response.json()
-                state = str(self._pod_state(pod))
+                state = str(self.pod_state(pod))
                 # default data
                 exit_code = 0
 
@@ -531,7 +531,7 @@ class KubeHTTPClient(object):
             return exit_code, log.text
         finally:
             # cleanup
-            self._delete_pod(namespace, name)
+            self.delete_pod(namespace, name)
 
     def _set_container(self, namespace, data, **kwargs):  # noqa
         """Set app container information (env, healthcheck, etc) on a Pod"""
@@ -553,15 +553,15 @@ class KubeHTTPClient(object):
                     secrets_env[key.lower().replace('_', '-')] = str(value)
 
                 secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
-                self._get_secret(namespace, secret_name)
+                self.get_secret(namespace, secret_name)
             except KubeHTTPException:
                 labels = {
                     'version': kwargs.get('version'),
                     'type': 'env'
                 }
-                self._create_secret(namespace, secret_name, secrets_env, labels=labels)
+                self.create_secret(namespace, secret_name, secrets_env, labels=labels)
             else:
-                self._update_secret(namespace, secret_name, secrets_env)
+                self.update_secret(namespace, secret_name, secrets_env)
 
             for key in env.keys():
                 item = {
@@ -637,21 +637,21 @@ class KubeHTTPClient(object):
 
         secret_name = 'private-registry'
         try:
-            self._get_secret(namespace, secret_name)
+            self.get_secret(namespace, secret_name)
         except KubeHTTPException:
-            self._create_secret(
+            self.create_secret(
                 namespace,
                 secret_name,
                 secret_data,
                 secret_type='kubernetes.io/dockerconfigjson'
             )
         else:
-            self._update_secret(namespace, secret_name, secret_data)
+            self.update_secret(namespace, secret_name, secret_data)
 
         # apply image pull secret to a Pod spec
         data['imagePullSecrets'] = [{'name': secret_name}]
 
-    def _pod_state(self, pod):
+    def pod_state(self, pod):
         # See "Pod Phase" at http://kubernetes.io/docs/user-guide/pod-states/
         if pod is None:
             return PodState.destroyed
@@ -719,7 +719,7 @@ class KubeHTTPClient(object):
 
     # NAMESPACE #
 
-    def _get_namespace_events(self, namespace, **kwargs):
+    def get_namespace_events(self, namespace, **kwargs):
         url = self._api("/namespaces/{}/events", namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -727,7 +727,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_namespace(self, namespace):
+    def get_namespace(self, namespace):
         url = self._api("/namespaces/{}/", namespace)
         response = self.session.get(url)
         if unhealthy(response.status_code):
@@ -735,7 +735,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_namespaces(self, **kwargs):
+    def get_namespaces(self, **kwargs):
         url = self._api("/namespaces")
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -743,7 +743,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_namespace(self, namespace):
+    def create_namespace(self, namespace):
         url = self._api("/namespaces")
         data = {
             "kind": "Namespace",
@@ -759,7 +759,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _delete_namespace(self, namespace):
+    def delete_namespace(self, namespace):
         url = self._api("/namespaces/{}", namespace)
         response = self.session.delete(url)
         if response.status_code == 404:
@@ -771,23 +771,23 @@ class KubeHTTPClient(object):
 
     # REPLICATION CONTROLLER #
 
-    def _get_old_rc(self, namespace, app_type):
+    def get_old_rc(self, namespace, app_type):
         labels = {
             'app': namespace,
             'type': app_type
         }
-        controllers = self._get_rcs(namespace, labels=labels).json()
+        controllers = self.get_rcs(namespace, labels=labels).json()
         if len(controllers['items']) == 0:
             return False
 
         return controllers['items'][0]
 
-    def _get_rc_status(self, namespace, name):
+    def get_rc_status(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         resp = self.session.get(url)
         return resp.status_code
 
-    def _get_rc(self, namespace, name):
+    def get_rc(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
@@ -798,7 +798,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_rcs(self, namespace, **kwargs):
+    def get_rcs(self, namespace, **kwargs):
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -819,7 +819,7 @@ class KubeHTTPClient(object):
         delta = current - desired
         logger.info("waiting for {} pods in {} namespace to be terminated ({}s timeout)".format(delta, namespace, timeout))  # noqa
         for waited in range(timeout):
-            pods = self._get_pods(namespace, labels=labels).json()
+            pods = self.get_pods(namespace, labels=labels).json()
             count = len(pods['items'])
 
             # see if any pods are past their terminationGracePeriodsSeconds (as in stuck)
@@ -828,7 +828,7 @@ class KubeHTTPClient(object):
             # these will be eventually GC'ed by k8s, ignoring them for now
             for pod in pods['items']:
                 # remove pod if it is passed the graceful termination period
-                if self._pod_deleted(pod):
+                if self.pod_deleted(pod):
                     count -= 1
 
             # stop when all pods are terminated as expected
@@ -866,7 +866,7 @@ class KubeHTTPClient(object):
         # Ensure the minimum desired number of pods are available
         while waited < timeout:
             count = 0  # ready pods
-            pods = self._get_pods(namespace, labels=labels).json()
+            pods = self.get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
                 # Get more information on why a pod is pending
                 if pod['status']['phase'] == 'Pending':
@@ -888,7 +888,7 @@ class KubeHTTPClient(object):
                 # Find out if any pod goes beyond the Running (up) state
                 # Allow that to happen to account for very fast `deis run` as
                 # an example. Code using this function will account for it
-                state = self._pod_state(pod)
+                state = self.pod_state(pod)
                 if isinstance(state, PodState) and state > PodState.up:
                     count += 1
 
@@ -909,7 +909,7 @@ class KubeHTTPClient(object):
         logger.info("{} out of {} pods in namespace {} are in service".format(count, desired, namespace))  # noqa
 
     def _scale_rc(self, namespace, name, desired):
-        rc = self._get_rc(namespace, name).json()
+        rc = self.get_rc(namespace, name).json()
 
         # get the current replica count by querying for pods instead of introspecting RC
         labels = {
@@ -929,7 +929,7 @@ class KubeHTTPClient(object):
 
             logger.info("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
-            self._update_rc(namespace, name, rc)
+            self.update_rc(namespace, name, rc)
             self._wait_for_rc_ready(namespace, name)
 
         # Get application container
@@ -949,7 +949,7 @@ class KubeHTTPClient(object):
         if int(desired) < int(current):
             self._wait_until_pods_terminate(namespace, labels, current, desired)
 
-    def _create_rc(self, namespace, name, image, command, **kwargs):  # noqa
+    def create_rc(self, namespace, name, image, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
         build_type = kwargs.get('build_type')
 
@@ -978,10 +978,10 @@ class KubeHTTPClient(object):
         if build_type == "buildpack":
             # only buildpack apps need access to object storage
             try:
-                self._get_secret(namespace, 'objectstorage-keyfile')
+                self.get_secret(namespace, 'objectstorage-keyfile')
             except KubeException:
-                secret = self._get_secret('deis', 'objectstorage-keyfile').json()
-                self._create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+                secret = self.get_secret('deis', 'objectstorage-keyfile').json()
+                self.create_secret(namespace, 'objectstorage-keyfile', secret['data'])
 
             l["slug_url"] = image
             l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
@@ -1028,7 +1028,7 @@ class KubeHTTPClient(object):
         logger.debug("waiting for ReplicationController {} to get a newer generation (30s timeout)".format(name))  # noqa
         for _ in range(30):
             try:
-                rc = self._get_rc(namespace, name).json()
+                rc = self.get_rc(namespace, name).json()
                 if (
                     "observedGeneration" in rc["status"] and
                     rc["status"]["observedGeneration"] >= rc["metadata"]["generation"]
@@ -1041,7 +1041,7 @@ class KubeHTTPClient(object):
                 if e.response.status_code == 404:
                     time.sleep(1)
 
-    def _update_rc(self, namespace, name, data):
+    def update_rc(self, namespace, name, data):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.put(url, json=data)
         if unhealthy(response.status_code):
@@ -1049,7 +1049,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _delete_rc(self, namespace, name):
+    def delete_rc(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
@@ -1074,7 +1074,7 @@ class KubeHTTPClient(object):
             return
 
         try:
-            service = self._get_service(namespace, namespace).json()
+            service = self.get_service(namespace, namespace).json()
             port = service['spec']['ports'][0]['targetPort']
         except:
             pass
@@ -1185,7 +1185,7 @@ class KubeHTTPClient(object):
 
     # SECRETS #
     # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
-    def _get_secret(self, namespace, name):
+    def get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
@@ -1204,7 +1204,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_secrets(self, namespace, **kwargs):
+    def get_secrets(self, namespace, **kwargs):
         url = self._api('/namespaces/{}/secrets', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -1212,7 +1212,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
+    def create_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
         secret_types = ['Opaque', 'kubernetes.io/dockerconfigjson']
         if secret_type not in secret_types:
             raise KubeException('{} is not a supported secret type. Use one of the following: '.format(secret_type, ', '.join(secret_types)))  # noqa
@@ -1242,9 +1242,9 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _update_secret(self, namespace, name, data):
+    def update_secret(self, namespace, name, data):
         # only update the data attribute
-        template = self._get_secret(namespace, name).json()
+        template = self.get_secret(namespace, name).json()
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
@@ -1262,7 +1262,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _delete_secret(self, namespace, name):
+    def delete_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
@@ -1275,7 +1275,7 @@ class KubeHTTPClient(object):
 
     # SERVICES #
 
-    def _get_service(self, namespace, name):
+    def get_service(self, namespace, name):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
@@ -1286,7 +1286,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_services(self, namespace, **kwargs):
+    def get_services(self, namespace, **kwargs):
         url = self._api('/namespaces/{}/services', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -1294,7 +1294,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _create_service(self, namespace, name, data={}, **kwargs):
+    def create_service(self, namespace, name, data={}, **kwargs):
         l = {
             "version": self.apiversion,
             "name": namespace,
@@ -1313,7 +1313,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _update_service(self, namespace, name, data):
+    def update_service(self, namespace, name, data):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.put(url, json=data)
         if unhealthy(response.status_code):
@@ -1324,7 +1324,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _delete_service(self, namespace, name):
+    def delete_service(self, namespace, name):
         url = self._api("/namespaces/{}/services/{}", namespace, name)
         response = self.session.delete(url)
         if unhealthy(response.status_code):
@@ -1337,7 +1337,7 @@ class KubeHTTPClient(object):
 
     # PODS #
 
-    def _get_pod(self, namespace, name):
+    def get_pod(self, namespace, name):
         url = self._api("/namespaces/{}/pods/{}", namespace, name)
         response = self.session.get(url)
         if unhealthy(response.status_code):
@@ -1345,7 +1345,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_pods(self, namespace, **kwargs):
+    def get_pods(self, namespace, **kwargs):
         url = self._api('/namespaces/{}/pods', namespace)
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -1353,7 +1353,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _delete_pod(self, namespace, name):
+    def delete_pod(self, namespace, name):
         url = self._api("/namespaces/{}/pods/{}", namespace, name)
         resp = self.session.delete(url)
         if unhealthy(resp.status_code):
@@ -1363,9 +1363,9 @@ class KubeHTTPClient(object):
         # Only wait as long as the grace period is - k8s will eventually GC
         for _ in range(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS):
             try:
-                pod = self._get_pod(namespace, name).json()
+                pod = self.get_pod(namespace, name).json()
                 # hide pod if it is passed the graceful termination period
-                if self._pod_deleted(pod):
+                if self.pod_deleted(pod):
                     return
             except KubeHTTPException as e:
                 if e.response.status_code == 404:
@@ -1419,7 +1419,7 @@ class KubeHTTPClient(object):
             'involvedObject.namespace': pod['metadata']['namespace'],
             'involvedObject.uid': pod['metadata']['uid']
         }
-        events = self._get_namespace_events(pod['metadata']['namespace'], fields=fields).json()
+        events = self.get_namespace_events(pod['metadata']['namespace'], fields=fields).json()
         # make sure that events are sorted
         events['items'].sort(key=lambda x: x['lastTimestamp'])
         return events['items']
@@ -1470,7 +1470,7 @@ class KubeHTTPClient(object):
             self._pod_liveness_status(pod)
         )
 
-    def _pod_deleted(self, pod):
+    def pod_deleted(self, pod):
         """Checks if a pod is deleted and past its graceful termination period"""
         # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
         # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
@@ -1550,7 +1550,7 @@ class KubeHTTPClient(object):
 
     # NODES #
 
-    def _get_nodes(self, **kwargs):
+    def get_nodes(self, **kwargs):
         url = self._api('/nodes')
         response = self.session.get(url, params=self._selectors(**kwargs))
         if unhealthy(response.status_code):
@@ -1558,7 +1558,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def _get_node(self, name, **kwargs):
+    def get_node(self, name, **kwargs):
         url = self._api('/nodes/{}'.format(name))
         response = self.session.get(url)
         if unhealthy(response.status_code):

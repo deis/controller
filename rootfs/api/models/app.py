@@ -83,7 +83,7 @@ class App(UuidAuditedModel):
             self.release_set.latest()
         except Release.DoesNotExist:
             try:
-                if self._scheduler._get_namespace(self.id).status_code == 200:
+                if self._scheduler.get_namespace(self.id).status_code == 200:
                     # Namespace already exists
                     err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
                     self.log(err, logging.INFO)
@@ -214,7 +214,7 @@ class App(UuidAuditedModel):
             if 'name' not in kwargs:
                 desired = 0
                 labels = self._scheduler_filter(**kwargs)
-                controllers = self._scheduler._get_rcs(kwargs['id'], labels=labels).json()['items']
+                controllers = self._scheduler.get_rcs(kwargs['id'], labels=labels).json()['items']
                 for controller in controllers:
                     desired += controller['spec']['replicas']
         except KubeException:
@@ -224,7 +224,7 @@ class App(UuidAuditedModel):
         try:
             for pod in self.list_pods(**kwargs):
                 # This function verifies the delete. Gives pod 30 seconds
-                self._scheduler._delete_pod(self.id, pod['name'])
+                self._scheduler.delete_pod(self.id, pod['name'])
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
             self.log(err, logging.WARNING)
@@ -617,9 +617,9 @@ class App(UuidAuditedModel):
 
             # in case a singular pod is requested
             if 'name' in kwargs:
-                pods = [self._scheduler._get_pod(self.id, kwargs['name']).json()]
+                pods = [self._scheduler.get_pod(self.id, kwargs['name']).json()]
             else:
-                pods = self._scheduler._get_pods(self.id, labels=labels).json()['items']
+                pods = self._scheduler.get_pods(self.id, labels=labels).json()['items']
 
             data = []
             for p in pods:
@@ -627,14 +627,14 @@ class App(UuidAuditedModel):
                 if p['metadata']['labels']['type'] == 'run':
                     continue
 
-                state = str(self._scheduler._pod_state(p))
+                state = str(self._scheduler.pod_state(p))
 
                 # follows kubelete convention - these are hidden unless show-all is set
                 if state in ['down', 'crashed']:
                     continue
 
                 # hide pod if it is passed the graceful termination period
-                if self._scheduler._pod_deleted(p):
+                if self._scheduler.pod_deleted(p):
                     continue
 
                 item = Pod()

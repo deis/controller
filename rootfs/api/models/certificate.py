@@ -179,14 +179,14 @@ class Certificate(AuditedModel):
                 'tls.key': self.key
             }
 
-            secret = self._scheduler._get_secret(app, name).json()['data']
+            secret = self._scheduler.get_secret(app, name).json()['data']
         except KubeException:
-            self._scheduler._create_secret(app, name, data)
+            self._scheduler.create_secret(app, name, data)
         else:
             # update cert secret to the TLS Ingress format if required
             if secret != data:
                 try:
-                    self._scheduler._update_secret(app, name, data)
+                    self._scheduler.update_secret(app, name, data)
                 except KubeException as e:
                     msg = 'There was a problem updating the certificate secret ' \
                           '{} for {}'.format(name, app)
@@ -221,8 +221,8 @@ class Certificate(AuditedModel):
         if len(self.domains) == 0:
             try:
                 # We raise an exception when a secret doesn't exist
-                self._scheduler._get_secret(app, name)
-                self._scheduler._delete_secret(app, name)
+                self._scheduler.get_secret(app, name)
+                self._scheduler.delete_secret(app, name)
             except KubeException as e:
                 raise ServiceUnavailable("Could not delete certificate secret {} for application {}".format(name, app)) from e  # noqa
 

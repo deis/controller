@@ -52,7 +52,7 @@ class AuditedModel(models.Model):
     def _fetch_service_config(self, app):
         try:
             # Get the service from k8s to attach the domain correctly
-            svc = self._scheduler._get_service(app, app).json()
+            svc = self._scheduler.get_service(app, app).json()
         except KubeException as e:
             raise ServiceUnavailable('Could not fetch Kubernetes Service {}'.format(app)) from e
 
@@ -89,7 +89,7 @@ class AuditedModel(models.Model):
 
         # Update the k8s service for the application with new service information
         try:
-            self._scheduler._update_service(app, app, svc)
+            self._scheduler.update_service(app, app, svc)
         except KubeException as e:
             raise ServiceUnavailable('Could not update Kubernetes Service {}'.format(app)) from e
 

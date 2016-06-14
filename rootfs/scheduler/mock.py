@@ -531,26 +531,26 @@ class MockSchedulerClient(KubeHTTPClient):
 
         # Pre-seed data that is assumed to otherwise be there
         try:
-            self._get_namespace('deis')
+            self.get_namespace('deis')
         except KubeHTTPException:
-            self._create_namespace('deis')
+            self.create_namespace('deis')
 
         try:
-            self._get_secret('deis', 'objectstorage-keyfile')
+            self.get_secret('deis', 'objectstorage-keyfile')
         except KubeHTTPException:
             secrets = {
                 'access-key-id': 'i am a key',
                 'access-secret-key': 'i am a secret'
             }
-            self._create_secret('deis', 'objectstorage-keyfile', secrets)
+            self.create_secret('deis', 'objectstorage-keyfile', secrets)
 
         try:
-            self._get_namespace('duplicate')
+            self.get_namespace('duplicate')
         except KubeHTTPException:
-            self._create_namespace('duplicate')
+            self.create_namespace('duplicate')
 
         try:
-            self._get_node('172.17.8.100')
+            self.get_node('172.17.8.100')
         except KubeHTTPException:
             data = {
                 "kind": "Node",

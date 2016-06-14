@@ -840,8 +840,8 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         app_id = response.data['id']
 
-        with mock.patch('scheduler.KubeHTTPClient._get_pod') as kube_pod:
-            with mock.patch('scheduler.KubeHTTPClient._get_pods') as kube_pods:
+        with mock.patch('scheduler.KubeHTTPClient.get_pod') as kube_pod:
+            with mock.patch('scheduler.KubeHTTPClient.get_pods') as kube_pods:
                 kube_pod.side_effect = KubeException('boom!')
                 kube_pods.side_effect = KubeException('boom!')
                 url = "/v2/apps/{app_id}/pods".format(**locals())

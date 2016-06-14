@@ -216,16 +216,16 @@ class DomainTest(APITestCase):
         """
         self.client.post('/v2/apps', {'id': 'test'})
 
-        # scheduler._get_service exception
-        with mock.patch('scheduler.KubeHTTPClient._get_service') as mock_kube:
+        # scheduler.get_service exception
+        with mock.patch('scheduler.KubeHTTPClient.get_service') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             domain = 'foo.com'
             url = '/v2/apps/test/domains'
             response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 503, response.data)
 
-        # scheduler._update_service exception
-        with mock.patch('scheduler.KubeHTTPClient._update_service') as mock_kube:
+        # scheduler.update_service exception
+        with mock.patch('scheduler.KubeHTTPClient.update_service') as mock_kube:
             domain = 'foo.com'
             url = '/v2/apps/test/domains'
             response = self.client.post(url, {'domain': domain})

@@ -352,11 +352,10 @@ class KubeHTTPClient(object):
 
     def _update_application_service(self, namespace, name, app_type, port, routable=False):
         """Update application service with all the various required information"""
-        try:
-            # Fetch service
-            service = self.get_service(namespace, namespace).json()
-            old_service = service.copy()  # in case anything fails for rollback
+        service = self.get_service(namespace, namespace).json()
+        old_service = service.copy()  # in case anything fails for rollback
 
+        try:
             # Update service information
             if routable:
                 service['metadata']['labels']['router.deis.io/routable'] = 'true'
@@ -398,37 +397,6 @@ class KubeHTTPClient(object):
             old = self.get_rc(namespace, name).json()
             self._scale_rc(namespace, name, old['spec']['replicas'])
             raise
-
-    def create(self, namespace, **kwargs):
-        """Create a basic structure for an application in k8s"""
-        logger.debug('creating Namespace {} and services'.format(namespace))
-        try:
-            # Create essential resources
-            try:
-                self.get_namespace(namespace)
-            except KubeException:
-                self.create_namespace(namespace)
-
-            try:
-                self.get_service(namespace, namespace)
-            except KubeException:
-                self.create_service(namespace, namespace)
-        except KubeException:
-            # Blow it all away only if something horrible happens
-            self.delete_namespace(namespace)
-            raise
-
-    def destroy(self, namespace):
-        """Destroy a application by deleting its namespace."""
-        logger.debug("destroying Namespace {}".format(namespace))
-        self.delete_namespace(namespace)
-
-        # wait 30 seconds for termination
-        for _ in range(30):
-            try:
-                self.get_namespace(namespace).json()
-            except KubeException:
-                break
 
     def run(self, namespace, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""

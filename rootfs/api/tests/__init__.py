@@ -45,7 +45,7 @@ class SilentDjangoTestSuiteRunner(DiscoverRunner):
 
     def run_tests(self, test_labels, extra_tests=None, **kwargs):
         """Run tests with all but critical log messages disabled."""
-        # hide any log messages less than critical
-        logging.disable(logging.ERROR)
+        # hide any log messages less than error (critical and error are shown)
+        logging.disable(logging.WARNING)
         return super(SilentDjangoTestSuiteRunner, self).run_tests(
             test_labels, extra_tests, **kwargs)

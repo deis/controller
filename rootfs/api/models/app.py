@@ -151,7 +151,7 @@ class App(UuidAuditedModel):
         """
         logger.log(level, "[{}]: {}".format(self.id, message))
 
-    def create(self, *args, **kwargs):
+    def create(self, *args, **kwargs):  # noqa
         """
         Create a application with an initial config, release, domain
         and k8s resource if needed
@@ -171,9 +171,28 @@ class App(UuidAuditedModel):
             )
 
         # create required minimum resources in k8s for the application
+        namespace = self.id
+        service = self.id
         try:
-            self._scheduler.create(self.id)
+            self.log('creating Namespace {} and services'.format(namespace), level=logging.DEBUG)
+            # Create essential resources
+            try:
+                self._scheduler.get_namespace(namespace)
+            except KubeException:
+                self._scheduler.create_namespace(namespace)
+
+            try:
+                self._scheduler.get_service(namespace, service)
+            except KubeException:
+                self._scheduler.create_service(namespace, service)
         except KubeException as e:
+            # Blow it all away only if something horrible happens
+            try:
+                self._scheduler.delete_namespace(namespace)
+            except KubeException as e:
+                # Just feed into the item below
+                pass
+
             raise ServiceUnavailable('Kubernetes resources could not be created') from e
 
         # Attach the platform specific application sub domain to the k8s service
@@ -185,8 +204,14 @@ class App(UuidAuditedModel):
         """Delete this application including all containers"""
         self.log("deleting environment")
         try:
-            # attempt to remove application from kubernetes
-            self._scheduler.destroy(self.id)
+            self._scheduler.delete_namespace(self.id)
+
+            # wait 30 seconds for termination
+            for _ in range(30):
+                try:
+                    self._scheduler.get_namespace(self.id)
+                except KubeException:
+                    break
         except KubeException as e:
             raise ServiceUnavailable('Could not delete Kubernetes Namespace {}'.format(self.id)) from e  # noqa
 

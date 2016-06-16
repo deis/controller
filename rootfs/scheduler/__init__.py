@@ -20,157 +20,10 @@ from deis import __version__ as deis_version
 
 logger = logging.getLogger(__name__)
 
-# Used for one off command runs on pods
-POD_BTEMPLATE = """\
-kind: Pod
-apiVersion: $version
-metadata:
-  name: $id
-  labels:
-    app: $app
-    version: $appversion
-    type: $type
-    heritage: deis
-spec:
-  containers:
-    - name: $containername
-      image: $image
-      env:
-        - name: SLUG_URL
-          value: $slug_url
-        - name: BUILDER_STORAGE
-          value: $storagetype
-        - name: DEIS_MINIO_SERVICE_HOST
-          value: $mHost
-        - name: DEIS_MINIO_SERVICE_PORT
-          value: "$mPort"
-      volumeMounts:
-        - name: objectstorage-keyfile
-          mountPath: /var/run/secrets/deis/objectstore/creds
-          readOnly: true
-  volumes:
-    - name: "objectstorage-keyfile"
-      secret:
-        secretName: objectstorage-keyfile
-  terminationGracePeriodSeconds: $terminationGracePeriodSeconds
-  restartPolicy: Never
-"""
-
-POD_TEMPLATE = """\
-kind: Pod
-apiVersion: $version
-metadata:
-  name: $id
-  labels:
-    app: $app
-    version: $appversion
-    type: $type
-    heritage: deis
-spec:
-  containers:
-    - name: $containername
-      image: $image
-      env: []
-  terminationGracePeriodSeconds: $terminationGracePeriodSeconds
-  restartPolicy: Never
-"""
-
-RCD_TEMPLATE = """\
-kind: ReplicationController
-apiVersion: $version
-metadata:
-  name: $name
-  labels:
-    app: $id
-    version: $appversion
-    type: $type
-    heritage: deis
-spec:
-  replicas: $replicas
-  selector:
-    app: $id
-    version: $appversion
-    type: $type
-    heritage: deis
-  template:
-    metadata:
-      labels:
-        app: $id
-        version: $appversion
-        type: $type
-        heritage: deis
-    spec:
-      terminationGracePeriodSeconds: $terminationGracePeriodSeconds
-      containers:
-        - name: $containername
-          image: $image
-          imagePullPolicy: $image_pull_policy
-          env:
-            - name: DEIS_APP
-              value: $id
-            - name: WORKFLOW_RELEASE
-              value: $appversion
-      nodeSelector: {}
-"""
-
-RCB_TEMPLATE = """\
-kind: ReplicationController
-apiVersion: $version
-metadata:
-  name: $name
-  labels:
-    app: $id
-    version: $appversion
-    type: $type
-    heritage: deis
-spec:
-  replicas: $replicas
-  selector:
-    app: $id
-    version: $appversion
-    type: $type
-    heritage: deis
-  template:
-    metadata:
-      labels:
-        app: $id
-        version: $appversion
-        type: $type
-        heritage: deis
-    spec:
-      terminationGracePeriodSeconds: $terminationGracePeriodSeconds
-      containers:
-        - name: $containername
-          image: $image
-          imagePullPolicy: $image_pull_policy
-          env:
-            - name: SLUG_URL
-              value: $slug_url
-            - name: DEIS_APP
-              value: $id
-            - name: WORKFLOW_RELEASE
-              value: $appversion
-            - name: BUILDER_STORAGE
-              value: $storagetype
-            - name: DEIS_MINIO_SERVICE_HOST
-              value: $mHost
-            - name: DEIS_MINIO_SERVICE_PORT
-              value: "$mPort"
-          volumeMounts:
-            - name: "objectstorage-keyfile"
-              mountPath: /var/run/secrets/deis/objectstore/creds
-              readOnly: true
-      nodeSelector: {}
-      volumes:
-        - name: objectstorage-keyfile
-          secret:
-            secretName: objectstorage-keyfile
-"""
-
 # Ports and app type will be overwritten as required
 SERVICE_TEMPLATE = """\
 kind: Service
-apiVersion: $version
+apiVersion: v1
 metadata:
   name: $name
   labels:
@@ -190,7 +43,7 @@ spec:
 
 SECRET_TEMPLATE = """\
 kind: Secret
-apiVersion: $version
+apiVersion: v1
 metadata:
   name: $name
   namespace: $id
@@ -398,70 +251,145 @@ class KubeHTTPClient(object):
             self._scale_rc(namespace, name, old['spec']['replicas'])
             raise
 
+    def _build_pod_manifest(self, namespace, name, image, **kwargs):
+        app_type = kwargs.get('app_type')
+        build_type = kwargs.get('build_type')
+
+        # labels that represent the pod(s)
+        labels = {
+            'app': namespace,
+            'version': kwargs.get('version'),
+            'type': app_type,
+            'heritage': 'deis',
+        }
+
+        # create base pod structure
+        manifest = {
+            'kind': 'Pod',
+            'apiVersion': 'v1',
+            'metadata': {
+              'name': name,
+              'labels': labels
+            },
+            'spec': {}
+        }
+
+        # pod manifest spec
+        spec = manifest['spec']
+
+        # what should the pod do if it exits
+        spec['restartPolicy'] = kwargs.get('restartPolicy', 'Always')
+
+        # apply tags as needed to restrict pod to particular node(s)
+        spec['nodeSelector'] = kwargs.get('tags', {})
+
+        # How long until a pod is forcefully terminated
+        spec['terminationGracePeriodSeconds'] = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
+
+        # set the image pull policy that is associated with the application container
+        kwargs['image_pull_policy'] = settings.DOCKER_BUILDER_IMAGE_PULL_POLICY
+
+        # mix in default environment information deis may require
+        default_env = {
+            'DEIS_APP': namespace,
+            'WORKFLOW_RELEASE': kwargs.get("version")
+        }
+
+        # Check if it is a slug builder image.
+        if build_type == "buildpack":
+            # only buildpack apps need access to object storage
+            try:
+                self.get_secret(namespace, 'objectstorage-keyfile')
+            except KubeException:
+                secret = self.get_secret('deis', 'objectstorage-keyfile').json()
+                self.create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+
+            # add the required volume to the top level pod spec
+            spec['volumes'] = [{
+                'name': 'objectstorage-keyfile',
+                'secret': {
+                    'secretName': 'objectstorage-keyfile'
+                }
+            }]
+
+            # added to kwargs to send to the container function
+            kwargs['volumeMounts'] = [{
+                'name': 'objectstorage-keyfile',
+                'mountPath': '/var/run/secrets/deis/objectstore/creds',
+                'readOnly': True
+            }]
+
+            default_env['SLUG_URL'] = image
+            default_env['BUILDER_STORAGE'] = os.getenv("APP_STORAGE")
+            default_env['DEIS_MINIO_SERVICE_HOST'] = os.getenv("DEIS_MINIO_SERVICE_HOST")
+            default_env['DEIS_MINIO_SERVICE_PORT'] = os.getenv("DEIS_MINIO_SERVICE_PORT")
+
+            # overwrite image so slugrunner image is used in the container
+            image = settings.SLUGRUNNER_IMAGE
+            # slugrunner pull policy
+            kwargs['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
+
+        envs = kwargs.get('envs', {})
+        default_env.update(envs)
+        kwargs['envs'] = default_env
+
+        # create the base container
+        container = {}
+
+        # process to call
+        if kwargs.get('command', []):
+            container['command'] = kwargs.get('command')
+        if kwargs.get('args', []):
+            container['args'] = kwargs.get('args')
+
+        # set information to the application container
+        kwargs['image'] = image
+        container_name = namespace + '-' + app_type
+        self._set_container(namespace, container_name, container, **kwargs)
+        # add image to the mix
+        self._set_image_secret(spec, namespace, **kwargs)
+
+        spec['containers'] = [container]
+
+        return manifest
+
     def run(self, namespace, name, image, entrypoint, command, **kwargs):
         """Run a one-off command."""
         logger.info('run {}, img {}, entrypoint {}, cmd "{}"'.format(
             name, image, entrypoint, command)
         )
 
-        app_type = 'run'
-        POD = POD_TEMPLATE
-        l = {
-            'id': name,
-            'containername': namespace + '-' + app_type,
-            'app': namespace,
-            'appversion': kwargs.get('version'),
-            'type': 'run',
-            'version': self.apiversion,
-            'image': image,
-            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
-            'storagetype': os.getenv("APP_STORAGE"),
-            'terminationGracePeriodSeconds': settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
-        }
+        # force the app_type
+        kwargs['app_type'] = 'run'
+        # run pods never restart
+        kwargs['restartPolicy'] = 'Never'
 
-        if entrypoint == '/runner/init':
-            POD = POD_BTEMPLATE
-            l["slug_url"] = image
-            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
-            l["image"] = settings.SLUGRUNNER_IMAGE
-            l["mHost"] = os.getenv("DEIS_MINIO_SERVICE_HOST")
-            l["mPort"] = os.getenv("DEIS_MINIO_SERVICE_PORT")
-
-        template = ruamel.yaml.load(string.Template(POD).substitute(l))
-
+        # figure out how to call the command
         if command.startswith('-c '):
             args = command.split(' ', 1)
             args[1] = args[1][1:-1]
         else:
             args = [command[1:-1]]
 
-        spec = template['spec']
+        kwargs['command'] = [entrypoint]
+        kwargs['args'] = args
 
-        # apply tags as needed to restrict pod to particular node(s)
-        spec["nodeSelector"] = kwargs.get('tags', {})
-
-        container = spec['containers'][0]
-        container['command'] = [entrypoint]
-        container['args'] = args
-
-        # set information to the application container
-        kwargs['image'] = l['image']
-        self._set_container(namespace, container, **kwargs)
-        # add image to the mix
-        self._set_image_secret(spec, namespace, **kwargs)
+        manifest = self._build_pod_manifest(namespace, name, image, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
-        response = self.session.post(url, json=template)
+        response = self.session.post(url, json=manifest)
         if unhealthy(response.status_code):
             raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
 
         labels = {
             'app': namespace,
-            'type': app_type,
+            'type': kwargs.get('app_type'),
             'version': kwargs.get('version'),
             'heritage': 'deis',
         }
         # wait for run pod to start - use the same function as scale
+        container_name = namespace + '-' + kwargs.get('app_type')
+        container = self._find_container(container_name, manifest['spec']['containers'])
         self._wait_until_pods_are_ready(namespace, container, labels, desired=1)
 
         try:
@@ -501,12 +429,21 @@ class KubeHTTPClient(object):
             # cleanup
             self.delete_pod(namespace, name)
 
-    def _set_container(self, namespace, data, **kwargs):  # noqa
+    def _set_container(self, namespace, container_name, data, **kwargs):  # noqa
         """Set app container information (env, healthcheck, etc) on a Pod"""
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
         cpu = kwargs.get('cpu', {}).get(app_type)
         env = kwargs.get('envs', {})
+
+        # container name
+        data['name'] = container_name
+        # set the image to use
+        data['image'] = kwargs.get('image')
+        # set the image pull policy for the above image
+        data['imagePullPolicy'] = kwargs.get('image_pull_policy')
+        # add in any volumes that need to be mounted into the container
+        data['volumeMounts'] = kwargs.get('volumeMounts', [])
 
         # create env list if missing
         if 'env' not in data:
@@ -715,7 +652,7 @@ class KubeHTTPClient(object):
         url = self._api("/namespaces")
         data = {
             "kind": "Namespace",
-            "apiVersion": self.apiversion,
+            "apiVersion": "v1",
             "metadata": {
                 "name": namespace
             }
@@ -881,9 +818,9 @@ class KubeHTTPClient(object):
 
         # get the current replica count by querying for pods instead of introspecting RC
         labels = {
-            'app': rc['spec']['selector']['app'],
-            'type': rc['spec']['selector']['type'],
-            'version': rc['spec']['selector']['version']
+            'app': rc['metadata']['labels']['app'],
+            'type': rc['metadata']['labels']['type'],
+            'version': rc['metadata']['labels']['version']
         }
 
         current = int(rc['spec']['replicas'])
@@ -906,9 +843,7 @@ class KubeHTTPClient(object):
             rc['metadata']['labels']['type']
         )
         # get health info from spec
-        for container in rc['spec']['template']['spec']['containers']:
-            if container['name'] == container_name:
-                break
+        container = self._find_container(container_name, rc['spec']['template']['spec']['containers'])  # noqa
 
         # Double check enough pods are in the required state to service the application
         self._wait_until_pods_are_ready(namespace, container, labels, desired)
@@ -917,69 +852,48 @@ class KubeHTTPClient(object):
         if int(desired) < int(current):
             self._wait_until_pods_terminate(namespace, labels, current, desired)
 
-    def create_rc(self, namespace, name, image, command, **kwargs):  # noqa
-        app_type = kwargs.get('app_type')
-        build_type = kwargs.get('build_type')
+    def _find_container(self, container_name, containers):
+        """
+        Locate a container by name in a list of containers
+        """
+        for container in containers:
+            if container['name'] == container_name:
+                return container
 
-        container_name = namespace + '-' + app_type
-        args = command.split()
-        storageType = os.getenv("APP_STORAGE")
-        TEMPLATE = RCD_TEMPLATE
+        return None
 
-        l = {
-            "name": name,
-            "id": namespace,
-            "appversion": kwargs.get("version"),
-            "version": self.apiversion,
-            "image": image,
-            'image_pull_policy': settings.DOCKER_BUILDER_IMAGE_PULL_POLICY,
-            "replicas": kwargs.get("replicas", 0),
-            "containername": container_name,
-            "type": app_type,
-            "storagetype": storageType,
-            "mHost": os.getenv("DEIS_MINIO_SERVICE_HOST"),
-            "mPort": os.getenv("DEIS_MINIO_SERVICE_PORT"),
-            "terminationGracePeriodSeconds": settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
+    def create_rc(self, namespace, name, image, command, **kwargs):
+        manifest = {
+            'kind': 'ReplicationController',
+            'apiVersion': 'v1',
+            'metadata': {
+              'name': name,
+              'labels': {
+                'app': namespace,
+                'version': kwargs.get("version"),
+                'type': kwargs.get('app_type'),
+                'heritage': 'deis',
+              }
+            },
+            'spec': {
+              'replicas': kwargs.get("replicas", 0)
+            }
         }
 
-        # Check if it is a slug builder image.
-        if build_type == "buildpack":
-            # only buildpack apps need access to object storage
-            try:
-                self.get_secret(namespace, 'objectstorage-keyfile')
-            except KubeException:
-                secret = self.get_secret('deis', 'objectstorage-keyfile').json()
-                self.create_secret(namespace, 'objectstorage-keyfile', secret['data'])
+        # tell pod how to execute the process
+        kwargs['args'] = command.split()
 
-            l["slug_url"] = image
-            l['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
-            l["image"] = settings.SLUGRUNNER_IMAGE
-            TEMPLATE = RCB_TEMPLATE
-
-        template = ruamel.yaml.load(string.Template(TEMPLATE).substitute(l))
-        spec = template["spec"]["template"]["spec"]
-
-        # apply tags as needed to restrict pod to particular node(s)
-        spec["nodeSelector"] = kwargs.get('tags', {})
-
-        # Deal with container information
-        container = spec["containers"][0]
-        container['args'] = args
-
-        # set information to the application container
-        kwargs['image'] = l['image']
-        self._set_container(namespace, container, **kwargs)
-        # add image to the mix
-        self._set_image_secret(spec, namespace, **kwargs)
+        # pod manifest spec
+        manifest['spec']['template'] = self._build_pod_manifest(namespace, name, image, **kwargs)
 
         url = self._api("/namespaces/{}/replicationcontrollers", namespace)
-        resp = self.session.post(url, json=template)
+        resp = self.session.post(url, json=manifest)
         if unhealthy(resp.status_code):
             raise KubeHTTPException(
                 resp,
                 'create ReplicationController "{}" in Namespace "{}"', name, namespace
             )
-            logger.debug('template used: {}'.format(ruamel.yaml.dump(template)))
+            logger.debug('manifest used: {}'.format(ruamel.yaml.dump(manifest)))
 
         self._wait_for_rc_ready(namespace, name)
 
@@ -1165,7 +1079,9 @@ class KubeHTTPClient(object):
         # decode the base64 data
         secrets = response.json()
         for key, value in secrets['data'].items():
-            secrets['data'][key] = base64.b64decode(value).decode(encoding='UTF-8')
+            value = base64.b64decode(value)
+            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            secrets['data'][key] = value.decode(encoding='UTF-8')
 
         # tell python-requests it actually hasn't consumed the data
         response._content = bytes(json.dumps(secrets), 'UTF-8')
@@ -1185,23 +1101,22 @@ class KubeHTTPClient(object):
         if secret_type not in secret_types:
             raise KubeException('{} is not a supported secret type. Use one of the following: '.format(secret_type, ', '.join(secret_types)))  # noqa
 
-        template = ruamel.yaml.load(string.Template(SECRET_TEMPLATE).substitute({
-            "version": self.apiversion,
+        manifest = ruamel.yaml.load(string.Template(SECRET_TEMPLATE).substitute({
             "id": namespace,
             "name": name,
             "type": secret_type
         }))
 
         # add in any additional label info
-        template['metadata']['labels'].update(labels)
+        manifest['metadata']['labels'].update(labels)
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
             item = base64.b64encode(value).decode(encoding='UTF-8')
-            template["data"].update({key: item})
+            manifest["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets", namespace)
-        response = self.session.post(url, json=template)
+        response = self.session.post(url, json=manifest)
         if unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,
@@ -1212,15 +1127,15 @@ class KubeHTTPClient(object):
 
     def update_secret(self, namespace, name, data):
         # only update the data attribute
-        template = self.get_secret(namespace, name).json()
+        secret = self.get_secret(namespace, name).json()
 
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
             item = base64.b64encode(value).decode(encoding='UTF-8')
-            template["data"].update({key: item})
+            secret["data"].update({key: item})
 
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
-        response = self.session.put(url, json=template)
+        response = self.session.put(url, json=secret)
         if unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,
@@ -1263,14 +1178,11 @@ class KubeHTTPClient(object):
         return response
 
     def create_service(self, namespace, name, data={}, **kwargs):
-        l = {
-            "version": self.apiversion,
-            "name": namespace,
-        }
+        l = {"name": namespace}
 
-        # Merge external data on to the prefined template
-        template = ruamel.yaml.load(string.Template(SERVICE_TEMPLATE).substitute(l))
-        data = dict_merge(template, data)
+        # Merge external data on to the prefined manifest
+        manifest = ruamel.yaml.load(string.Template(SERVICE_TEMPLATE).substitute(l))
+        data = dict_merge(manifest, data)
         url = self._api("/namespaces/{}/services", namespace)
         response = self.session.post(url, json=data)
         if unhealthy(response.status_code):
@@ -1358,23 +1270,25 @@ class KubeHTTPClient(object):
             return 'Pending', ''
 
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
-        for container in pod['status']['containerStatuses']:
-            # find the right container in case there are many on the pod
-            if container['name'] != name:
-                continue
+        # find the right container in case there are many on the pod
+        container = self._find_container(name, pod['status']['containerStatuses'])
+        if container is None:
+            # Return Pending if nothing else can be found
+            return 'Pending', ''
 
-            if 'waiting' in container['state']:
-                reason = container['state']['waiting']['reason']
-                message = ''
-                # message is not always available
-                if 'message' in container['state']['waiting']:
-                    message = container['state']['waiting']['message']
-                if reason == 'ContainerCreating':
-                    # get the last event
-                    event = self._pod_events(pod).pop()
-                    return event['reason'], event['message']
+        if 'waiting' in container['state']:
+            reason = container['state']['waiting']['reason']
+            message = ''
+            # message is not always available
+            if 'message' in container['state']['waiting']:
+                message = container['state']['waiting']['message']
 
-                return reason, message
+            if reason == 'ContainerCreating':
+                # get the last event
+                event = self._pod_events(pod).pop()
+                return event['reason'], event['message']
+
+            return reason, message
 
         # Return Pending if nothing else can be found
         return 'Pending', ''
@@ -1395,26 +1309,27 @@ class KubeHTTPClient(object):
     def _pod_readiness_status(self, pod):
         """Check if the pod container have passed the readiness probes"""
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
-        for container in pod['status']['containerStatuses']:
-            # find the right container in case there are many on the pod
-            if container['name'] != name:
-                continue
+        # find the right container in case there are many on the pod
+        container = self._find_container(name, pod['status']['containerStatuses'])
+        if container is None:
+            # Seems like the most sensible default
+            return 'Unknown'
 
-            if not container['ready']:
-                if 'running' in container['state'].keys():
-                    return 'Starting'
+        if not container['ready']:
+            if 'running' in container['state'].keys():
+                return 'Starting'
 
-                if (
-                    'terminated' in container['state'].keys() or
-                    'deletionTimestamp' in pod['metadata']
-                ):
-                    return 'Terminating'
-            else:
-                # See if k8s is in Terminating state
-                if 'deletionTimestamp' in pod['metadata']:
-                    return 'Terminating'
+            if (
+                'terminated' in container['state'].keys() or
+                'deletionTimestamp' in pod['metadata']
+            ):
+                return 'Terminating'
+        else:
+            # See if k8s is in Terminating state
+            if 'deletionTimestamp' in pod['metadata']:
+                return 'Terminating'
 
-                return 'Running'
+            return 'Running'
 
         # Seems like the most sensible default
         return 'Unknown'

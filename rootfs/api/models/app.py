@@ -371,7 +371,7 @@ class App(UuidAuditedModel):
                 'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': release.build.type,
-                'healthcheck': release.config.healthcheck(),
+                'healthcheck': release.config.healthcheck,
                 'routable': routable
             }
 
@@ -427,7 +427,7 @@ class App(UuidAuditedModel):
                 'version': "v{}".format(release.version),
                 'app_type': scale_type,
                 'build_type': release.build.type,
-                'healthcheck': release.config.healthcheck(),
+                'healthcheck': release.config.healthcheck,
                 'routable': routable,
                 'batches': batches
             }
@@ -503,15 +503,9 @@ class App(UuidAuditedModel):
         # Get the router host and append healthcheck path
         url = 'http://{}:{}'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
 
-        # if a health check url is available then 200 is the only acceptable status code
-        if len(kwargs['healthcheck']):
-            allowed = [200]
-            url = urljoin(url, kwargs['healthcheck'].get('path'))
-            req_timeout = kwargs['healthcheck'].get('timeout')
-        else:
-            allowed = set(range(200, 599))
-            allowed.remove(404)
-            req_timeout = 3
+        allowed = set(range(200, 599))
+        allowed.remove(404)
+        req_timeout = 3
 
         session = requests.Session()
         session.headers = {

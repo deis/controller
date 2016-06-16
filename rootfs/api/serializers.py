@@ -4,6 +4,7 @@ Classes to serialize the RESTful representation of Deis API models.
 
 import json
 import re
+import jsonschema
 from urllib.parse import urlparse
 
 from django.contrib.auth.models import User
@@ -19,6 +20,57 @@ MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE
 CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[-+]?[0-9]*\.?[0-9]+[m]{0,1})$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
+PROBE_SCHEMA = {
+    "$schema": "http://json-schema.org/schema#",
+
+    "type": "object",
+    "properties": {
+        "exec": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["command"]
+        },
+        "httpGet": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "port": {"type": "string"},
+                "host": {"type": "string"},
+                "scheme": {"type": "string"},
+                "httpHeaders": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "value": {"type": "string"},
+                        }
+                    }
+                }
+            },
+            "required": ["port"]
+        },
+        "tcpSocket": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "string"},
+            },
+            "required": ["port"]
+        },
+        "initialDelaySeconds": {"type": "integer"},
+        "timeoutSeconds": {"type": "integer"},
+        "periodSeconds": {"type": "integer"},
+        "successThreshold": {"type": "integer"},
+        "failureThreshold": {"type": "integer"},
+    }
+}
 
 
 class JSONFieldSerializer(serializers.JSONField):
@@ -128,6 +180,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)
+    healthcheck = JSONFieldSerializer(required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""
@@ -249,6 +302,21 @@ class ConfigSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Config keys must start with a letter or underscore and "
                     "only contain [A-z0-9_]")
+
+        return data
+
+    def validate_healthcheck(self, data):
+        for key, value in data.items():
+            if value is None:
+                raise serializers.ValidationError("Healthcheck value for " + key + "can't be None")
+
+            if key not in ['livenessProbe', 'readinessProbe']:
+                raise serializers.ValidationError(
+                    "Healthcheck keys must be either livenessProbe or readinessProbe")
+            try:
+                jsonschema.validate(value, PROBE_SCHEMA)
+            except jsonschema.ValidationError as e:
+                raise serializers.ValidationError(e.message)
 
         return data
 

@@ -20,6 +20,7 @@ class Config(UuidAuditedModel):
     cpu = JSONField(default={}, blank=True)
     tags = JSONField(default={}, blank=True)
     registry = JSONField(default={}, blank=True)
+    healthcheck = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -127,7 +128,7 @@ class Config(UuidAuditedModel):
                 # usually means a totally new app
                 previous_config = self.app.config_set.latest()
 
-            for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
+            for attr in ['cpu', 'memory', 'tags', 'registry', 'values', 'healthcheck']:
                 data = getattr(previous_config, attr, {}).copy()
                 new_data = getattr(self, attr, {}).copy()
 

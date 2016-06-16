@@ -137,7 +137,7 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry'])
+                                'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
@@ -160,7 +160,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry'])
+                                'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
@@ -849,3 +849,125 @@ class ConfigTest(APITransactionTestCase):
             {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com'})}
         )
         self.assertEqual(resp.status_code, 400, response.data)
+
+    def test_config_healthchecks(self, mock_requests):
+        """
+        Test that healthchecks can be applied
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+        readiness_probe = {'healthcheck': {'readinessProbe': {'httpGet': {'port': 5000}}}}
+
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            readiness_probe)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIn('readinessProbe', resp.data['healthcheck'])
+        self.assertEqual(resp.data['healthcheck'], readiness_probe['healthcheck'])
+
+        liveness_probe = {'healthcheck': {'livenessProbe': {'httpGet': {'port': 5000}}}}
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            liveness_probe)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIn('livenessProbe', resp.data['healthcheck'])
+        self.assertEqual(
+            resp.data['healthcheck']['livenessProbe'],
+            liveness_probe['healthcheck']['livenessProbe'])
+        # check that the readiness probe is still there too!
+        self.assertIn('readinessProbe', resp.data['healthcheck'])
+        self.assertEqual(
+            resp.data['healthcheck']['readinessProbe'],
+            readiness_probe['healthcheck']['readinessProbe'])
+
+        # post a new build
+        response = self.client.post(
+            "/v2/apps/{app_id}/builds".format(**locals()),
+            {'image': 'quay.io/autotest/example'}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_config_healthchecks_validations(self, mock_requests):
+        """
+        Test that healthchecks validations work
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set one of the values that require a numeric value to a string
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'port': '50'}, 'initialDelaySeconds': "t"}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # Don't set one of the mandatory value
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'path': '/'}, 'initialDelaySeconds': 1}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+    def test_config_healthchecks_legacy(self, mock_requests):
+        """
+        Test that when a user uses `deis config:set HEALTHCHECK_URL=/`, the config
+        object is rolled over to the `healthcheck` field.
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app = App.objects.get(id=response.data['id'])
+
+        # Set healthcheck URL to get defaults set
+        response = self.client.post(
+            '/v2/apps/{app.id}/config'.format(**locals()),
+            {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('HEALTHCHECK_URL', response.data['values'])
+        self.assertEqual(response.data['values']['HEALTHCHECK_URL'], '/health')
+        # legacy defaults
+        expected = {
+            'livenessProbe': {
+                'initialDelaySeconds': 50,
+                'timeoutSeconds': 50,
+                'periodSeconds': 10,
+                'successThreshold': 1,
+                'failureThreshold': 3,
+                'httpGet': {
+                    'path': '/health'
+                }
+            }
+        }
+        actual = app.config_set.latest().healthcheck
+        self.assertEqual(actual, expected)
+        # Now set all the envvars and check to make sure they are written properly
+        response = self.client.post(
+            '/v2/apps/{app.id}/config'.format(**locals()),
+            {
+                'values': json.dumps({
+                    'HEALTHCHECK_INITIAL_DELAY': '25',
+                    'HEALTHCHECK_TIMEOUT': '10',
+                    'HEALTHCHECK_PERIOD_SECONDS': '5',
+                    'HEALTHCHECK_SUCCESS_THRESHOLD': '2',
+                    'HEALTHCHECK_FAILURE_THRESHOLD': '2'})
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('HEALTHCHECK_INITIAL_DELAY', response.data['values'])
+        self.assertEqual(response.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
+        expected['livenessProbe'] = {
+            'initialDelaySeconds': 25,
+            'timeoutSeconds': 10,
+            'periodSeconds': 5,
+            'successThreshold': 2,
+            'failureThreshold': 2,
+            'httpGet': {
+                'path': '/health'
+            }
+        }
+        actual = app.config_set.latest().healthcheck
+        self.assertEqual(expected, actual)

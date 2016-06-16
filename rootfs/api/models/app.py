@@ -133,23 +133,33 @@ class App(UuidAuditedModel):
         return "{app}-{version}-{container_type}".format(**locals())
 
     def _get_command(self, container_type):
+        """
+        Return the kubernetes "container arguments" to be sent off to the scheduler.
+
+        In reality this is the command that the user it attempting to run.
+        """
         try:
-            # if this is not procfile-based app, ensure they cannot break out
-            # and run arbitrary commands on the host
             # FIXME: remove slugrunner's hardcoded entrypoint
             release = self.release_set.latest()
             if release.build.dockerfile or not release.build.sha:
-                return "bash -c '{}'".format(release.build.procfile[container_type])
+                return [release.build.procfile[container_type]]
 
-            return 'start {}'.format(container_type)
+            return ['start', container_type]
         # if the key is not present or if a parent attribute is None
         except (KeyError, TypeError, AttributeError):
             # handle special case for Dockerfile deployments
-            return '' if container_type == 'cmd' else 'start {}'.format(container_type)
+            return [] if container_type == 'cmd' else ['start', container_type]
 
-    def _get_command_run(self, command):
-        # SECURITY: shell-escape user input
-        command = command.replace("'", "'\\''")
+    def _get_entrypoint(self, container_type):
+        """
+        Return the kubernetes "container command" to be sent off to the scheduler.
+
+        In this case, it is the entrypoint for the docker image. Because of Heroku compatibility,
+        Any containers that are not from a buildpack are run under /bin/bash.
+        """
+        # handle special case for Dockerfile deployments
+        if container_type == 'cmd':
+            return []
 
         # if this is a procfile-based app, switch the entrypoint to slugrunner's default
         # FIXME: remove slugrunner's hardcoded entrypoint
@@ -157,13 +167,11 @@ class App(UuidAuditedModel):
         if release.build.procfile and \
            release.build.sha and not \
            release.build.dockerfile:
-            entrypoint = '/runner/init'
-            command = "'{}'".format(command)
+            entrypoint = ['/runner/init']
         else:
-            entrypoint = '/bin/bash'
-            command = "-c '{}'".format(command)
+            entrypoint = ['/bin/bash', '-c']
 
-        return entrypoint, command
+        return entrypoint
 
     def log(self, message, level=logging.INFO):
         """Logs a message in the context of this application.
@@ -436,13 +444,13 @@ class App(UuidAuditedModel):
                 'deploy_timeout': deploy_timeout,
             }
 
-            command = self._get_command(scale_type)
             try:
                 self._scheduler.scale(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
                     image=release.image,
-                    command=command,
+                    entrypoint=self._get_entrypoint(scale_type),
+                    command=self._get_command(scale_type),
                     **kwargs
                 )
             except Exception as e:
@@ -523,6 +531,7 @@ class App(UuidAuditedModel):
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
                     image=release.image,
+                    entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
                     **kwargs
                 )
@@ -674,6 +683,7 @@ class App(UuidAuditedModel):
             return ''.join(random.choice(chars) for _ in range(size))
 
         """Run a one-off command in an ephemeral app container."""
+        scale_type = 'run'
         release = self.release_set.latest()
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
@@ -681,10 +691,7 @@ class App(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
-        # TODO: add support for interactive shell
-        entrypoint, command = self._get_command_run(command)
-
-        name = self._get_job_id('run') + '-' + pod_name()
+        name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
 
         kwargs = {
@@ -703,8 +710,8 @@ class App(UuidAuditedModel):
                 self.id,
                 name,
                 release.image,
-                entrypoint,
-                command,
+                self._get_entrypoint(scale_type),
+                [command],
                 **kwargs
             )
 

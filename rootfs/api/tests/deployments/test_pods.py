@@ -526,31 +526,31 @@ class PodTest(APITransactionTestCase):
         )
 
         # use `start web` for backwards compatibility with slugrunner
-        self.assertEqual(app._get_command('web'), 'start web')
-        self.assertEqual(app._get_command('worker'), 'start worker')
+        self.assertEqual(app._get_command('web'), ['start', 'web'])
+        self.assertEqual(app._get_command('worker'), ['start', 'worker'])
 
         # switch to docker image app
         build.sha = ''
         build.save()
-        self.assertEqual(app._get_command('web'), "bash -c 'node server.js'")
+        self.assertEqual(app._get_command('web'), ["node server.js"])
 
         # switch to dockerfile app
         build.sha = 'european-swallow'
         build.dockerfile = 'dockerdockerdocker'
         build.save()
-        self.assertEqual(app._get_command('web'), "bash -c 'node server.js'")
-        self.assertEqual(app._get_command('cmd'), '')
+        self.assertEqual(app._get_command('web'), ["node server.js"])
+        self.assertEqual(app._get_command('cmd'), [])
 
         # ensure we can override the cmd process type in a Procfile
         build.procfile['cmd'] = 'node server.js'
         build.save()
-        self.assertEqual(app._get_command('cmd'), "bash -c 'node server.js'")
-        self.assertEqual(app._get_command('worker'), "bash -c 'node worker.js'")
+        self.assertEqual(app._get_command('cmd'), ["node server.js"])
+        self.assertEqual(app._get_command('worker'), ["node worker.js"])
 
         # for backwards compatibility if no Procfile is supplied
         build.procfile = {}
         build.save()
-        self.assertEqual(app._get_command('worker'), 'start worker')
+        self.assertEqual(app._get_command('worker'), ['start', 'worker'])
 
     def test_run_command_good(self, mock_requests):
         """Test the run command for each container workflow"""
@@ -587,9 +587,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        data = App.objects.get(id=app_id)
-        entrypoint, _ = data._get_command_run('echo hi')
-        self.assertEqual(entrypoint, '/bin/bash')
+        app = App.objects.get(id=app_id)
+        self.assertEqual(app._get_entrypoint('web'), ['/bin/bash', '-c'])
 
         # docker image workflow
         build.dockerfile = ''
@@ -599,9 +598,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        data = App.objects.get(id=app_id)
-        entrypoint, _ = data._get_command_run('echo hi')
-        self.assertEqual(entrypoint, '/bin/bash')
+        app = App.objects.get(id=app_id)
+        self.assertEqual(app._get_entrypoint('cmd'), [])
 
         # procfile workflow
         build.sha = 'somereallylongsha'
@@ -610,9 +608,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        data = App.objects.get(id=app_id)
-        entrypoint, _ = data._get_command_run('echo hi')
-        self.assertEqual(entrypoint, '/runner/init')
+        app = App.objects.get(id=app_id)
+        self.assertEqual(app._get_entrypoint('web'), ['/runner/init'])
 
     def test_run_not_fail_on_debug(self, mock_requests):
         """
@@ -654,9 +651,8 @@ class PodTest(APITransactionTestCase):
         body = {'command': 'echo hi'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)
-        data = App.objects.get(id=app_id)
-        entrypoint, _ = data._get_command_run('echo hi')
-        self.assertEqual(entrypoint, '/bin/bash')
+        app = App.objects.get(id=app_id)
+        self.assertEqual(app._get_entrypoint('web'), ['/bin/bash', '-c'])
 
     def test_scaling_does_not_add_run_proctypes_to_structure(self, mock_requests):
         """Test that app info doesn't show transient "run" proctypes."""

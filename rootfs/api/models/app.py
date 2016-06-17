@@ -191,7 +191,7 @@ class App(UuidAuditedModel):
                 self._scheduler.delete_namespace(namespace)
             except KubeException as e:
                 # Just feed into the item below
-                pass
+                raise ServiceUnavailable('Could not delete the Namespace in Kubernetes') from e
 
             raise ServiceUnavailable('Kubernetes resources could not be created') from e
 
@@ -387,7 +387,7 @@ class App(UuidAuditedModel):
             except Exception as e:
                 err = '{} (scale): {}'.format(self._get_job_id(scale_type), e)
                 self.log(err, logging.ERROR)
-                raise ServiceUnavailable(e) from e
+                raise ServiceUnavailable(err) from e
 
     def deploy(self, release):
         """Deploy a new release to this application"""

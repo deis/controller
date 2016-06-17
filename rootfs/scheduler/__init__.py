@@ -510,6 +510,8 @@ class KubeHTTPClient(object):
         # add in healthchecks
         if kwargs.get('healthcheck', None) and kwargs.get('routable'):
             data.update(kwargs.get('healthcheck'))
+        elif kwargs.get('envhealthcheck', None):
+            self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['envhealthcheck'])
         else:
             self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 

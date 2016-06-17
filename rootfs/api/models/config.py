@@ -30,7 +30,7 @@ class Config(UuidAuditedModel):
     def __str__(self):
         return "{}-{}".format(self.app.id, str(self.uuid)[:7])
 
-    def healthcheck(self):
+    def env_healthcheck(self):
         """
         Get all healthchecks options together for use in scheduler
         """
@@ -54,14 +54,14 @@ class Config(UuidAuditedModel):
             'failure_threshold': failure_threshold,
         }
 
-    def set_healthchecks(self):
+    def set_env_healthchecks(self):
         """Defines default values for HTTP healthchecks"""
         if not {k: v for k, v in self.values.items() if k.startswith('HEALTHCHECK_')}:
             return
 
         # fetch set health values and any defaults
         # this approach allows new health items to be added without issues
-        health = self.healthcheck()
+        health = self.env_healthcheck()
         if not health:
             return
 
@@ -144,7 +144,7 @@ class Config(UuidAuditedModel):
                         data[key] = value
                 setattr(self, attr, data)
 
-            self.set_healthchecks()
+            self.set_env_healthchecks()
             self.set_registry()
             self.set_tags(previous_config)
         except Config.DoesNotExist:

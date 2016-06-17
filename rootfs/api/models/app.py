@@ -372,6 +372,7 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
+                'envhealthcheck': release.config.env_healthcheck(),
                 'routable': routable
             }
 
@@ -428,6 +429,7 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
+                'envhealthcheck': release.config.env_healthcheck(),
                 'routable': routable,
                 'batches': batches
             }
@@ -503,9 +505,26 @@ class App(UuidAuditedModel):
         # Get the router host and append healthcheck path
         url = 'http://{}:{}'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
 
-        allowed = set(range(200, 599))
-        allowed.remove(404)
-        req_timeout = 3
+        # if a health check url is available then 200 is the only acceptable status code
+        if 'livenessProbe' in kwargs.get('healthcheck', {}) and 'httpGet' in kwargs.get('healthcheck').get('livenessProbe'):  # noqa
+            allowed = [200]
+            handler = kwargs.get('healthcheck').get('livenessProbe').get('httpGet')
+            if 'path' in handler.keys():
+                url = urljoin(url, handler.get('path'))
+            else:
+                url = urljoin(url, "/")
+            if 'timeoutSeconds' in handler.keys():
+                req_timeout = handler.get('timeoutSeconds')
+            else:
+                req_timeout = 1
+        elif len(kwargs['envhealthcheck']):
+            allowed = [200]
+            url = urljoin(url, kwargs['envhealthcheck'].get('path'))
+            req_timeout = kwargs['envhealthcheck'].get('timeout')
+        else:
+            allowed = set(range(200, 599))
+            allowed.remove(404)
+            req_timeout = 3
 
         session = requests.Session()
         session.headers = {

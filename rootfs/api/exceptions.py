@@ -18,6 +18,10 @@ class AlreadyExists(APIException):
     status_code = 409
 
 
+class UnprocessableEntity(APIException):
+    status_code = 422
+
+
 class ServiceUnavailable(APIException):
     status_code = 503
     default_detail = 'Service temporarily unavailable, try again later.'

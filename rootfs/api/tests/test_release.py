@@ -349,3 +349,27 @@ class ReleaseTest(APITransactionTestCase):
         body = {'cpu': json.dumps({'cmd': None})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 422, response.data)
+
+    def test_release_no_change(self, mock_requests):
+        """
+        Test that a release is created when an app is created, and
+        then has 2 identical config set, causing a 409 as there was
+        no change
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # check that updating config rolls a new release
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('NEW_URL1', response.data['values'])
+
+        # trigger identical release
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 409, response.data)

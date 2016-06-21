@@ -74,7 +74,8 @@ PROBE_SCHEMA = {
 
 
 class JSONFieldSerializer(serializers.JSONField):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, convert_to_str=True, *args, **kwargs):
+        self.convert_to_str = convert_to_str
         super(JSONFieldSerializer, self).__init__(*args, **kwargs)
 
     def to_internal_value(self, data):
@@ -92,7 +93,8 @@ class JSONFieldSerializer(serializers.JSONField):
                 continue
 
             try:
-                obj[k] = str(v)
+                if self.convert_to_str:
+                    obj[k] = str(v)
             except ValueError:
                 obj[k] = v
                 # Do nothing, the validator will catch this later
@@ -180,7 +182,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)
-    healthcheck = JSONFieldSerializer(required=False, binary=True)
+    healthcheck = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""

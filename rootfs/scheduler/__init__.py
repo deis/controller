@@ -509,7 +509,13 @@ class KubeHTTPClient(object):
 
         # add in healthchecks
         if kwargs.get('healthcheck', None) and kwargs.get('routable'):
-            data.update(kwargs.get('healthcheck'))
+            healthcheck = kwargs.get('healthcheck')
+            for key, value in healthcheck.items():
+                if "httpGet" in value.keys() and value['httpGet']['port'].isdigit():
+                    healthcheck[key]['httpGet']['port'] = int(healthcheck[key]['httpGet']['port'])  # noqa
+                elif "tcpSocket" in value.keys() and value['tcpSocket']['port'].isdigit():
+                    healthcheck[key]['tcpSocket']['port'] = int(healthcheck[key]['tcpSocket']['port'])  # noqa
+            data.update(healthcheck)
         elif kwargs.get('envhealthcheck', None):
             self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['envhealthcheck'])
         else:

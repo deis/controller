@@ -866,7 +866,6 @@ class ConfigTest(APITransactionTestCase):
         )
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertIn('readinessProbe', resp.data['healthcheck'])
-        print(resp.data)
         self.assertEqual(resp.data['healthcheck']['readinessProbe']['httpGet']['port'], '5000')  # noqa
 
         # Set healthcheck URL to get defaults set
@@ -887,3 +886,27 @@ class ConfigTest(APITransactionTestCase):
             {'image': 'quay.io/autotest/example'}
         )
         self.assertEqual(response.status_code, 201, response.data)
+
+    def test_config_healthchecks_validations(self, mock_requests):
+        """
+        Test that healthchecks validations work
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set one of the values that require a numeric value to a string
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'port': '50'}, 'initialDelaySeconds': "t"}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # Don't set one of the mandatory value
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'path': '/'}, 'initialDelaySeconds': 1}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)

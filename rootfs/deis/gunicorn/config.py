@@ -11,6 +11,7 @@ try:
         raise ValueError()
 except (NameError, ValueError):
     workers = (os.cpu_count() or 4) * 2 + 1
+threads = 3
 
 pythonpath = dirname(dirname(dirname(realpath(__file__))))
 timeout = 1200

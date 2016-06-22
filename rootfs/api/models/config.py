@@ -20,6 +20,7 @@ class Config(UuidAuditedModel):
     cpu = JSONField(default={}, blank=True)
     tags = JSONField(default={}, blank=True)
     registry = JSONField(default={}, blank=True)
+    healthcheck = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -29,7 +30,7 @@ class Config(UuidAuditedModel):
     def __str__(self):
         return "{}-{}".format(self.app.id, str(self.uuid)[:7])
 
-    def healthcheck(self):
+    def env_healthcheck(self):
         """
         Get all healthchecks options together for use in scheduler
         """
@@ -52,35 +53,6 @@ class Config(UuidAuditedModel):
             'success_threshold': success_threshold,
             'failure_threshold': failure_threshold,
         }
-
-    def set_healthchecks(self):
-        """Defines default values for HTTP healthchecks"""
-        if not {k: v for k, v in self.values.items() if k.startswith('HEALTHCHECK_')}:
-            return
-
-        # fetch set health values and any defaults
-        # this approach allows new health items to be added without issues
-        health = self.healthcheck()
-        if not health:
-            return
-
-        # HTTP GET related
-        self.values['HEALTHCHECK_URL'] = health['path']
-
-        # Number of seconds after which the probe times out.
-        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
-        self.values['HEALTHCHECK_TIMEOUT'] = health['timeout']
-        # Number of seconds after the container has started before liveness probes are initiated.
-        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
-        self.values['HEALTHCHECK_INITIAL_DELAY'] = health['delay']
-        # How often (in seconds) to perform the probe.
-        self.values['HEALTHCHECK_PERIOD_SECONDS'] = health['period_seconds']
-        # Minimum consecutive successes for the probe to be considered successful
-        # after having failed.
-        self.values['HEALTHCHECK_SUCCESS_THRESHOLD'] = health['success_threshold']
-        # Minimum consecutive failures for the probe to be considered failed after
-        # having succeeded.
-        self.values['HEALTHCHECK_FAILURE_THRESHOLD'] = health['failure_threshold']
 
     def set_registry(self):
         # lower case all registry options for consistency
@@ -127,7 +99,7 @@ class Config(UuidAuditedModel):
                 # usually means a totally new app
                 previous_config = self.app.config_set.latest()
 
-            for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
+            for attr in ['cpu', 'memory', 'tags', 'registry', 'values', 'healthcheck']:
                 data = getattr(previous_config, attr, {}).copy()
                 new_data = getattr(self, attr, {}).copy()
 
@@ -143,7 +115,6 @@ class Config(UuidAuditedModel):
                         data[key] = value
                 setattr(self, attr, data)
 
-            self.set_healthchecks()
             self.set_registry()
             self.set_tags(previous_config)
         except Config.DoesNotExist:

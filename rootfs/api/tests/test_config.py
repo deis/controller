@@ -137,7 +137,7 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry'])
+                                'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
@@ -160,7 +160,7 @@ class ConfigTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry'])
+                                'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
             'app': 'test',
@@ -847,5 +847,66 @@ class ConfigTest(APITransactionTestCase):
         resp = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com'})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+    def test_config_healthchecks(self, mock_requests):
+        """
+        Test that healthchecks can be applied
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set a healthcheck option before URL is around (URL is required for full setting)
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'readinessProbe':
+                                        {'httpGet': {'port': '5000'}, 'initialDelaySeconds': 10}})}
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIn('readinessProbe', resp.data['healthcheck'])
+        self.assertEqual(resp.data['healthcheck']['readinessProbe']['httpGet']['port'], '5000')  # noqa
+
+        # Set healthcheck URL to get defaults set
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'port': '5000'}, 'initialDelaySeconds': 10}})}
+        )
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIn('readinessProbe', resp.data['healthcheck'])
+        self.assertEqual(resp.data['healthcheck']['readinessProbe']['httpGet']['port'], '5000')
+        self.assertIn('livenessProbe', resp.data['healthcheck'])
+        self.assertEqual(resp.data['healthcheck']['livenessProbe']['httpGet']['port'], '5000')
+
+        # post a new build
+        response = self.client.post(
+            "/v2/apps/{app_id}/builds".format(**locals()),
+            {'image': 'quay.io/autotest/example'}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_config_healthchecks_validations(self, mock_requests):
+        """
+        Test that healthchecks validations work
+        """
+        response = self.client.post('/v2/apps')
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+
+        # Set one of the values that require a numeric value to a string
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'port': '50'}, 'initialDelaySeconds': "t"}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # Don't set one of the mandatory value
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': json.dumps({'livenessProbe':
+                                        {'httpGet': {'path': '/'}, 'initialDelaySeconds': 1}})}
         )
         self.assertEqual(resp.status_code, 400, response.data)

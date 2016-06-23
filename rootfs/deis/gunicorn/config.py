@@ -10,7 +10,7 @@ try:
     if workers < 1:
         raise ValueError()
 except (NameError, ValueError):
-    workers = (os.cpu_count() or 4) * 2 + 1
+    workers = (os.cpu_count() or 4) * 4 + 1
 
 pythonpath = dirname(dirname(dirname(realpath(__file__))))
 timeout = 1200

@@ -766,8 +766,6 @@ class KubeHTTPClient(object):
 
         logger.info("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
 
-        # has timeout been increased or not within the loop
-        timeout_padded = False
         # Ensure the minimum desired number of pods are available
         while waited < timeout:
             count = 0  # ready pods
@@ -777,11 +775,7 @@ class KubeHTTPClient(object):
                 if pod['status']['phase'] == 'Pending':
                     reason, message = self._pod_pending_status(pod)
                     # If pulling an image is taking long then increase the timeout
-                    if not timeout_padded:
-                        pull = self._handle_pod_long_image_pulling(pod, reason)
-                        if pull:
-                            timeout_padded = True
-                            timeout += pull
+                    timeout += self._handle_pod_long_image_pulling(pod, reason)
 
                     # handle errors and bubble up if need be
                     self._handle_pod_image_errors(pod, reason, message)
@@ -1411,6 +1405,10 @@ class KubeHTTPClient(object):
 
         Return value is an int that represents seconds
         """
+        # only apply once
+        if getattr(self, '_handle_pod_long_image_pulling_applied', False):
+            return 0
+
         if reason is not 'Pulling':
             return 0
 
@@ -1427,6 +1425,9 @@ class KubeHTTPClient(object):
             # add 10 minutes to timeout to allow a pull image operation to finish
             logger.info('Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
             logger.info('Increasing timeout by 10 minutes to allow a pull image operation to finish for pods in namespace {}'.format(namespace))  # noqa
+
+            # make it so function doesn't do processing again
+            setattr(self, '_handle_pod_long_image_pulling_applied', True)
             return 600
 
         return 0

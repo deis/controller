@@ -3,7 +3,8 @@ from django.db import models
 from jsonfield import JSONField
 
 from api.models.release import Release
-from api.models import UuidAuditedModel, DeisException
+from api.models import UuidAuditedModel
+from api.exceptions import DeisException, UnprocessableEntity
 
 
 class Config(UuidAuditedModel):
@@ -130,9 +131,16 @@ class Config(UuidAuditedModel):
                 data = getattr(previous_config, attr, {}).copy()
                 new_data = getattr(self, attr, {}).copy()
 
-                data.update(new_data)
-                # remove config keys if we provided a null value
-                [data.pop(k) for k, v in new_data.items() if v is None]
+                # remove config keys if a null value is provided
+                for key, value in new_data.items():
+                    if value is None:
+                        # error if unsetting non-existing key
+                        if key not in data:
+                            raise UnprocessableEntity('{} does not exist under {}'.format(key, attr))  # noqa
+
+                        data.pop(key)
+                    else:
+                        data[key] = value
                 setattr(self, attr, data)
 
             self.set_healthchecks()

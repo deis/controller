@@ -4,6 +4,7 @@ Classes to serialize the RESTful representation of Deis API models.
 
 import json
 import re
+import jsonschema
 from urllib.parse import urlparse
 
 from django.contrib.auth.models import User
@@ -19,10 +20,77 @@ MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE
 CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[-+]?[0-9]*\.?[0-9]+[m]{0,1})$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
+PROBE_SCHEMA = {
+    "$schema": "http://json-schema.org/schema#",
+
+    "type": "object",
+    "properties": {
+        # Exec specifies the action to take.
+        # More info: http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_execaction
+        "exec": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["command"]
+        },
+        # HTTPGet specifies the http request to perform.
+        # More info: http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_httpgetaction
+        "httpGet": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "port": {"type": "integer"},
+                "host": {"type": "string"},
+                "scheme": {"type": "string"},
+                "httpHeaders": {
+                    "type": "array",
+                    "minItems": 0,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "value": {"type": "string"},
+                        }
+                    }
+                }
+            },
+            "required": ["port"]
+        },
+        # TCPSocket specifies an action involving a TCP port.
+        # More info: http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_tcpsocketaction
+        "tcpSocket": {
+            "type": "object",
+            "properties": {
+                "port": {"type": "integer"},
+            },
+            "required": ["port"]
+        },
+        # Number of seconds after the container has started before liveness probes are initiated.
+        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
+        "initialDelaySeconds": {"type": "integer"},
+        # Number of seconds after which the probe times out.
+        # More info: http://releases.k8s.io/HEAD/docs/user-guide/pod-states.md#container-probes
+        "timeoutSeconds": {"type": "integer"},
+        # How often (in seconds) to perform the probe.
+        "periodSeconds": {"type": "integer"},
+        # Minimum consecutive successes for the probe to be considered successful
+        # after having failed.
+        "successThreshold": {"type": "integer"},
+        # Minimum consecutive failures for the probe to be considered
+        # failed after having succeeded.
+        "failureThreshold": {"type": "integer"},
+    }
+}
 
 
 class JSONFieldSerializer(serializers.JSONField):
     def __init__(self, *args, **kwargs):
+        self.convert_to_str = kwargs.pop('convert_to_str', True)
         super(JSONFieldSerializer, self).__init__(*args, **kwargs)
 
     def to_internal_value(self, data):
@@ -40,7 +108,8 @@ class JSONFieldSerializer(serializers.JSONField):
                 continue
 
             try:
-                obj[k] = str(v)
+                if self.convert_to_str:
+                    obj[k] = str(v)
             except ValueError:
                 obj[k] = v
                 # Do nothing, the validator will catch this later
@@ -128,6 +197,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)
+    healthcheck = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""
@@ -249,6 +319,22 @@ class ConfigSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Config keys must start with a letter or underscore and "
                     "only contain [A-z0-9_]")
+
+        return data
+
+    def validate_healthcheck(self, data):
+        for key, value in data.items():
+            if value is None:
+                continue
+
+            if key not in ['livenessProbe', 'readinessProbe']:
+                raise serializers.ValidationError(
+                    "Healthcheck keys must be either livenessProbe or readinessProbe")
+            try:
+                jsonschema.validate(value, PROBE_SCHEMA)
+            except jsonschema.ValidationError as e:
+                raise serializers.ValidationError(
+                    "could not validate {}: {}".format(value, e.message))
 
         return data
 

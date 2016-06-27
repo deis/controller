@@ -508,8 +508,17 @@ class KubeHTTPClient(object):
             data["resources"]["limits"]["cpu"] = cpu
 
         # add in healthchecks
-        if kwargs.get('healthcheck', None):
-            self._healthcheck(namespace, data, kwargs.get('routable'), **kwargs['healthcheck'])
+        healthchecks = kwargs.get('healthcheck', None)
+        if healthchecks:
+            # check if a port is present. if not, auto-populate it
+            # TODO: rip this out when we stop supporting deis config:set HEALTHCHECK_URL
+            if (
+                healthchecks.get('livenessProbe') is not None and
+                healthchecks['livenessProbe'].get('httpGet') is not None and
+                healthchecks['livenessProbe']['httpGet'].get('port') is None
+               ):
+                healthchecks['livenessProbe']['httpGet']['port'] = env['PORT']
+            data.update(healthchecks)
         else:
             self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 
@@ -760,7 +769,7 @@ class KubeHTTPClient(object):
         delay = 0
         # get health info from container
         if 'readinessProbe' in container:
-            delay = int(container['readinessProbe']['initialDelaySeconds'])
+            delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
             logger.info("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
             timeout += delay
 
@@ -935,62 +944,6 @@ class KubeHTTPClient(object):
             )
 
         return response
-
-    def _healthcheck(self, namespace, container, routable=False, path='/', port=5000,
-                     delay=30, timeout=5, period_seconds=1, success_threshold=1,
-                     failure_threshold=3):  # noqa
-        """
-        Apply HTTP GET healthcehck to the application container
-
-        http://kubernetes.io/docs/user-guide/walkthrough/k8s201/#health-checking
-        http://kubernetes.io/docs/user-guide/pod-states/#container-probes
-        http://kubernetes.io/docs/user-guide/liveness/
-        """
-        if not routable:
-            return
-
-        try:
-            service = self.get_service(namespace, namespace).json()
-            port = service['spec']['ports'][0]['targetPort']
-        except:
-            pass
-
-        # Only support HTTP checks for now
-        # http://kubernetes.io/docs/user-guide/pod-states/#container-probes
-        healthcheck = {
-            # defines the health checking
-            'livenessProbe': {
-                # an http probe
-                'httpGet': {
-                    'path': path,
-                    'port': int(port)
-                },
-                # length of time to wait for a pod to initialize
-                # after pod startup, before applying health checking
-                'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout,
-                'periodSeconds': period_seconds,
-                'successThreshold': success_threshold,
-                'failureThreshold': failure_threshold,
-            },
-            'readinessProbe': {
-                # an http probe
-                'httpGet': {
-                    'path': path,
-                    'port': int(port)
-                },
-                # length of time to wait for a pod to initialize
-                # after pod startup, before applying health checking
-                'initialDelaySeconds': delay,
-                'timeoutSeconds': timeout,
-                'periodSeconds': period_seconds,
-                'successThreshold': success_threshold,
-                'failureThreshold': failure_threshold,
-            },
-        }
-
-        # Update only the application container with the health check
-        container.update(healthcheck)
 
     def _default_readiness_probe(self, container, build_type, port=None):
         # Update only the application container with the health check

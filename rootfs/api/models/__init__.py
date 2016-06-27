@@ -31,7 +31,7 @@ def validate_label(value):
     """
     match = re.match(r'^[a-z0-9-]+$', value)
     if not match:
-        raise ValidationError("Can only contain a-z (lowercase), 0-9 and hypens")
+        raise ValidationError("Can only contain a-z (lowercase), 0-9 and hyphens")
 
 
 class AuditedModel(models.Model):

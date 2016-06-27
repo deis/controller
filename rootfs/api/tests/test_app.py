@@ -153,7 +153,7 @@ class AppTest(APITestCase):
         response = self.client.post(url, body)
         self.assertContains(
             response,
-            'App name can only contain a-z (lowercase), 0-9 and hypens',
+            'App name can only contain a-z (lowercase), 0-9 and hyphens',
             status_code=400
         )
         url = '/v2/apps'

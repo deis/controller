@@ -204,6 +204,12 @@ LOGGING = {
             'filters': ['require_debug_true'],
             'propagate': True,
         },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+            'propagate': False,
+        },
         'django.request': {
             'handlers': ['console'],
             'level': 'WARNING',

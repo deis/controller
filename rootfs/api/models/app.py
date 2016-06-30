@@ -317,7 +317,7 @@ class App(UuidAuditedModel):
             for target, count in structure.copy().items():
                 structure[target] = int(count)
             validate_app_structure(structure)
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValidationError) as e:
             raise DeisException('Invalid scaling format: {}'.format(e))
 
         # test for available process types

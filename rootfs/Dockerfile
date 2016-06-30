@@ -30,5 +30,3 @@ COPY . /app
 WORKDIR /app
 CMD ["/app/bin/boot"]
 EXPOSE 8000
-
-ENV WORKFLOW_RELEASE 2.1.0

@@ -243,13 +243,8 @@ class KubeHTTPClient(object):
                 logger.exception("Creating RC {} failed}".format(name))
                 raise
 
-        try:
-            self._scale_rc(namespace, name, replicas)
-        except KubeException:
-            logger.exception("Scaling failed for {}".format(name))
-            old = self.get_rc(namespace, name).json()
-            self._scale_rc(namespace, name, old['spec']['replicas'])
-            raise
+        # let the scale failure bubble up
+        self._scale_rc(namespace, name, replicas)
 
     def _build_pod_manifest(self, namespace, name, image, **kwargs):
         app_type = kwargs.get('app_type')

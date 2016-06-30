@@ -331,7 +331,8 @@ class App(UuidAuditedModel):
                     'Container type {} does not exist in application'.format(container_type))
 
         # merge current structure and the new items together
-        new_structure = self.structure.copy()
+        old_structure = self.structure
+        new_structure = old_structure.copy()
         new_structure.update(structure)
 
         if new_structure != self.structure:
@@ -339,7 +340,12 @@ class App(UuidAuditedModel):
             self.structure = new_structure
             self.save()
 
-            self._scale_pods(structure)
+            try:
+                self._scale_pods(structure)
+            except ServiceUnavailable:
+                # scaling failed, go back to old scaling numbers
+                self._scale_pods(old_structure)
+                raise
 
             msg = '{} scaled pods '.format(user.username) + ' '.join(
                 "{}={}".format(k, v) for k, v in list(structure.items()))

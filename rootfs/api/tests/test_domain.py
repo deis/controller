@@ -13,6 +13,8 @@ from rest_framework.authtoken.models import Token
 from api.models import Domain
 from scheduler import KubeException
 
+import idna
+
 
 class DomainTest(APITestCase):
 
@@ -73,18 +75,136 @@ class DomainTest(APITestCase):
         expected = [data['domain'] for data in response.data['results']]
         self.assertEqual([self.app_id, domain], expected, msg)
 
+    def test_manage_idn_domain(self):
+        url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+        test_domains = [
+            'ドメイン.テスト',
+            'xn--eckwd4c7c.xn--zckzah',
+            'xn--80ahd1agd.ru',
+            'домена.ru',
+            '*.домена.испытание',
+            'täst.königsgäßchen.de',
+            'xn--tst-qla.xn--knigsgsschen-lcb0w.de',
+            'ドメイン.xn--zckzah',
+            'xn--eckwd4c7c.テスト',
+            'täst.xn--knigsgsschen-lcb0w.de',
+            '*.xn--tst-qla.königsgäßchen.de'
+        ]
+        for domain in test_domains:
+            msg = "failed on '{}'".format(domain)
+
+            # Generate ACE and Unicode variant for domain
+            if domain.startswith("*."):
+                ace_domain = "*." + idna.encode(domain[2:]).decode("utf-8", "strict")
+                unicode_domain = "*." + idna.decode(ace_domain[2:])
+            else:
+                ace_domain = idna.encode(domain).decode("utf-8", "strict")
+                unicode_domain = idna.decode(ace_domain)
+
+            # Create
+            response = self.client.post(url, {'domain': domain})
+            self.assertEqual(response.status_code, 201, msg)
+
+            # Fetch
+            url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+            response = self.client.get(url)
+            expected = [data['domain'] for data in response.data['results']]
+            self.assertEqual([self.app_id, ace_domain], expected, msg)
+
+            # Verify creation failure for same domain with different encoding
+            if ace_domain != domain:
+                response = self.client.post(url, {'domain': ace_domain})
+                self.assertEqual(response.status_code, 400, msg)
+
+            # Verify creation failure for same domain with different encoding
+            if unicode_domain != domain:
+                response = self.client.post(url, {'domain': unicode_domain})
+                self.assertEqual(response.status_code, 400, msg)
+
+            # Delete
+            url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=domain,
+                                                                app_id=self.app_id)
+            response = self.client.delete(url)
+            self.assertEqual(response.status_code, 204, msg)
+
+            # Verify removal
+            url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+            response = self.client.get(url)
+            self.assertEqual(1, response.data['count'], msg)
+
+            # verify only app domain is left
+            expected = [data['domain'] for data in response.data['results']]
+            self.assertEqual([self.app_id], expected, msg)
+
+            # Use different encoding for creating and deleting (ACE)
+            if ace_domain != domain:
+                # Create
+                response = self.client.post(url, {'domain': domain})
+                self.assertEqual(response.status_code, 201, msg)
+
+                # Fetch
+                url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+                response = self.client.get(url)
+                expected = [data['domain'] for data in response.data['results']]
+                self.assertEqual([self.app_id, ace_domain], expected, msg)
+
+                # Delete
+                url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=ace_domain,
+                                                                    app_id=self.app_id)
+                response = self.client.delete(url)
+                self.assertEqual(response.status_code, 204, msg)
+
+                # Verify removal
+                url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+                response = self.client.get(url)
+                self.assertEqual(1, response.data['count'], msg)
+
+                # verify only app domain is left
+                expected = [data['domain'] for data in response.data['results']]
+                self.assertEqual([self.app_id], expected, msg)
+
+            # Use different encoding for creating and deleting (Unicode)
+            if unicode_domain != domain:
+                # Create
+                response = self.client.post(url, {'domain': domain})
+                self.assertEqual(response.status_code, 201, msg)
+
+                # Fetch
+                url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+                response = self.client.get(url)
+                expected = [data['domain'] for data in response.data['results']]
+                self.assertEqual([self.app_id, ace_domain], expected, msg)
+
+                # Delete
+                url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=unicode_domain,
+                                                                    app_id=self.app_id)
+                response = self.client.delete(url)
+                self.assertEqual(response.status_code, 204, msg)
+
+                # Verify removal
+                url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
+                response = self.client.get(url)
+                self.assertEqual(1, response.data['count'], msg)
+
+                # verify only app domain is left
+                expected = [data['domain'] for data in response.data['results']]
+                self.assertEqual([self.app_id], expected, msg)
+
     def test_manage_domain(self):
         url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
         test_domains = [
             'test-domain.example.com',
             'django.paas-sandbox',
+            'django.paas--sandbox',
             'domain',
             'not.too.loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong',
             '3com.com',
+            'domain1',
+            '3333.xyz',
             'w3.example.com',
             'MYDOMAIN.NET',
             'autotest.127.0.0.1.xip.io',
-            '*.deis.example.com',
+            '*.deis.example.com'
         ]
 
         for domain in test_domains:
@@ -161,13 +281,12 @@ class DomainTest(APITestCase):
         test_domains = [
             'this_is_an.invalid.domain',
             'this-is-an.invalid.1',
-            'django.pass--sandbox',
-            'domain1',
-            '3333.com',
+            'django.pa--assandbox',
             'too.looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong',
             'foo.*.bar.com',
             '*',
-            'a' * 300
+            'a' * 300,
+            '.'.join(['a'] * 128)
         ]
         for domain in test_domains:
             msg = "failed on \"{}\"".format(domain)

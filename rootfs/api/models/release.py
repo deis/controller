@@ -258,9 +258,7 @@ class Release(UuidAuditedModel):
         )
 
         # Cleanup controllers
-        labels = {
-            'heritage': 'deis'
-        }
+        labels = {'heritage': 'deis'}
         controller_removal = []
         controllers = self._scheduler.get_rcs(self.app.id, labels=labels).json()
         for controller in controllers['items']:
@@ -299,9 +297,7 @@ class Release(UuidAuditedModel):
             self._scheduler.delete_secret(self.app.id, secret['metadata']['name'])
 
         # Remove stray pods
-        labels = {
-            'heritage': 'deis'
-        }
+        labels = {'heritage': 'deis'}
         pods = self._scheduler.get_pods(self.app.id, labels=labels).json()
         for pod in pods['items']:
             if self._scheduler.pod_deleted(pod):

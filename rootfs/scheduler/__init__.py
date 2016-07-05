@@ -605,9 +605,24 @@ class KubeHTTPClient(object):
         # labels and fields are encoded slightly differently than python-requests can do
         labels = kwargs.get('labels', {})
         if labels:
-            # http://kubernetes.io/v1.1/docs/user-guide/labels.html#list-and-watch-filtering
-            labels = ['{}={}'.format(key, value) for key, value in labels.items()]
-            query['labelSelector'] = ','.join(labels)
+            selectors = []
+            for key, value in labels.items():
+                # http://kubernetes.io/docs/user-guide/labels/#set-based-requirement
+                if '__notin' in key:
+                    key = key.replace('__notin', '')
+                    selectors.append('{} notin({})'.format(key, ','.join(value)))
+                # list is automagically a in()
+                elif '__in' in key or isinstance(value, list):
+                    key = key.replace('__in', '')
+                    selectors.append('{} in({})'.format(key, ','.join(value)))
+                elif value is None:
+                    # allowing a check if a label exists (or not) without caring about value
+                    selectors.append(key)
+                # http://kubernetes.io/docs/user-guide/labels/#equality-based-requirement
+                elif isinstance(value, str):
+                    selectors.append('{}={}'.format(key, value))
+
+            query['labelSelector'] = ','.join(selectors)
 
         fields = kwargs.get('fields', {})
         if fields:

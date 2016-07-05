@@ -4,6 +4,7 @@ import requests_mock
 from urllib.parse import urlparse, parse_qs
 import string
 import random
+import re
 import time
 
 from . import KubeHTTPClient, KubeHTTPException
@@ -275,8 +276,9 @@ def upsert_pods(controller, url):
 
 def filter_data(filters, path):
     data = []
-    for item in cache.get(path, []):
-        item = cache.get(item)
+    rows = cache.get(path, [])
+    for row in rows:
+        item = cache.get(row)
         if not item:
             # item is broken
             continue
@@ -288,7 +290,25 @@ def filter_data(filters, path):
         # Do extra filtering based on labelSelector
         add = True
         for label, value in filters['labels'].items():
-            if (
+            # set based filter
+            if '__' in label:
+                label, matcher = label.split('__')
+                if matcher == 'in':
+                    if (
+                        label not in item['metadata']['labels'] or
+                        item['metadata']['labels'][label] not in value
+                    ):
+                        add = False
+                        continue
+                elif matcher == 'notin':
+                    if (
+                        label not in item['metadata']['labels'] or
+                        item['metadata']['labels'][label] in value
+                    ):
+                        add = False
+                        continue
+
+            elif (
                 label not in item['metadata']['labels'] or
                 item['metadata']['labels'][label] != value
             ):
@@ -325,12 +345,29 @@ def fetch_all(request, context):
 def prepare_query_filters(query):
     filters = {'labels': {}, 'fields': {}}
     if query:
+        # set based regex - does not support only field
+        labelRegex = re.compile('^(?P<label>.*) (?P<matcher>notin|in)\s?\((?P<values>.*)\)$')
+
         queries = parse_qs(query)
         if 'labelSelector' in queries:
             for items in queries['labelSelector']:
-                for item in items.split(','):
-                    key, value = item.split('=')
-                    filters['labels'][key] = value
+                # split on , but not inside ()
+                r = re.compile(r'(?:[^,(]|\([^)]*\))+')
+                for item in r.findall(items):
+                    if '=' in item:
+                        # equal based requirement
+                        key, value = item.split('=')
+                        filters['labels'][key] = value
+                    else:
+                        # set based requirement
+                        matches = labelRegex.match(item)
+                        if matches is None:
+                            continue
+
+                        # split and strip spaces
+                        values = [x.strip() for x in matches.group('values').split(',')]
+                        key = matches.group('label') + '__' + matches.group('matcher')
+                        filters['labels'][key] = values
 
         if 'fieldSelector' in queries:
             for items in queries['fieldSelector']:

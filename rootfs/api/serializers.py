@@ -5,6 +5,7 @@ Classes to serialize the RESTful representation of Deis API models.
 import json
 import re
 import jsonschema
+import idna
 from urllib.parse import urlparse
 
 from django.contrib.auth.models import User
@@ -376,35 +377,47 @@ class DomainSerializer(serializers.ModelSerializer):
         """
         Check that the hostname is valid
         """
-        if len(value) > 255:
-            raise serializers.ValidationError('Hostname must be 255 characters or less.')
-
         if value[-1:] == ".":
             value = value[:-1]  # strip exactly one dot from the right, if present
 
+        if value == "*":
+            raise serializers.ValidationError("Hostname can't only be a wildcard")
+
         labels = value.split('.')
-        if 'xip.io' in value:
-            return value
 
         # Let wildcards through by not trying to validate it
-        if labels[0] == '*':
+        wildcard = True if labels[0] == '*' else False
+        if wildcard:
             labels.pop(0)
-            if len(labels) == 0:
-                raise serializers.ValidationError("Hostname can't only be a wildcard")
 
-        # TODO this doesn't support IDN domains
-        allowed = re.compile("^(?!-)[a-z0-9-]{1,63}(?<!-)$", re.IGNORECASE)
-        for label in labels:
-            match = allowed.match(label)
-            if not match or '--' in label or label.isdigit() or \
-               len(labels) == 1 and any(char.isdigit() for char in label):
-                raise serializers.ValidationError('Hostname does not look valid.')
-
-        if models.Domain.objects.filter(domain=value).exists():
+        try:
+            # IDN domain labels to ACE (IDNA2008)
+            def ToACE(x): return idna.alabel(x).decode("utf-8", "strict")
+            labels = list(map(ToACE, labels))
+        except idna.IDNAError as e:
             raise serializers.ValidationError(
-                "The domain {} is already in use by another app".format(value))
+               "Hostname does not look valid, could not convert to ACE {}: {}"
+               .format(value, e))
 
-        return value
+        # TLD must not only contain digits according to RFC 3696
+        if labels[-1].isdigit():
+            raise serializers.ValidationError('Hostname does not look valid.')
+
+        # prepend wildcard 'label' again if removed before
+        if wildcard:
+            labels.insert(0, '*')
+
+        # recreate value using ACE'd labels
+        aceValue = '.'.join(labels)
+
+        if len(aceValue) > 253:
+            raise serializers.ValidationError('Hostname must be 253 characters or less.')
+
+        if models.Domain.objects.filter(domain=aceValue).exists():
+            raise serializers.ValidationError(
+               "The domain {} is already in use by another app".format(value))
+
+        return aceValue
 
 
 class CertificateSerializer(serializers.ModelSerializer):

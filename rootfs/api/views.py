@@ -291,7 +291,17 @@ class DomainViewSet(AppResourceViewSet):
 
     def get_object(self, **kwargs):
         qs = self.get_queryset(**kwargs)
-        return get_object_or_404(qs, domain=self.kwargs['domain'])
+        domain = self.kwargs['domain']
+        # support IDN domains, i.e. accept Unicode encoding too
+        try:
+            import idna
+            if domain.startswith("*."):
+                ace_domain = "*." + idna.encode(domain[2:]).decode("utf-8", "strict")
+            else:
+                ace_domain = idna.encode(domain).decode("utf-8", "strict")
+        except:
+            ace_domain = domain
+        return get_object_or_404(qs, domain=ace_domain)
 
 
 class CertificateViewSet(BaseDeisViewSet):

@@ -9,7 +9,7 @@ gunicorn==19.6.0
 jsonfield==1.0.3
 morph==0.1.2
 ndg-httpsclient==0.4.1
-psycopg2==2.6.1
+psycopg2==2.6.2
 pyOpenSSL==16.0.0
 pytz==2016.4
 ruamel.yaml==0.11.11

@@ -173,27 +173,27 @@ class Certificate(AuditedModel):
         # only create if it exists - We raise an exception when a secret doesn't exist
         try:
             name = '%s-cert' % self.name
-            app = domain.app
+            namespace = domain.app.id
             data = {
                 'tls.crt': self.certificate,
                 'tls.key': self.key
             }
 
-            secret = self._scheduler.get_secret(app, name).json()['data']
+            secret = self._scheduler.get_secret(namespace, name).json()['data']
         except KubeException:
-            self._scheduler.create_secret(app, name, data)
+            self._scheduler.create_secret(namespace, name, data)
         else:
             # update cert secret to the TLS Ingress format if required
             if secret != data:
                 try:
-                    self._scheduler.update_secret(app, name, data)
+                    self._scheduler.update_secret(namespace, name, data)
                 except KubeException as e:
                     msg = 'There was a problem updating the certificate secret ' \
-                          '{} for {}'.format(name, app)
+                          '{} for {}'.format(name, namespace)
                     raise ServiceUnavailable(msg) from e
 
         # get config for the service
-        config = self._load_service_config(app, 'router')
+        config = self._load_service_config(namespace, 'router')
 
         # See if certificates are available
         if 'certificates' not in config:
@@ -206,7 +206,7 @@ class Certificate(AuditedModel):
             certificates.append(cert)
         config['certificates'] = ','.join(certificates)
 
-        self._save_service_config(app, 'router', config)
+        self._save_service_config(namespace, 'router', config)
 
     def detach(self, *args, **kwargs):
         # remove the certificate from the domain
@@ -215,19 +215,19 @@ class Certificate(AuditedModel):
         domain.save()
 
         name = '%s-cert' % self.name
-        app = domain.app
+        namespace = domain.app.id
 
         # only delete if it exists and if no other domains depend on secret
         if len(self.domains) == 0:
             try:
                 # We raise an exception when a secret doesn't exist
-                self._scheduler.get_secret(app, name)
-                self._scheduler.delete_secret(app, name)
+                self._scheduler.get_secret(namespace, name)
+                self._scheduler.delete_secret(namespace, name)
             except KubeException as e:
-                raise ServiceUnavailable("Could not delete certificate secret {} for application {}".format(name, app)) from e  # noqa
+                raise ServiceUnavailable("Could not delete certificate secret {} for application {}".format(name, namespace)) from e  # noqa
 
         # get config for the service
-        config = self._load_service_config(app, 'router')
+        config = self._load_service_config(namespace, 'router')
 
         # See if certificates are available
         if 'certificates' not in config:
@@ -240,4 +240,4 @@ class Certificate(AuditedModel):
             certificates.remove(cert)
         config['certificates'] = ','.join(certificates)
 
-        self._save_service_config(app, 'router', config)
+        self._save_service_config(namespace, 'router', config)

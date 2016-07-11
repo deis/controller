@@ -161,11 +161,11 @@ class Release(UuidAuditedModel):
                     return 5000
 
                 # User provided PORT
-                return envs.get('PORT')
+                return int(envs.get('PORT'))
 
             # If the user provides PORT
             if envs.get('PORT', None):
-                return envs.get('PORT')
+                return int(envs.get('PORT'))
 
             # discover port from docker image
             port = docker_get_port(self.image, deis_registry, creds)

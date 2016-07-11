@@ -269,6 +269,11 @@ class App(UuidAuditedModel):
                     del kwargs['name']
                     pods = self.list_pods(**kwargs)
                     # Add in the latest name
+                    if len(pods) == 0:
+                        # if pod is not even scheduled wait for it and pass dummy kwargs
+                        # to indicate restart of a single pod
+                        kwargs['name'] = "dummy"
+                        continue
                     kwargs['name'] = pods[0]['name']
                     pods = pods[0]
 

@@ -14,7 +14,7 @@ from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from api.models import Release
+from api.models import App, Release
 from scheduler import KubeHTTPException
 from . import adapter
 from . import mock_port
@@ -373,3 +373,42 @@ class ReleaseTest(APITransactionTestCase):
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 409, response.data)
+
+    def test_release_get_port(self, mock_requests):
+        """
+        Test that get_port always returns the proper value.
+        """
+        url = '/v2/apps'
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 201, response.data)
+        app_id = response.data['id']
+        app = App.objects.get(id=app_id)
+
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'sha': '123456', 'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        release = app.release_set.latest()
+
+        # when app is not routable, returns None
+        self.assertEqual(release.get_port(), None)
+
+        # when a buildpack type, default to 5000
+        self.assertEqual(release.get_port(routable=True), 5000)
+
+        # switch to a dockerfile app or else it'll automatically default to 5000
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        url = '/v2/apps/{app_id}/config'.format(**locals())
+        body = {'values': json.dumps({'PORT': '8080'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        release = app.release_set.latest()
+
+        # check that the port number returned is an int, not a string
+        self.assertEqual(release.get_port(routable=True), 8080)
+
+        # TODO(bacongobbler): test dockerfile ports

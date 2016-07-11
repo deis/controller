@@ -7,7 +7,12 @@ from api.models import AuditedModel
 class Domain(AuditedModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     app = models.ForeignKey('App', on_delete=models.CASCADE)
-    domain = models.TextField(blank=False, null=False, unique=True)
+    domain = models.TextField(
+        blank=False, null=False, unique=True,
+        error_messages={
+            'unique': 'Domain is already in use by another application'
+        }
+    )
     certificate = models.ForeignKey(
         'Certificate',
         on_delete=models.SET_NULL,

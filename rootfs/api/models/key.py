@@ -21,7 +21,12 @@ class Key(UuidAuditedModel):
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     id = models.CharField(max_length=128)
-    public = models.TextField(unique=True, validators=[validate_base64])
+    public = models.TextField(
+        unique=True, validators=[validate_base64],
+        error_messages={
+            'unique': 'Public Key is already in use'
+        }
+    )
     fingerprint = models.CharField(max_length=128, editable=False)
 
     class Meta:

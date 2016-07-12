@@ -27,6 +27,23 @@ from scheduler import KubeHTTPException, KubeException
 
 logger = logging.getLogger(__name__)
 
+session = None
+
+
+def get_session():
+    global session
+    if session is None:
+        session = requests.Session()
+        session.headers = {
+            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
+            'User-Agent': user_agent('Deis Controller', deis_version),
+        }
+        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
+        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
+    return session
+
 
 # http://kubernetes.io/v1.1/docs/design/identifiers.html
 def validate_id_is_docker_compatible(value):
@@ -525,27 +542,18 @@ class App(UuidAuditedModel):
             allowed.remove(404)
             req_timeout = 3
 
-        session = requests.Session()
-        session.headers = {
-            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
-            'User-Agent': user_agent('Deis Controller', deis_version),
-            # set the Host header for the application being checked - not used for actual routing
-            'Host': '{}.{}.nip.io'.format(self.id, settings.ROUTER_HOST)
-        }
-
-        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
-        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
-        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
-        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
-
         # Give the router max of 10 tries or max 30 seconds to become healthy
         # Uses time module to account for the timout value of 3 seconds
         start = time.time()
         failed = False
+        headers = {
+            # set the Host header for the application being checked - not used for actual routing
+            'Host': '{}.{}.nip.io'.format(self.id, settings.ROUTER_HOST),
+        }
         for _ in range(10):
             try:
                 # http://docs.python-requests.org/en/master/user/advanced/#timeouts
-                response = session.get(url, timeout=req_timeout)
+                response = get_session().get(url, timeout=req_timeout, headers=headers)
                 failed = False
             except requests.exceptions.RequestException:
                 # In case of a failure where response object is not available

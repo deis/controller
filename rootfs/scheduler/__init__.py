@@ -81,15 +81,14 @@ def unhealthy(status_code):
     return False
 
 
-class KubeHTTPClient(object):
-    apiversion = "v1"
+session = None
 
-    def __init__(self):
-        self.url = settings.SCHEDULER_URL
 
+def get_session():
+    global session
+    if session is None:
         with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as token_file:
             token = token_file.read()
-
         session = requests.Session()
         session.headers = {
             'Authorization': 'Bearer ' + token,
@@ -97,7 +96,15 @@ class KubeHTTPClient(object):
             'User-Agent': user_agent('Deis Controller', deis_version)
         }
         session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
-        self.session = session
+    return session
+
+
+class KubeHTTPClient(object):
+    apiversion = "v1"
+
+    def __init__(self):
+        self.url = settings.SCHEDULER_URL
+        self.session = get_session()
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         logger.info('deploy {}, img {}, cmd "{}"'.format(name, image, command))

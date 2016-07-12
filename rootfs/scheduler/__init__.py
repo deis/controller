@@ -41,19 +41,6 @@ spec:
     heritage: deis
 """
 
-SECRET_TEMPLATE = """\
-kind: Secret
-apiVersion: v1
-metadata:
-  name: $name
-  namespace: $id
-  labels:
-    app: $id
-    heritage: deis
-type: $type
-data: {}
-"""
-
 
 class KubeException(Exception):
     def __init__(self, *args, **kwargs):
@@ -454,6 +441,11 @@ class KubeHTTPClient(object):
         if env:
             # env vars are stored in secrets and mapped to env in k8s
             try:
+                labels = {
+                    'version': kwargs.get('version'),
+                    'type': 'env'
+                }
+
                 # secrets use dns labels for keys, map those properly here
                 secrets_env = {}
                 for key, value in env.items():
@@ -462,13 +454,9 @@ class KubeHTTPClient(object):
                 secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
                 self.get_secret(namespace, secret_name)
             except KubeHTTPException:
-                labels = {
-                    'version': kwargs.get('version'),
-                    'type': 'env'
-                }
                 self.create_secret(namespace, secret_name, secrets_env, labels=labels)
             else:
-                self.update_secret(namespace, secret_name, secrets_env)
+                self.update_secret(namespace, secret_name, secrets_env, labels=labels)
 
             for key in env.keys():
                 item = {
@@ -562,7 +550,12 @@ class KubeHTTPClient(object):
                 secret_type='kubernetes.io/dockerconfigjson'
             )
         else:
-            self.update_secret(namespace, secret_name, secret_data)
+            self.update_secret(
+                namespace,
+                secret_name,
+                secret_data,
+                secret_type='kubernetes.io/dockerconfigjson'
+            )
 
         # apply image pull secret to a Pod spec
         data['imagePullSecrets'] = [{'name': secret_name}]
@@ -1030,7 +1023,7 @@ class KubeHTTPClient(object):
         return readinessprobe
 
     # SECRETS #
-    # http://kubernetes.io/v1.1/docs/api-reference/v1/definitions.html#_v1_secret
+    # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_secret
     def get_secret(self, namespace, name):
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
         response = self.session.get(url)
@@ -1060,16 +1053,25 @@ class KubeHTTPClient(object):
 
         return response
 
-    def create_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
+    def _build_secret_manifest(self, namespace, name, data, secret_type='Opaque', labels={}):
         secret_types = ['Opaque', 'kubernetes.io/dockerconfigjson']
         if secret_type not in secret_types:
             raise KubeException('{} is not a supported secret type. Use one of the following: '.format(secret_type, ', '.join(secret_types)))  # noqa
 
-        manifest = ruamel.yaml.load(string.Template(SECRET_TEMPLATE).substitute({
-            "id": namespace,
-            "name": name,
-            "type": secret_type
-        }))
+        manifest = {
+            'kind': 'Secret',
+            'apiVersion': 'v1',
+            'metadata': {
+                'name': name,
+                'namespace': namespace,
+                'labels': {
+                    'app': namespace,
+                    'heritage': 'deis'
+                }
+            },
+            'type': secret_type,
+            'data': {}
+        }
 
         # add in any additional label info
         manifest['metadata']['labels'].update(labels)
@@ -1077,8 +1079,12 @@ class KubeHTTPClient(object):
         for key, value in data.items():
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
             item = base64.b64encode(value).decode(encoding='UTF-8')
-            manifest["data"].update({key: item})
+            manifest['data'].update({key: item})
 
+        return manifest
+
+    def create_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
+        manifest = self._build_secret_manifest(namespace, name, data, secret_type, labels)
         url = self._api("/namespaces/{}/secrets", namespace)
         response = self.session.post(url, json=manifest)
         if unhealthy(response.status_code):
@@ -1089,17 +1095,10 @@ class KubeHTTPClient(object):
 
         return response
 
-    def update_secret(self, namespace, name, data):
-        # only update the data attribute
-        secret = self.get_secret(namespace, name).json()
-
-        for key, value in data.items():
-            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
-            item = base64.b64encode(value).decode(encoding='UTF-8')
-            secret["data"].update({key: item})
-
+    def update_secret(self, namespace, name, data, secret_type='Opaque', labels={}):
+        manifest = self._build_secret_manifest(namespace, name, data, secret_type, labels)
         url = self._api("/namespaces/{}/secrets/{}", namespace, name)
-        response = self.session.put(url, json=secret)
+        response = self.session.put(url, json=manifest)
         if unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

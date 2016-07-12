@@ -370,16 +370,10 @@ class KubeHTTPClient(object):
         if unhealthy(response.status_code):
             raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
 
-        labels = {
-            'app': namespace,
-            'type': kwargs.get('app_type'),
-            'version': kwargs.get('version'),
-            'heritage': 'deis',
-        }
         # wait for run pod to start - use the same function as scale
-        container_name = namespace + '-' + kwargs.get('app_type')
-        container = self._find_container(container_name, manifest['spec']['containers'])
-        self._wait_until_pods_are_ready(namespace, container, labels, desired=1)
+        labels = manifest['metadata']['labels']
+        containers = manifest['spec']['containers']
+        self._wait_until_pods_are_ready(namespace, containers, labels, desired=1)
 
         try:
             # give pod 20 minutes to execute (after it got into ready state)
@@ -766,7 +760,7 @@ class KubeHTTPClient(object):
 
         logger.info("{} pods in namespace {} are terminated".format(delta, namespace))
 
-    def _wait_until_pods_are_ready(self, namespace, container, labels, desired):  # noqa
+    def _wait_until_pods_are_ready(self, namespace, containers, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
@@ -777,6 +771,10 @@ class KubeHTTPClient(object):
         # this is to account for kubernetes having readiness check report as failure until
         # the initial delay period is up
         delay = 0
+
+        container_name = '{}-{}'.format(labels['app'], labels['type'])
+        container = self._find_container(container_name, containers)
+
         # get health info from container
         if 'readinessProbe' in container:
             delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
@@ -829,15 +827,7 @@ class KubeHTTPClient(object):
     def _scale_rc(self, namespace, name, desired):
         rc = self.get_rc(namespace, name).json()
 
-        # get the current replica count by querying for pods instead of introspecting RC
-        labels = {
-            'app': rc['metadata']['labels']['app'],
-            'type': rc['metadata']['labels']['type'],
-            'version': rc['metadata']['labels']['version']
-        }
-
         current = int(rc['spec']['replicas'])
-
         if desired == current:
             logger.info("Not scaling RC {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
             return
@@ -848,18 +838,12 @@ class KubeHTTPClient(object):
             logger.info("scaling RC {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
 
             self.update_rc(namespace, name, rc)
-            self._wait_for_rc_ready(namespace, name)
-
-        # Get application container
-        container_name = '{}-{}'.format(
-            rc['metadata']['labels']['app'],
-            rc['metadata']['labels']['type']
-        )
-        # get health info from spec
-        container = self._find_container(container_name, rc['spec']['template']['spec']['containers'])  # noqa
+            self._wait_until_rc_is_updated(namespace, name)
 
         # Double check enough pods are in the required state to service the application
-        self._wait_until_pods_are_ready(namespace, container, labels, desired)
+        labels = rc['metadata']['labels']
+        containers = rc['spec']['template']['spec']['containers']
+        self._wait_until_pods_are_ready(namespace, containers, labels, desired)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):
@@ -880,16 +864,16 @@ class KubeHTTPClient(object):
             'kind': 'ReplicationController',
             'apiVersion': 'v1',
             'metadata': {
-              'name': name,
-              'labels': {
-                'app': namespace,
-                'version': kwargs.get("version"),
-                'type': kwargs.get('app_type'),
-                'heritage': 'deis',
-              }
+                'name': name,
+                'labels': {
+                    'app': namespace,
+                    'version': kwargs.get('version'),
+                    'type': kwargs.get('app_type'),
+                    'heritage': 'deis',
+                }
             },
             'spec': {
-              'replicas': kwargs.get("replicas", 0)
+                'replicas': kwargs.get('replicas', 0)
             }
         }
 
@@ -908,11 +892,11 @@ class KubeHTTPClient(object):
             )
             logger.debug('manifest used: {}'.format(ruamel.yaml.dump(manifest)))
 
-        self._wait_for_rc_ready(namespace, name)
+        self._wait_until_rc_is_updated(namespace, name)
 
         return resp
 
-    def _wait_for_rc_ready(self, namespace, name):
+    def _wait_until_rc_is_updated(self, namespace, name):
         """
         Looks at status/observedGeneration and metadata/generation and
         waits for observedGeneration >= generation to happen, indicates RC is ready

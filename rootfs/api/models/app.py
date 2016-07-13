@@ -457,7 +457,7 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
                 'routable': routable,
-                'batches': batches
+                'deploy_batches': batches
             }
 
         # Sort deploys so routable comes first

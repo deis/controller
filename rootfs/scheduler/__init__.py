@@ -124,22 +124,10 @@ class KubeHTTPClient(object):
             logger.info('No prior RC could be found for {}-{}'.format(namespace, app_type))
 
         # see if application or global deploy batches are defined
-        if not kwargs.get('batches', None):
-            # figure out how many nodes the application can go on
-            tags = kwargs.get('tags', {})
-            steps = len(self.get_nodes(labels=tags).json()['items'])
-        else:
-            steps = int(kwargs.get('batches'))
-
-        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
-        if desired < steps:
-            # do it all in one go
-            batches = [desired]
-        else:
-            # figure out the stepped deploy count and then see if there is a leftover
-            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
-            if desired - sum(batches) > 0:
-                batches.append(desired - sum(batches))
+        batches = kwargs.get('deploy_batches', None)
+        tags = kwargs.get('tags', {})
+        steps = self._get_deploy_steps(batches, tags)
+        batches = self._get_deploy_batches(steps, desired)
 
         try:
             count = 0
@@ -198,6 +186,29 @@ class KubeHTTPClient(object):
                 continue
 
             self.delete_pod(namespace, pod['metadata']['name'])
+
+    def _get_deploy_steps(self, batches, tags):
+        # if there is no batch information available default to available nodes for app
+        if not batches:
+            # figure out how many nodes the application can go on
+            steps = len(self.get_nodes(labels=tags).json()['items'])
+        else:
+            steps = int(batches)
+
+        return steps
+
+    def _get_deploy_batches(self, steps, desired):
+        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
+        if desired < steps:
+            # do it all in one go
+            batches = [desired]
+        else:
+            # figure out the stepped deploy count and then see if there is a leftover
+            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
+            if desired - sum(batches) > 0:
+                batches.append(desired - sum(batches))
+
+        return batches
 
     def _update_application_service(self, namespace, name, app_type, port, routable=False):
         """Update application service with all the various required information"""

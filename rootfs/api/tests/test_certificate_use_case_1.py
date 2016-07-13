@@ -1,11 +1,10 @@
-import os
-
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
+from api.tests import TEST_ROOT
 
 
 class CertificateUseCase1Test(APITestCase):
@@ -27,11 +26,10 @@ class CertificateUseCase1Test(APITestCase):
         self.domain = Domain.objects.create(owner=self.user, app=self.app, domain='foo.com')
         self.name = 'foo-com'  # certificate name
 
-        path = os.path.dirname(os.path.realpath(__file__))
-        with open('{}/certs/{}.key'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.key'.format(TEST_ROOT, self.domain)) as f:
             self.key = f.read()
 
-        with open('{}/certs/{}.cert'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.cert'.format(TEST_ROOT, self.domain)) as f:
             self.cert = f.read()
 
     def tearDown(self):

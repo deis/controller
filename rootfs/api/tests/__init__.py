@@ -2,6 +2,7 @@ import logging
 import random
 import requests_mock
 import time
+from os.path import dirname, realpath
 
 from django.conf import settings
 from django.test.runner import DiscoverRunner
@@ -38,6 +39,9 @@ adapter = requests_mock.Adapter()
 adapter.register_uri('GET', url + '/', text=fake_responses)
 adapter.register_uri('GET', url + '/health', text=fake_responses)
 adapter.register_uri('GET', url + '/healthz', text=fake_responses)
+
+# Root of the test directory (for files and such)
+TEST_ROOT = dirname(realpath(__file__))
 
 
 class SilentDjangoTestSuiteRunner(DiscoverRunner):

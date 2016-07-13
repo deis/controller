@@ -229,15 +229,18 @@ class KubeHTTPClient(object):
     def scale(self, namespace, name, image, command, **kwargs):
         logger.info('scale {}, img {}, cmd "{}"'.format(name, image, command))
         replicas = kwargs.pop('replicas')
-        if unhealthy(self.get_rc_status(namespace, name)):
-            # add RC if it is missing for the namespace
-            try:
-                # Create RC with scale as 0 and then scale to get pod monitoring
-                kwargs['replicas'] = 0
-                self.create_rc(namespace, name, image, command, **kwargs)
-            except KubeException:
-                logger.exception("Creating RC {} failed}".format(name))
-                raise
+        try:
+            self.get_rc(namespace, name)
+        except KubeHTTPException as e:
+            if e.response.status_code == 404:
+                # add RC if it is missing for the namespace
+                try:
+                    # Create RC with scale as 0 and then scale to get pod monitoring
+                    kwargs['replicas'] = 0
+                    self.create_rc(namespace, name, image, command, **kwargs)
+                except KubeException:
+                    logger.exception("Creating RC {} failed".format(name))
+                    raise
 
         # let the scale failure bubble up
         self._scale_rc(namespace, name, replicas)
@@ -707,11 +710,6 @@ class KubeHTTPClient(object):
             return False
 
         return controllers['items'][0]
-
-    def get_rc_status(self, namespace, name):
-        url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        resp = self.session.get(url)
-        return resp.status_code
 
     def get_rc(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)

@@ -3,8 +3,6 @@ Unit tests for the Deis api app.
 
 Run the tests with "./manage.py test api"
 """
-
-
 import json
 
 from django.contrib.auth.models import User

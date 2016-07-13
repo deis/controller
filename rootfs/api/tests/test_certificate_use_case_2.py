@@ -1,11 +1,10 @@
-import os
-
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
+from api.tests import TEST_ROOT
 
 
 class CertificateUseCase2Test(APITestCase):
@@ -32,12 +31,11 @@ class CertificateUseCase2Test(APITestCase):
         # only foo.com has a cert
         self.domain = 'foo.com'
 
-        path = os.path.dirname(os.path.realpath(__file__))
         self.certificates = {self.domain: {'name': self.domain.replace('.', '-')}}
-        with open('{}/certs/{}.key'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.key'.format(TEST_ROOT, self.domain)) as f:
             self.certificates[self.domain]['key'] = f.read()
 
-        with open('{}/certs/{}.cert'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.cert'.format(TEST_ROOT, self.domain)) as f:
             self.certificates[self.domain]['cert'] = f.read()
 
         # add expires and fingerprints

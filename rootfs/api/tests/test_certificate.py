@@ -1,5 +1,3 @@
-import os
-
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITestCase
@@ -7,6 +5,7 @@ from rest_framework.authtoken.models import Token
 from django.core.exceptions import SuspiciousOperation
 
 from api.models import App, Certificate
+from api.tests import TEST_ROOT
 
 
 class CertificateTest(APITestCase):
@@ -24,11 +23,10 @@ class CertificateTest(APITestCase):
         self.app = App.objects.create(owner=self.user, id='test-app')
         self.domain = 'autotest.example.com'
 
-        path = os.path.dirname(os.path.realpath(__file__))
-        with open('{}/certs/{}.key'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.key'.format(TEST_ROOT, self.domain)) as f:
             self.key = f.read()
 
-        with open('{}/certs/{}.cert'.format(path, self.domain)) as f:
+        with open('{}/certs/{}.cert'.format(TEST_ROOT, self.domain)) as f:
             self.cert = f.read()
 
     def tearDown(self):

@@ -1,6 +1,8 @@
+from collections import OrderedDict
 from datetime import datetime, timedelta
 import json
 import logging
+import operator
 import os
 import string
 import time
@@ -445,6 +447,9 @@ class KubeHTTPClient(object):
                 for key, value in env.items():
                     secrets_env[key.lower().replace('_', '-')] = str(value)
 
+                # dictionary sorted by key
+                secrets_env = OrderedDict(sorted(secrets_env.items(), key=lambda t: t[0]))
+
                 secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
                 self.get_secret(namespace, secret_name)
             except KubeHTTPException:
@@ -477,6 +482,9 @@ class KubeHTTPClient(object):
                 "name": "DEIS_DEBUG",
                 "value": "1"
             })
+
+        # list sorted by dict key name
+        data['env'].sort(key=operator.itemgetter('name'))
 
         if mem or cpu:
             data["resources"] = {"limits": {}}

@@ -123,7 +123,10 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'cmd')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-cmd-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
         url = '/v2/apps'
@@ -148,7 +151,10 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'cmd')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-cmd-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
         url = '/v2/apps'
@@ -177,7 +183,10 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'cmd')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-cmd-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
         url = '/v2/apps'
@@ -206,7 +215,10 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'web')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
     def test_build_str(self, mock_requests):
         """Test the text representation of a build."""

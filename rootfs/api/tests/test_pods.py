@@ -5,6 +5,7 @@ Run the tests with "./manage.py test api"
 """
 import json
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from rest_framework.test import APITransactionTestCase
@@ -339,7 +340,10 @@ class PodTest(APITransactionTestCase):
             self.assertIn(pod['type'], ['web', 'worker'])
             self.assertEqual(pod['release'], 'v2')
             # pod name is auto generated so use regex
-            self.assertRegex(pod['name'], app_id + '-v2-(worker|web)-[a-z0-9]{5}')
+            if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+                self.assertRegex(pod['name'], app_id + '-(worker|web)-[0-9]{8,10}-[a-z0-9]{5}')
+            else:
+                self.assertRegex(pod['name'], app_id + '-v2-(worker|web)-[a-z0-9]{5}')
 
     def test_pod_command_format(self, mock_requests):
         # regression test for https://github.com/deis/deis/pull/1285
@@ -377,7 +381,10 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(pod['type'], 'web')
         self.assertEqual(pod['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(pod['name'], app_id + '-v2-web-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(pod['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(pod['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
         # verify commands
         data = App.objects.get(id=app_id)

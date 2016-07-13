@@ -225,7 +225,7 @@ class Release(UuidAuditedModel):
             )
 
             if self.build is not None:
-                self.app.deploy(new_release)
+                self.app.deploy(new_release, force_deploy=True)
             return new_release
         except Exception as e:
             if 'new_release' in locals():
@@ -246,11 +246,11 @@ class Release(UuidAuditedModel):
         finally:
             super(Release, self).delete(*args, **kwargs)
 
-    def cleanup_old(self):
+    def cleanup_old(self, deployment=False):
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
         self.app.log(
-            'Cleaning up RCS for releases older than {} (latest)'.format(latest_version),
+            'Cleaning up RCs for releases older than {} (latest)'.format(latest_version),
             level=logging.DEBUG
         )
 
@@ -282,7 +282,7 @@ class Release(UuidAuditedModel):
         labels = {
             'heritage': 'deis',
             'app': self.app.id,
-            'type': 'env'
+            'type': 'env',
         }
         secrets = self._scheduler.get_secrets(self.app.id, labels=labels).json()
         for secret in secrets['items']:
@@ -307,18 +307,58 @@ class Release(UuidAuditedModel):
 
             self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
 
+        if deployment:
+            self._cleanup_deployment_secrets_and_configs(self.app.id)
+
+    def _cleanup_deployment_secrets_and_configs(self, namespace):
+        """
+        Clean up any environment secrets (and in the future ConfigMaps) that
+        are tied to a release Deployments no longer track
+
+        This is done by checking the available ReplicaSets and only removing
+        objects not attached to anything. This will allow releases done outside
+        of Deis Controller
+        """
+
+        # Find all ReplicaSets
+        versions = []
+        labels = {'heritage': 'deis', 'app': namespace}
+        replicasets = self._scheduler.get_replicasets(namespace, labels=labels).json()
+        for replicaset in replicasets['items']:
+            if (
+                'version' not in replicaset['metadata']['labels'] or
+                replicaset['metadata']['labels']['version'] in versions
+            ):
+                continue
+
+            versions.append(replicaset['metadata']['labels']['version'])
+
+        # find all env secrets not owned by any replicaset
+        labels = {
+            'heritage': 'deis',
+            'app': namespace,
+            'type': 'env',
+            # http://kubernetes.io/docs/user-guide/labels/#set-based-requirement
+            'version__notin': versions
+        }
+        self.app.log('Cleaning up orphaned env var secrets for application {}'.format(namespace), level=logging.DEBUG)  # noqa
+        secrets = self._scheduler.get_secrets(namespace, labels=labels).json()
+        for secret in secrets['items']:
+            self._scheduler.delete_secret(namespace, secret['metadata']['name'])
+
     def _delete_release_in_scheduler(self, namespace, version):
         """
-        Deletes a specific release in k8s
+        Deletes a specific release in k8s based on ReplicationController
 
-        Scale RCs to 0 then delete RCs and the version specific
+        Scale RCs to 0 then delete RCs / Deployments and the version specific
         secret that container the env var
         """
         labels = {
             'heritage': 'deis',
             'app': namespace,
-            'version': 'v{}'.format(version)
+            'version': version
         }
+
         controllers = self._scheduler.get_rcs(namespace, labels=labels).json()
         for controller in controllers['items']:
             self._scheduler.cleanup_release(namespace, controller)
@@ -329,6 +369,20 @@ class Release(UuidAuditedModel):
             self._scheduler.delete_secret(namespace, secret_name)
         except KubeHTTPException:
             pass
+
+    def deployment_in_progress(self, namespace, name):
+        # see if there is a global or app specific setting to specify Deployments usage
+        deployments = bool(self.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
+        if not deployments:
+            return False
+
+        try:
+            ready, _ = self._scheduler.are_deployment_replicas_ready(namespace, name)
+            return not ready
+        except KubeHTTPException as e:
+            # Deployment doesn't exist
+            if e.response.status_code == 404:
+                return False
 
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:

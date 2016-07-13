@@ -278,7 +278,10 @@ class HookTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'web')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-web-[a-z0-9]{5}')
 
         # post the build without an auth token
         self.client.credentials()
@@ -325,7 +328,10 @@ class HookTest(APITransactionTestCase):
         self.assertEqual(container['type'], 'cmd')
         self.assertEqual(container['release'], 'v2')
         # pod name is auto generated so use regex
-        self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
+        if settings.DEIS_KUBERNETES_DEPLOYMENTS:
+            self.assertRegex(container['name'], app_id + '-cmd-[0-9]{8,10}-[a-z0-9]{5}')
+        else:
+            self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # post the build without an auth token
         self.client.credentials()

@@ -369,11 +369,11 @@ class ReleaseTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         release = app.release_set.latest()
 
-        # when app is not routable, returns None
-        self.assertEqual(release.get_port(), None)
+        # when app is not routable, then it still return 5000
+        self.assertEqual(release.get_port(), 5000)
 
         # when a buildpack type, default to 5000
-        self.assertEqual(release.get_port(routable=True), 5000)
+        self.assertEqual(release.get_port(), 5000)
 
         # switch to a dockerfile app or else it'll automatically default to 5000
         url = '/v2/apps/{app_id}/builds'.format(**locals())
@@ -388,6 +388,6 @@ class ReleaseTest(APITransactionTestCase):
         release = app.release_set.latest()
 
         # check that the port number returned is an int, not a string
-        self.assertEqual(release.get_port(routable=True), 8080)
+        self.assertEqual(release.get_port(), 8080)
 
         # TODO(bacongobbler): test dockerfile ports

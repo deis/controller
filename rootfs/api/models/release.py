@@ -134,7 +134,7 @@ class Release(UuidAuditedModel):
         deis_registry = bool(self.build.source_based)
         publish_release(source_image, self.image, deis_registry, self.get_registry_auth())
 
-    def get_port(self, routable=False):
+    def get_port(self):
         """
         Get application port for a given release. If pulling from private registry
         then use default port or read from ENV var, otherwise attempt to pull from
@@ -144,11 +144,6 @@ class Release(UuidAuditedModel):
             deis_registry = bool(self.build.source_based)
             envs = self.config.values
             creds = self.get_registry_auth()
-
-            port = None
-            # Only care about port for routable application
-            if not routable:
-                return port
 
             if self.build.type == "buildpack":
                 self.app.log('buildpack type detected. Defaulting to $PORT 5000')

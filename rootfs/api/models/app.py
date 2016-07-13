@@ -385,7 +385,7 @@ class App(UuidAuditedModel):
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             routable = True if scale_type in ['web', 'cmd'] else False
             # fetch application port and inject into ENV Vars as needed
-            port = release.get_port(routable)
+            port = release.get_port()
             if port:
                 envs['PORT'] = port
 
@@ -440,7 +440,7 @@ class App(UuidAuditedModel):
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
             routable = True if scale_type in ['web', 'cmd'] else False
             # fetch application port and inject into ENV vars as needed
-            port = release.get_port(routable)
+            port = release.get_port()
             if port:
                 envs['PORT'] = port
 

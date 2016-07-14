@@ -590,7 +590,7 @@ class KubeHTTPClient(object):
 
         # add in healthchecks
         healthchecks = kwargs.get('healthcheck', None)
-        if healthchecks:
+        if healthchecks and kwargs.get('routable', False):
             # check if a port is present. if not, auto-populate it
             # TODO: rip this out when we stop supporting deis config:set HEALTHCHECK_URL
             if (

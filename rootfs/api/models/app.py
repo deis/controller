@@ -121,9 +121,16 @@ class App(UuidAuditedModel):
     def _get_job_id(self, container_type):
         app = self.id
         release = self.release_set.latest()
+
+        # see if there is a global or app specific setting to specify Deployments usage
+        deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
+
+        # deployments does not need version in the job
+        if deployments:
+            return "{app}-{container_type}".format(**locals())
+
         version = "v{}".format(release.version)
-        job_id = "{app}-{version}-{container_type}".format(**locals())
-        return job_id
+        return "{app}-{version}-{container_type}".format(**locals())
 
     def _get_command(self, container_type):
         try:
@@ -237,27 +244,40 @@ class App(UuidAuditedModel):
 
     def restart(self, **kwargs):  # noqa
         """
-        Restart found pods by deleting them (RC will recreate).
-        Wait until they are all drained away and RC has gotten to a good state
+        Restart found pods by deleting them (RC / Deployment will recreate).
+        Wait until they are all drained away and RC / Deployment has gotten to a good state
         """
         try:
-            # Resolve single pod name if short form (worker-asdfg) is passed
-            if 'name' in kwargs and kwargs['name'].count('-') == 1:
-                if 'release' not in kwargs or kwargs['release'] is None:
-                    release = self.release_set.latest()
-                else:
-                    release = self.release_set.get(version=kwargs['release'])
+            if kwargs.get('release', None) is None:
+                release = self.release_set.latest()
+            else:
+                release = self.release_set.get(version=kwargs['release'])
 
-                version = "v{}".format(release.version)
-                kwargs['name'] = '{}-{}-{}'.format(kwargs['id'], version, kwargs['name'])
+            # see if there is a global or app specific setting to specify Deployments usage
+            deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
 
-            # Iterate over RCs to get total desired count if not a single item
+            if deployments:
+                # Resolve single pod name if short form (cmd-1269180282-1nyfz) is passed
+                if 'name' in kwargs and kwargs['name'].count('-') == 2:
+                    kwargs['name'] = '{}-{}'.format(kwargs['id'], kwargs['name'])
+            else:
+                # Resolve single pod name if short form (worker-asdfg) is passed
+                if 'name' in kwargs and kwargs['name'].count('-') == 1:
+                    version = "v{}".format(release.version)
+                    kwargs['name'] = '{}-{}-{}'.format(kwargs['id'], version, kwargs['name'])
+
+            # Iterate over RCs / RSs to get total desired count if not a single item
             desired = 1
             if 'name' not in kwargs:
                 desired = 0
                 labels = self._scheduler_filter(**kwargs)
-                controllers = self._scheduler.get_rcs(kwargs['id'], labels=labels).json()['items']
-                for controller in controllers:
+                # fetch RS (which represent Deployments) / RCs
+                if deployments:
+                    controllers = self._scheduler.get_replicasets(kwargs['id'], labels=labels)
+                else:
+                    controllers = self._scheduler.get_rcs(kwargs['id'], labels=labels)
+
+                for controller in controllers.json()['items']:
                     desired += controller['spec']['replicas']
         except KubeException:
             # Nothing was found
@@ -265,7 +285,7 @@ class App(UuidAuditedModel):
 
         try:
             for pod in self.list_pods(**kwargs):
-                # This function verifies the delete. Gives pod 30 seconds
+                # This function verifies the delete
                 self._scheduler.delete_pod(self.id, pod['name'])
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
@@ -380,6 +400,13 @@ class App(UuidAuditedModel):
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
         envs = release.config.values
+
+        # see if the app config has deploy batch preference, otherwise use global
+        batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
+
+        # see if there is a global or app specific setting to specify Deployments usage
+        deployments = bool(envs.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
+
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
@@ -400,7 +427,10 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
-                'routable': routable
+                'routable': routable,
+                'deployments': deployments,
+                'deploy_batches': batches,
+                'deploy_timeout': 120,  # 2 minutes
             }
 
             command = self._get_command(scale_type)
@@ -417,8 +447,12 @@ class App(UuidAuditedModel):
                 self.log(err, logging.ERROR)
                 raise ServiceUnavailable(err) from e
 
-    def deploy(self, release):
-        """Deploy a new release to this application"""
+    def deploy(self, release, force_deploy=False):
+        """
+        Deploy a new release to this application
+
+        force_deploy can be used when a deployment is broken, such as for Rollback
+        """
         if release.build is None:
             raise DeisException('No build associated with this release')
 
@@ -431,6 +465,11 @@ class App(UuidAuditedModel):
 
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
+
+        # see if there is a global or app specific setting to specify Deployments usage
+        deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
+
+        deployment_history = release.config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
@@ -457,7 +496,11 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
                 'routable': routable,
-                'deploy_batches': batches
+                'deploy_batches': batches,
+                'deploy_timeout': 120,  # 2 minutes
+                'deployment_history_limit': deployment_history,
+                'deployments': deployments,
+                'release_summary': release.summary
             }
 
         # Sort deploys so routable comes first
@@ -465,6 +508,11 @@ class App(UuidAuditedModel):
 
         for scale_type, kwargs in deploys.items():
             try:
+                # Is there an existing deployment in progress?
+                name = self._get_job_id(scale_type)
+                if not force_deploy and release.deployment_in_progress(self.id, name):
+                    raise AlreadyExists('Deployment for {} is already in progress'.format(name))
+
                 self._scheduler.deploy(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
@@ -484,8 +532,8 @@ class App(UuidAuditedModel):
                 self.log(err, logging.ERROR)
                 raise ServiceUnavailable(err) from e
 
-        # cleanup old releases from kubernetes
-        release.cleanup_old()
+        # cleanup old release objects from kubernetes
+        release.cleanup_old(deployments)
 
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
@@ -668,8 +716,9 @@ class App(UuidAuditedModel):
 
             data = []
             for p in pods:
+                labels = p['metadata']['labels']
                 # specifically ignore run pods
-                if p['metadata']['labels']['type'] == 'run':
+                if labels['type'] == 'run':
                     continue
 
                 state = str(self._scheduler.pod_state(p))
@@ -685,8 +734,8 @@ class App(UuidAuditedModel):
                 item = Pod()
                 item['name'] = p['metadata']['name']
                 item['state'] = state
-                item['release'] = p['metadata']['labels']['version']
-                item['type'] = p['metadata']['labels']['type']
+                item['release'] = labels['version']
+                item['type'] = labels['type']
                 if 'startTime' in p['status']:
                     started = p['status']['startTime']
                 else:
@@ -697,7 +746,6 @@ class App(UuidAuditedModel):
 
             # sorting so latest start date is first
             data.sort(key=lambda x: x['started'], reverse=True)
-
             return data
         except KubeHTTPException as e:
             pass
@@ -707,7 +755,7 @@ class App(UuidAuditedModel):
             raise ServiceUnavailable(err) from e
 
     def _scheduler_filter(self, **kwargs):
-        labels = {'app': self.id}
+        labels = {'app': self.id, 'heritage': 'deis'}
 
         # always supply a version, either latest or a specific one
         if 'release' not in kwargs or kwargs['release'] is None:

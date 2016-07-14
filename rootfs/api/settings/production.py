@@ -265,6 +265,11 @@ DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POL
 # Can also be overwritten on per app basis if desired
 DEIS_DEPLOY_BATCHES = os.environ.get('DEIS_DEPLOY_BATCHES', None)
 
+# If the k8s Deployments object should be used instead of ReplicationController
+DEIS_KUBERNETES_DEPLOYMENTS = bool(os.environ.get('DEIS_KUBERNETES_DEPLOYMENTS', False))
+
+KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', None)  # noqa
+
 # How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL
 KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS = int(os.environ.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', 30))  # noqa
 

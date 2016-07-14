@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
-import requests
-import requests_mock
-from urllib.parse import urlparse, parse_qs
-import string
+import json
 import random
 import re
+import requests
+import requests_mock
+import string
 import time
+from urllib.parse import urlparse, parse_qs
+from zlib import adler32
 
 from . import KubeHTTPClient, KubeHTTPException
 
@@ -18,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 resources = [
     'namespaces', 'nodes', 'pods', 'replicationcontrollers',
-    'secrets', 'services', 'events'
+    'secrets', 'services', 'events', 'deployments', 'replicasets',
 ]
 
 
@@ -73,7 +75,7 @@ def pod_state_transitions(pod_url=None):
     # Loops through all the pods to see if next phase needs to be done
     for pod_url, state_time in pods.items():
         if datetime.utcnow() < state_time:
-            # it is now time yet!
+            # it is not time yet!
             continue
 
         # Look at the current phase
@@ -85,10 +87,15 @@ def pod_state_transitions(pod_url=None):
 
         # Is this Pod part of an RC or not
         if pod['status']['phase'] == 'Running':
-            # Try to determine the connected RC to readjust pod count
+            # Try to determine the connected RC / RS to readjust pod count
             # One way is to look at annotations:kubernetes.io/created-by and read
             # the serialized reference but that looks clunky right now
-            controllers = filter_data({'labels': pod['metadata']['labels']}, 'replicationcontrollers')  # noqa
+
+            if 'pod-template-hash' in pod['metadata']['labels']:
+                controllers = filter_data({'labels': pod['metadata']['labels']}, 'replicasets')  # noqa
+            else:
+                controllers = filter_data({'labels': pod['metadata']['labels']}, 'replicationcontrollers')  # noqa
+
             # If Pod is in an RC then do nothing
             if not controllers:
                 # If Pod is not in an RC then it needs to move forward
@@ -137,10 +144,16 @@ def add_cleanup_pod(url):
 
 
 def delete_pod(url, data, request):
-    # Try to determine the connected RC to readjust pod count
+    # Try to determine the connected RC / RS to readjust pod count
     # One way is to look at annotations:kubernetes.io/created-by and read
     # the serialized reference but that looks clunky right now
-    controllers = filter_data({'labels': data['metadata']['labels']}, 'replicationcontrollers')
+
+    # Try RC first and then RS
+    if 'pod-template-hash' in data['metadata']['labels']:
+        controllers = filter_data({'labels': data['metadata']['labels']}, 'replicasets')
+    else:
+        controllers = filter_data({'labels': data['metadata']['labels']}, 'replicationcontrollers')
+
     if controllers:
         controller = controllers.pop()
         upsert_pods(controller, cache_key(request.path))
@@ -213,20 +226,8 @@ def create_pods(url, labels, base, new_pods):
         pod_key = url
         if cache_key(data['metadata']['name']) not in url:
             pod_key = cache_key(url + '_' + data['metadata']['name'])
-        cache.set(pod_key, data, None)
 
-        # Keep track of what resources are in a given resource type
-        items = cache.get('pods', [])  # global scope
-        if pod_key not in items:
-            items.append(pod_key)
-            cache.set('pods', items, None)
-
-        # make sure url only has up to "_pods"
-        namespaced_url = url[0:(url.find("_pods") + 5)]
-        items = cache.get(namespaced_url, [])  # pods within the namespace
-        if pod_key not in items:
-            items.append(pod_key)
-            cache.set(namespaced_url, items, None)
+        add_cache_item(pod_key, 'pods', data)
 
         # set up a fake log for the pod
         log = "I did stuff today"
@@ -238,9 +239,12 @@ def create_pods(url, labels, base, new_pods):
 
 
 def upsert_pods(controller, url):
-    # turn RC url into pods one
+    # turn RC / RS (which a Deployment creates) url into pods one
     url = url.replace(cache_key(controller['metadata']['name']), '')
-    url = url.replace('_replicationcontrollers_', '_pods')
+    if '_replicasets_' in url:
+        url = url.replace('_replicasets_', '_pods').replace('apis_extensions_v1beta1', 'api_v1')  # noqa
+    else:
+        url = url.replace('_replicationcontrollers_', '_pods')
     # make sure url only has up to "_pods"
     url = url[0:(url.find("_pods") + 5)]
 
@@ -272,6 +276,104 @@ def upsert_pods(controller, url):
         return delete_pods(items, current, desired)
 
     create_pods(url, data['metadata']['labels'], data, delta)
+
+
+def manage_replicasets(deployment, url):
+    """
+    Creates a new ReplicaSet, scales up the pods and
+    scales down the old ReplicaSet (if applicable) to 0
+    and terminates all Pods
+
+    The input data is going to be a Deployment object
+    """
+    # reset Deployments status
+    deployment['status']['replicas'] = deployment['spec']['replicas']
+    deployment['status']['unavailableReplicas'] = deployment['spec']['replicas']
+    if 'updatedReplicas' in deployment['status']:
+        del deployment['status']['updatedReplicas']
+    if 'availableReplicas' in deployment['status']:
+        del deployment['status']['availableReplicas']
+    cache.set(url, deployment, None)
+
+    # hash deployment.spec.template with adler32 to get pod hash
+    pod_hash = str(adler32(bytes(json.dumps(deployment['spec']['template'], sort_keys=True), 'UTF-8')))  # noqa
+
+    # fix up url
+    rs_url = url.replace('_deployments_', '_replicasets_')
+
+    # create new RS
+    rs = deployment.copy()
+    rs['kind'] = 'ReplicaSet'
+    # fix up the name
+    rs['metadata']['name'] = rs['metadata']['name'] + '-' + pod_hash
+    rs_url += '_' + pod_hash
+
+    # add the pod-template-hash label
+    rs['metadata']['labels'] = rs['spec']['template']['metadata']['labels'].copy()
+    rs['metadata']['labels']['pod-template-hash'] = pod_hash
+    rs['spec']['template']['metadata']['labels']['pod-template-hash'] = pod_hash
+
+    # deployment only
+    del rs['spec']['strategy']
+
+    # save new ReplicaSet to cache
+    add_cache_item(rs_url, 'replicasets', rs)
+
+    namespaced_url = rs_url[0:(rs_url.find("_replicasets") + 12)]
+    data = cache.get(namespaced_url, [])
+
+    # spin up/down pods for RS
+    upsert_pods(rs, rs_url)
+
+    # Scale down older ReplicaSets
+    for item in data:
+        # skip latest
+        if item == rs_url:
+            continue
+
+        old_rs = cache.get(item)
+
+        # lame way of seeing if the RSs have the same Deployment parent
+        # have to prune of hash as well
+        deployment_url = item.replace('_replicasets_', '_deployments_').replace('_' + old_rs['metadata']['labels']['pod-template-hash'], '')  # noqa
+        if url != deployment_url:
+            continue
+
+        if old_rs['spec']['replicas'] == 0:
+            continue
+
+        old_rs['spec']['replicas'] = 0
+
+        upsert_pods(old_rs, item)
+
+    # Fill out deployment.status for success as pods transition to running state
+    pod_url = namespaced_url.replace('_replicasets', '_pods').replace('apis_extensions_v1beta1', 'api_v1')  # noqa
+    while True:
+        # The below needs to be done to emulate Deployment handling things
+        # always cleanup pods
+        cleanup_pods()
+        # always transition pods
+        pod_state_transitions()
+
+        current = 0
+        for pod in filter_data({'labels': rs['metadata']['labels']}, pod_url):
+            # when this is in the Mock class this can be _pod_ready call
+            if pod['status']['phase'] == 'Running':
+                current += 1
+
+        deployment['status']['updatedReplicas'] = current
+        deployment['status']['availableReplicas'] = current
+        deployment['status']['unavailableReplicas'] = deployment['spec']['replicas'] - current
+        cache.set(url, deployment, None)
+
+        # all ready and matching the intent
+        if current == deployment['spec']['replicas']:
+            break
+
+        time.sleep(0.5)
+
+    del deployment['status']['unavailableReplicas']
+    cache.set(url, deployment, None)
 
 
 def filter_data(filters, path):
@@ -408,35 +510,27 @@ def post(request, context):
     # don't bother adding it to those two resources since they live outside namespace
     if resource_type not in ['nodes', 'namespaces']:
         namespace = request.url.replace(settings.SCHEDULER_URL + '/api/v1/namespaces/',  '')
+        namespace = request.url.replace(settings.SCHEDULER_URL + '/apis/extensions/v1beta1/namespaces/',  '')  # noqa
         namespace = namespace.split('/')[0]
         data['metadata']['namespace'] = namespace
 
-    if resource_type == 'replicationcontrollers':
+    # Handle RC / RS / Deployments
+    if resource_type in ['replicationcontrollers', 'replicasets', 'deployments']:
         data['status'] = {
             'observedGeneration': 1
         }
         data['metadata']['generation'] = 1
 
-        upsert_pods(data, url)
+        if resource_type in ['replicationcontrollers', 'replicasets']:
+            upsert_pods(data, url)
+        elif resource_type == 'deployments':
+            manage_replicasets(data, url)
 
     # deis run is the only thing that creates pods directly
     if resource_type == 'pods':
         create_pods(url, data['metadata']['labels'], data, 1)
     else:
-        cache.set(url, data, None)
-
-        # Keep track of what resources are in a given resource
-        items = cache.get(resource_type, [])
-        if url not in items:
-            items.append(url)
-            cache.set(resource_type, items, None)
-
-        # Keep track of what resources exist under other resources (mostly namespace)
-        other = cache_key(request.url)
-        items = cache.get(other, [])
-        if url not in items:
-            items.append(url)
-            cache.set(other, items, None)
+        add_cache_item(url, resource_type, data)
 
     context.status_code = 201
     context.reason = 'Created'
@@ -446,8 +540,8 @@ def post(request, context):
 def put(request, context):
     """Process a PUT request to the kubernetes API"""
     url = cache_key(request.url)
-    data = cache.get(url)
-    if data is None:
+    item = cache.get(url)
+    if item is None:
         context.status_code = 404
         context.reason = 'Not Found'
         return {}
@@ -457,11 +551,26 @@ def put(request, context):
     # type is the second last element
     resource_type = get_type(request.url, -2)
 
-    if resource_type == 'replicationcontrollers':
+    # merge new data into old but keep labels separate in case they changed
+    labels = data['metadata'].pop('labels')
+    item['metadata'].update(data['metadata'])
+    data['metadata'] = item['metadata']
+    # make sure only new labels are used
+    data['metadata']['labels'] = labels
+
+    # split out deployments and replicasets? due to upsert_pods
+    if resource_type in ['replicationcontrollers', 'replicasets', 'deployments']:
+        if 'status' not in data:
+            # just use what was set last time
+            data['status'] = {'observedGeneration': item['status']['observedGeneration']}
+
         data['metadata']['resourceVersion'] += 1
         data['metadata']['generation'] += 1
         data['status']['observedGeneration'] += 1
-        upsert_pods(data, url)
+        if resource_type in ['replicationcontrollers', 'replicasets']:
+            upsert_pods(data, url)
+        elif resource_type == 'deployments':
+            manage_replicasets(data, url)
 
     # Update the individual resource
     cache.set(url, data, None)
@@ -509,9 +618,33 @@ def delete(request, context):
     return {}
 
 
+def add_cache_item(url, resource_type, data):
+    cache.set(url, data, None)
+
+    # Keep track of what resources are in a given resource
+    items = cache.get(resource_type, [])
+    if url not in items:
+        items.append(url)
+        cache.set(resource_type, items, None)
+
+    # Keep track of what resources exist under other resources (mostly namespace)
+    namespace, item = url.split('_{}_'.format(resource_type))
+    cache_url = '{}_{}'.format(namespace, resource_type)
+    items = cache.get(cache_url, [])
+    if url not in items:
+        items.append(url)
+        cache.set(cache_url, items, None)
+
+
 def remove_cache_item(url, resource_type):
     # remove data object from individual cache
     cache.delete(url)
+
+    # remove from the resource type global scope
+    items = cache.get(resource_type, [])
+    if url in items:
+        items.remove(url)
+        cache.set(resource_type, items, None)
 
     # remove from namespace specific scope
     namespace, item = url.split('_{}_'.format(resource_type))
@@ -519,14 +652,7 @@ def remove_cache_item(url, resource_type):
     items = cache.get(cache_url, [])
     if url in items:
         items.remove(url)
-
     cache.set(cache_url, items, None)
-
-    # remove from the resource type global scope
-    items = cache.get(resource_type, [])
-    if url in items:
-        items.remove(url)
-        cache.set(resource_type, items, None)
 
 
 def mock(request, context):
@@ -690,5 +816,5 @@ SchedulerClient = MockSchedulerClient
 # POST | GET                                /namespaces/{namespace}/pods  # noqa
 # PATCH (NI) | PUT (NI) | GET | DELETE      /namespaces/{namespace}/pods/{pod}  # noqa
 # GET                                       /namespaces/{namespace}/pods/{pod}/log  (needs to be special cased)  # noqa
-
-# TODO transitions pod between the various states to emulate real life more
+# POST (NI) | GET                           /namespaces/{namespace}/deployments  # noqa
+# PATCH (NI) | PUT (NI) | GET | DELETE      /namespaces/{namespace}/deployments/{deployment}  # noqa

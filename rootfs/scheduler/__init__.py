@@ -89,6 +89,8 @@ def get_session():
 
 
 class KubeHTTPClient(object):
+    # used as the basis to check if a pod is ready
+    deploy_timeout = 120
     apiversion = "v1"
 
     def __init__(self):
@@ -96,7 +98,57 @@ class KubeHTTPClient(object):
         self.session = get_session()
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
-        logger.info('deploy {}, img {}, cmd "{}"'.format(name, image, command))
+        """Scale RC or Deployment depending on what's requested"""
+        self.deploy_timeout = kwargs.get('deploy_timeout', 120)
+        if kwargs.get('deployments', False):
+            self.deploy_deployment(namespace, name, image, command, **kwargs)
+        else:
+            self.deploy_rc(namespace, name, image, command, **kwargs)
+
+    def deploy_deployment(self, namespace, name, image, command, **kwargs):  # noqa
+        app_type = kwargs.get('app_type')
+        routable = kwargs.get('routable', False)
+        envs = kwargs.get('envs', {})
+        port = envs.get('PORT', None)
+
+        # create a deployment if missing, otherwise update to trigger a release
+        try:
+            deployment = self.get_deployment(namespace, name).json()
+            # labels that represent the pod(s)
+            version = kwargs.get('version')
+            labels = {
+                'app': namespace,
+                'version': version,
+                'type': app_type,
+                'heritage': 'deis',
+            }
+            # this depends on the deployment object having the latest information
+            if deployment['spec']['template']['metadata']['labels'] == labels:
+                logger.info('Deployment {} with release {} already exists under Namespace {}. Stopping deploy'.format(name, version, namespace))  # noqa
+                return
+        except KubeException:
+            # create the initial deployment object (and the first revision)
+            self.create_deployment(namespace, name, image, command, **kwargs)
+        else:
+            try:
+                # kick off a new revision of the deployment
+                self.update_deployment(namespace, name, image, command, **kwargs)
+            except KubeException as e:
+                # rollback to the previous Deployment
+                kwargs['rollback'] = True
+                self.update_deployment(namespace, name, image, command, **kwargs)
+
+                raise KubeException(
+                    'There was a problem while deploying {} of {}-{}. '
+                    'Going back to the previous release'.format(version, namespace, app_type)
+                ) from e
+
+        # Make sure the application is routable and uses the correct port
+        # Done after the fact to let initial deploy settle before routing
+        # traffic to the application
+        self._update_application_service(namespace, name, app_type, port, routable)
+
+    def deploy_rc(self, namespace, name, image, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -175,6 +227,7 @@ class KubeHTTPClient(object):
         """
         Cleans up resources related to an application deployment
         """
+        # Deployment takes care of this in the API, RC does not
         # Have the RC scale down pods and delete itself
         self._scale_rc(namespace, controller['metadata']['name'], 0)
         self.delete_rc(namespace, controller['metadata']['name'])
@@ -238,7 +291,29 @@ class KubeHTTPClient(object):
             raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, command, **kwargs):
-        logger.info('scale {}, img {}, cmd "{}"'.format(name, image, command))
+        """Scale RC or Deployment depending on what's requested"""
+        if kwargs.get('deployments', False):
+            self.scale_deployment(namespace, name, image, command, **kwargs)
+        else:
+            self.deploy_timeout = kwargs.get('deploy_timeout', 120)
+            self.scale_rc(namespace, name, image, command, **kwargs)
+
+    def scale_deployment(self, namespace, name, image, command, **kwargs):
+        try:
+            self.get_deployment(namespace, name)
+        except KubeHTTPException as e:
+            if e.response.status_code == 404:
+                # create missing deployment - deleted if it fails
+                try:
+                    self.create_deployment(namespace, name, image, command, **kwargs)
+                except KubeException:
+                    self.delete_deployment(namespace, name)
+                    raise
+
+        # let the scale failure bubble up
+        self._scale_deployment(namespace, name, image, command, **kwargs)
+
+    def scale_rc(self, namespace, name, image, command, **kwargs):
         replicas = kwargs.pop('replicas')
         try:
             self.get_rc(namespace, name)
@@ -522,7 +597,7 @@ class KubeHTTPClient(object):
                 healthchecks.get('livenessProbe') is not None and
                 healthchecks['livenessProbe'].get('httpGet') is not None and
                 healthchecks['livenessProbe']['httpGet'].get('port') is None
-               ):
+            ):
                 healthchecks['livenessProbe']['httpGet']['port'] = env['PORT']
             data.update(healthchecks)
         else:
@@ -530,7 +605,7 @@ class KubeHTTPClient(object):
 
     def _set_image_secret(self, data, namespace, **kwargs):
         """
-        Take registry information and set as an imagePullSecret for an RC
+        Take registry information and set as an imagePullSecret for an RC / Deployment
         http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
         """
         registry = kwargs.get('registry', {})
@@ -612,7 +687,20 @@ class KubeHTTPClient(object):
 
     def _api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
-        url = "/api/{}".format(self.apiversion) + tmpl.format(*args)
+        # FIXME better way of determining API version based on requested component
+        # extensions use apis and not api
+        # TODO this needs to be aware that deployments / rs could be top level in future releases
+        # https://github.com/deis/controller/issues/875
+        prefix = 'api'
+        apiversion = 'v1'
+        components = tmpl.strip('/').split('/')
+        if len(components) > 2:
+            component = components[2]
+            if component in ['deployments', 'replicasets']:
+                prefix = 'apis'
+                apiversion = 'extensions/v1beta1'
+
+        url = "/{}/{}".format(prefix, apiversion) + tmpl.format(*args)
         return urljoin(self.url, url)
 
     def _selectors(self, **kwargs):
@@ -782,25 +870,24 @@ class KubeHTTPClient(object):
         if desired == 0:
             return
 
-        waited = 0
-        timeout = 120  # 2 minutes
-        # If there is initial delay on the readiness check then timeout needs to be higher
-        # this is to account for kubernetes having readiness check report as failure until
-        # the initial delay period is up
-        delay = 0
+        timeout = self.deploy_timeout
 
         container_name = '{}-{}'.format(labels['app'], labels['type'])
         container = self._find_container(container_name, containers)
 
         # get health info from container
         if 'readinessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having readiness check report as failure until
+            # the initial delay period is up
             delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
             logger.info("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
             timeout += delay
 
-        logger.info("waiting for {} pods in {} namespace to be in services ({} timeout)".format(desired, namespace, timeout))  # noqa
+        logger.info("waiting for {} pods in {} namespace to be in services ({}s timeout)".format(desired, namespace, timeout))  # noqa
 
         # Ensure the minimum desired number of pods are available
+        waited = 0
         while waited < timeout:
             count = 0  # ready pods
             pods = self.get_pods(namespace, labels=labels).json()
@@ -963,7 +1050,7 @@ class KubeHTTPClient(object):
         elif port:
             container.update(self._default_dockerapp_readiness_probe(port))
 
-    '''
+    """
     Applies exec readiness probe to the slugrunner container.
     http://kubernetes.io/docs/user-guide/pod-states/#container-probes
 
@@ -976,7 +1063,7 @@ class KubeHTTPClient(object):
 
     This should be added only for the build pack apps when a custom liveness probe is not set to
     make sure that the pod is ready only when the slug is downloaded and started running.
-    '''
+    """
     def _default_buildpack_readiness_probe(self, delay=30, timeout=5, period_seconds=5,
                                            success_threshold=1, failure_threshold=1):
         readinessprobe = {
@@ -1000,12 +1087,12 @@ class KubeHTTPClient(object):
         }
         return readinessprobe
 
-    '''
-    Applies tcp socket readiness probe to the docker app container only if some port is exposed
-    by the docker image.
-    '''
     def _default_dockerapp_readiness_probe(self, port, delay=5, timeout=5, period_seconds=5,
                                            success_threshold=1, failure_threshold=1):
+        """
+        Applies tcp socket readiness probe to the docker app container only if some port is exposed
+        by the docker image.
+        """
         readinessprobe = {
             'readinessProbe': {
                 # an exec probe
@@ -1420,5 +1507,291 @@ class KubeHTTPClient(object):
 
         return response
 
+    # DEPLOYMENTS #
+
+    def get_deployment(self, namespace, name):
+        url = self._api("/namespaces/{}/deployments/{}", namespace, name)
+        response = self.session.get(url)
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(
+                response,
+                'get Deployment "{}" in Namespace "{}"', name, namespace
+            )
+
+        return response
+
+    def get_deployments(self, namespace, **kwargs):
+        url = self._api("/namespaces/{}/deployments", namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(response, 'get Deployments in Namespace "{}"', namespace)
+
+        return response
+
+    def _wait_until_deployment_is_updated(self, namespace, name):
+        """
+        Looks at status/observedGeneration and metadata/generation and
+        waits for observedGeneration >= generation to happen
+
+        http://kubernetes.io/docs/user-guide/deployments/#the-status-of-a-deployment
+        More information is also available at:
+        https://github.com/kubernetes/kubernetes/blob/master/docs/devel/api-conventions.md#metadata
+        """
+        logger.debug("waiting for Deployment {} to get a newer generation (30s timeout)".format(name))  # noqa
+        for _ in range(30):
+            try:
+                deploy = self.get_deployment(namespace, name).json()
+                if (
+                    'observedGeneration' in deploy['status'] and
+                    deploy['status']['observedGeneration'] >= deploy['metadata']['generation']
+                ):
+                    logger.debug("A newer generation was found for Deployment {}".format(name))
+                    break
+
+                time.sleep(1)
+            except KubeHTTPException as e:
+                if e.response.status_code == 404:
+                    time.sleep(1)
+
+    def are_deployment_replicas_ready(self, namespace, name):
+        """
+        Verify the status of a Deployment and if it is fully deployed
+        """
+        deployment = self.get_deployment(namespace, name).json()
+        desired = deployment['spec']['replicas']
+        status = deployment['status']
+
+        # right now updateReplicas is where it is at
+        # availableReplicas mean nothing until minReadySeconds is used
+        pods = status['updatedReplicas'] if 'updatedReplicas' in status else 0
+
+        # spec/replicas of 0 is a special case as other fields get removed from status
+        if desired == 0 and ('replicas' not in status or status['replicas'] == 0):
+            return True, pods
+
+        if (
+            'unavailableReplicas' in status or
+            ('replicas' not in status or status['replicas'] is not desired) or
+            ('updatedReplicas' not in status or status['updatedReplicas'] is not desired) or
+            ('availableReplicas' not in status or status['availableReplicas'] is not desired)
+        ):
+            return False, pods
+
+        return True, pods
+
+    def delete_deployment(self, namespace, name):
+        url = self._api("/namespaces/{}/deployments/{}", namespace, name)
+        response = self.session.delete(url)
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(
+                response,
+                'delete Deployment "{}" in Namespace "{}"', name, namespace
+            )
+
+        return response
+
+    def update_deployment(self, namespace, name, image, command, **kwargs):
+        manifest = self._build_deployment_manifest(namespace, name, image, command, **kwargs)
+
+        url = self._api("/namespaces/{}/deployments/{}", namespace, name)
+        response = self.session.put(url, json=manifest)
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(response, 'update Deployment "{}"', name)
+            logger.debug('template used: {}'.format(json.dumps(manifest, indent=4)))
+
+        self._wait_until_deployment_is_updated(namespace, name)
+        self._wait_until_deployment_is_ready(namespace, name, **kwargs)
+
+        return response
+
+    def create_deployment(self, namespace, name, image, command, **kwargs):
+        manifest = self._build_deployment_manifest(namespace, name, image, command, **kwargs)
+
+        url = self._api("/namespaces/{}/deployments", namespace)
+        response = self.session.post(url, json=manifest)
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(
+                response,
+                'create Deployment "{}" in Namespace "{}"', name, namespace
+            )
+            logger.debug('template used: {}'.format(json.dumps(manifest, indent=4)))
+
+        self._wait_until_deployment_is_updated(namespace, name)
+        self._wait_until_deployment_is_ready(namespace, name, **kwargs)
+
+        return response
+
+    def _wait_until_deployment_is_ready(self, namespace, name, **kwargs):
+        replicas = int(kwargs.get('replicas', 0))
+        # If desired is 0 then there is no ready state to check on
+        if replicas == 0:
+            return
+
+        current = int(kwargs.get('previous_replicas', 0))
+        batches = kwargs.get('deploy_batches', None)
+        deploy_timeout = kwargs.get('deploy_timeout', 120)
+        tags = kwargs.get('tags', {})
+        steps = self._get_deploy_steps(batches, tags)
+        batches = self._get_deploy_batches(steps, replicas)
+
+        deployment = self.get_deployment(namespace, name).json()
+        labels = deployment['spec']['template']['metadata']['labels']
+        containers = deployment['spec']['template']['spec']['containers']
+
+        # if it was a scale down operation, wait until terminating pods are done
+        # Deployments say they are ready even when pods are being terminated
+        if replicas < current:
+            self._wait_until_pods_terminate(namespace, labels, current, replicas)
+            return
+
+        # get health info from container
+        container_name = '{}-{}'.format(labels['app'], labels['type'])
+        container = self._find_container(container_name, containers)
+        if 'readinessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having readiness check report as failure until
+            # the initial delay period is up
+            delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
+            logger.info("adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, deploy_timeout))  # noqa
+            deploy_timeout += delay
+
+        # a rough calculation that figures out an overall timeout
+        timeout = len(batches) * deploy_timeout
+        logger.info('This deployments overall timeout is {}s - batch timout is {}s and there are {} batches to deploy with a total of {} pods'.format(timeout, deploy_timeout, len(batches), replicas))  # noqa
+
+        waited = 0
+        while waited < timeout:
+            ready, availablePods = self.are_deployment_replicas_ready(namespace, name)
+            if ready:
+                break
+
+            # check every 10 seconds for pod failures.
+            # Depend on Deployment checks for ready pods
+            if waited > 0 and (waited % 10) == 0:
+                pods = self.get_pods(namespace, labels=labels).json()
+                for pod in pods['items']:
+                    # Get more information on why a pod is pending
+                    if pod['status']['phase'] == 'Pending':
+                        reason, message = self._pod_pending_status(pod)
+                        # If pulling an image is taking long then increase the timeout
+                        timeout += self._handle_pod_long_image_pulling(pod, reason)
+
+                        # handle errors and bubble up if need be
+                        self._handle_pod_image_errors(pod, reason, message)
+
+                logger.info("waited {}s and {} pods are in service".format(waited, availablePods))
+
+            waited += 1
+            time.sleep(1)
+
+    def _build_deployment_manifest(self, namespace, name, image, command, **kwargs):
+        replicas = kwargs.get('replicas', 0)
+        batches = kwargs.get('deploy_batches', None)
+        tags = kwargs.get('tags', {})
+
+        labels = {
+            'app': namespace,
+            'type': kwargs.get('app_type'),
+            'heritage': 'deis',
+        }
+
+        manifest = {
+            'kind': 'Deployment',
+            'apiVersion': 'extensions/v1beta1',
+            'metadata': {
+                'name': name,
+                'labels': labels,
+                'annotations': {
+                    'kubernetes.io/change-cause': kwargs.get('release_summary', '')
+                }
+            },
+            'spec': {
+                'replicas': replicas,
+                'selector': {
+                    'matchLabels': labels
+                }
+            }
+        }
+
+        # Add in Rollback (if asked for)
+        rollback = kwargs.get('rollback', False)
+        if rollback:
+            # http://kubernetes.io/docs/user-guide/deployments/#rollback-to
+            if rollback is True:
+                # rollback to the latest known working revision
+                revision = 0
+            elif isinstance(rollback, int) or isinstance(rollback, str):
+                # rollback to a particular revision
+                revision = rollback
+
+            # This gets cleared from the template after a rollback is done
+            manifest['spec']['rollbackTo'] = {'revision': str(revision)}
+
+        # Add deployment strategy
+
+        # see if application or global deploy batches are defined
+        maxSurge = self._get_deploy_steps(batches, tags)
+        # if replicas are higher than maxSurge then the old deployment is never scaled down
+        # maxSurge can't be 0 when maxUnavailable is 0 and the other way around
+        if replicas > 0 and replicas < maxSurge:
+            maxSurge = replicas
+
+        # http://kubernetes.io/docs/user-guide/deployments/#strategy
+        manifest['spec']['strategy'] = {
+            'rollingUpdate': {
+                'maxSurge': maxSurge,
+                # This is never updated
+                'maxUnavailable': 0
+            },
+            # RollingUpdate or Recreate
+            'type': 'RollingUpdate',
+        }
+
+        # Add in how many deployment revisions to keep
+        if kwargs.get('deployment_revision_history', None) is not None:
+            manifest['spec']['revisionHistoryLimit'] = int(kwargs.get('deployment_revision_history'))  # noqa
+
+        # tell pod how to execute the process
+        kwargs['args'] = command.split()
+
+        # pod manifest spec
+        manifest['spec']['template'] = self._build_pod_manifest(namespace, name, image, **kwargs)
+
+        return manifest
+
+    def _scale_deployment(self, namespace, name, image, command, **kwargs):
+        deployment = self.get_deployment(namespace, name).json()
+        desired = int(kwargs.get('replicas'))
+        current = int(deployment['spec']['replicas'])
+        if desired == current:
+            logger.info("Not scaling Deployment {} in Namespace {} to {} replicas. Already at desired replicas".format(name, namespace, desired))  # noqa
+            return
+        elif desired != current:
+            # set the previous replicas count so the wait logic can deal with terminating pods
+            kwargs['previous_replicas'] = current
+            logger.info("scaling Deployment {} in Namespace {} from {} to {} replicas".format(name, namespace, current, desired))  # noqa
+            self.update_deployment(namespace, name, image, command, **kwargs)
+
+    def get_replicaset(self, namespace, name):
+        url = self._api("/namespaces/{}/replicasets/{}", namespace, name)
+        response = self.session.get(url)
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(
+                response,
+                'get ReplicaSet "{}" in Namespace "{}"', name, namespace
+            )
+
+        return response
+
+    def get_replicasets(self, namespace, **kwargs):
+        url = self._api("/namespaces/{}/replicasets", namespace)
+        response = self.session.get(url, params=self._selectors(**kwargs))
+        if unhealthy(response.status_code):
+            raise KubeHTTPException(
+                response,
+                'get ReplicaSets in Namespace "{}"', namespace
+            )
+
+        return response
 
 SchedulerClient = KubeHTTPClient

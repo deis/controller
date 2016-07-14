@@ -39,7 +39,7 @@ def custom_exception_handler(exc, context):
         set_rollback()
         return Response({'detail': 'Server Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # log a few different types of exception instead of use APIException
+    # log a few different types of exception instead of using APIException
     if isinstance(exc, (DeisException, ServiceUnavailable, HealthcheckException)):
         logging.exception(exc.__cause__, exc_info=exc)
 

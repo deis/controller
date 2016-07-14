@@ -6,12 +6,13 @@ Run the tests with "./manage.py test api"
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.test import override_settings
 from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from . import adapter
-from . import mock_port
+from api.tests import adapter
+from api.tests import mock_port
 import requests_mock
 
 RSA_PUBKEY = (
@@ -33,6 +34,7 @@ RSA_PUBKEY2 = (
 )
 
 
+@override_settings(DEIS_KUBERNETES_DEPLOYMENTS='1')
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)

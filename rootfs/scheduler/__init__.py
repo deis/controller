@@ -107,15 +107,15 @@ class KubeHTTPClient(object):
         """
         logger.log(level, "[{}]: {}".format(namespace, message))
 
-    def deploy(self, namespace, name, image, command, **kwargs):  # noqa
+    def deploy(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
         """Scale RC or Deployment depending on what's requested"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
         if kwargs.get('deployments', False):
-            self.deploy_deployment(namespace, name, image, command, **kwargs)
+            self.deploy_deployment(namespace, name, image, entrypoint, command, **kwargs)
         else:
-            self.deploy_rc(namespace, name, image, command, **kwargs)
+            self.deploy_rc(namespace, name, image, entrypoint, command, **kwargs)
 
-    def deploy_deployment(self, namespace, name, image, command, **kwargs):  # noqa
+    def deploy_deployment(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -138,15 +138,30 @@ class KubeHTTPClient(object):
                 return
         except KubeException:
             # create the initial deployment object (and the first revision)
-            self.create_deployment(namespace, name, image, command, **kwargs)
+            self.create_deployment(namespace,
+                                   name,
+                                   image,
+                                   entrypoint,
+                                   command,
+                                   **kwargs)
         else:
             try:
                 # kick off a new revision of the deployment
-                self.update_deployment(namespace, name, image, command, **kwargs)
+                self.update_deployment(namespace,
+                                       name,
+                                       image,
+                                       entrypoint,
+                                       command,
+                                       **kwargs)
             except KubeException as e:
                 # rollback to the previous Deployment
                 kwargs['rollback'] = True
-                self.update_deployment(namespace, name, image, command, **kwargs)
+                self.update_deployment(namespace,
+                                       name,
+                                       image,
+                                       entrypoint,
+                                       command,
+                                       **kwargs)
 
                 raise KubeException(
                     'There was a problem while deploying {} of {}-{}. '
@@ -158,7 +173,7 @@ class KubeHTTPClient(object):
         # traffic to the application
         self._update_application_service(namespace, name, app_type, port, routable)
 
-    def deploy_rc(self, namespace, name, image, command, **kwargs):  # noqa
+    def deploy_rc(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -176,7 +191,14 @@ class KubeHTTPClient(object):
         except KubeHTTPException:
             # make replicas 0 so scaling handles the work
             replicas = kwargs.pop('replicas')
-            new_rc = self.create_rc(namespace, name, image, command, replicas=0, **kwargs).json()
+            new_rc = self.create_rc(
+                namespace,
+                name,
+                image,
+                entrypoint,
+                command,
+                replicas=0,
+                **kwargs).json()
             kwargs['replicas'] = replicas
 
         # Get the desired number to scale to
@@ -301,30 +323,30 @@ class KubeHTTPClient(object):
             self.update_service(namespace, namespace, data=old_service)
             raise KubeException(str(e)) from e
 
-    def scale(self, namespace, name, image, command, **kwargs):
+    def scale(self, namespace, name, image, entrypoint, command, **kwargs):
         """Scale RC or Deployment depending on what's requested"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
         if kwargs.get('deployments', False):
-            self.scale_deployment(namespace, name, image, command, **kwargs)
+            self.scale_deployment(namespace, name, image, entrypoint, command, **kwargs)
         else:
-            self.scale_rc(namespace, name, image, command, **kwargs)
+            self.scale_rc(namespace, name, image, entrypoint, command, **kwargs)
 
-    def scale_deployment(self, namespace, name, image, command, **kwargs):
+    def scale_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
         try:
             self.get_deployment(namespace, name)
         except KubeHTTPException as e:
             if e.response.status_code == 404:
                 # create missing deployment - deleted if it fails
                 try:
-                    self.create_deployment(namespace, name, image, command, **kwargs)
+                    self.create_deployment(namespace, name, image, entrypoint, command, **kwargs)
                 except KubeException:
                     self.delete_deployment(namespace, name)
                     raise
 
         # let the scale failure bubble up
-        self._scale_deployment(namespace, name, image, command, **kwargs)
+        self._scale_deployment(namespace, name, image, entrypoint, command, **kwargs)
 
-    def scale_rc(self, namespace, name, image, command, **kwargs):
+    def scale_rc(self, namespace, name, image, entrypoint, command, **kwargs):
         replicas = kwargs.pop('replicas')
         try:
             self.get_rc(namespace, name)
@@ -334,7 +356,7 @@ class KubeHTTPClient(object):
                 try:
                     # Create RC with scale as 0 and then scale to get pod monitoring
                     kwargs['replicas'] = 0
-                    self.create_rc(namespace, name, image, command, **kwargs)
+                    self.create_rc(namespace, name, image, entrypoint, command, **kwargs)
                 except KubeException:
                     logger.exception("Creating RC {} failed".format(name))
                     raise
@@ -454,16 +476,8 @@ class KubeHTTPClient(object):
         kwargs['app_type'] = 'run'
         # run pods never restart
         kwargs['restartPolicy'] = 'Never'
-
-        # figure out how to call the command
-        if command.startswith('-c '):
-            args = command.split(' ', 1)
-            args[1] = args[1][1:-1]
-        else:
-            args = [command[1:-1]]
-
-        kwargs['command'] = [entrypoint]
-        kwargs['args'] = args
+        kwargs['command'] = entrypoint
+        kwargs['args'] = command
 
         manifest = self._build_pod_manifest(namespace, name, image, **kwargs)
 
@@ -998,7 +1012,7 @@ class KubeHTTPClient(object):
 
         return None
 
-    def create_rc(self, namespace, name, image, command, **kwargs):
+    def create_rc(self, namespace, name, image, entrypoint, command, **kwargs):
         manifest = {
             'kind': 'ReplicationController',
             'apiVersion': 'v1',
@@ -1017,7 +1031,8 @@ class KubeHTTPClient(object):
         }
 
         # tell pod how to execute the process
-        kwargs['args'] = command.split()
+        kwargs['command'] = entrypoint
+        kwargs['args'] = command
 
         # pod manifest spec
         manifest['spec']['template'] = self._build_pod_manifest(namespace, name, image, **kwargs)
@@ -1625,8 +1640,13 @@ class KubeHTTPClient(object):
 
         return response
 
-    def update_deployment(self, namespace, name, image, command, **kwargs):
-        manifest = self._build_deployment_manifest(namespace, name, image, command, **kwargs)
+    def update_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
+        manifest = self._build_deployment_manifest(namespace,
+                                                   name,
+                                                   image,
+                                                   entrypoint,
+                                                   command,
+                                                   **kwargs)
 
         url = self._api("/namespaces/{}/deployments/{}", namespace, name)
         response = self.session.put(url, json=manifest)
@@ -1639,8 +1659,13 @@ class KubeHTTPClient(object):
 
         return response
 
-    def create_deployment(self, namespace, name, image, command, **kwargs):
-        manifest = self._build_deployment_manifest(namespace, name, image, command, **kwargs)
+    def create_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
+        manifest = self._build_deployment_manifest(namespace,
+                                                   name,
+                                                   image,
+                                                   entrypoint,
+                                                   command,
+                                                   **kwargs)
 
         url = self._api("/namespaces/{}/deployments", namespace)
         response = self.session.post(url, json=manifest)
@@ -1711,7 +1736,7 @@ class KubeHTTPClient(object):
             waited += 1
             time.sleep(1)
 
-    def _build_deployment_manifest(self, namespace, name, image, command, **kwargs):
+    def _build_deployment_manifest(self, namespace, name, image, entrypoint, command, **kwargs):
         replicas = kwargs.get('replicas', 0)
         batches = kwargs.get('deploy_batches', None)
         tags = kwargs.get('tags', {})
@@ -1779,14 +1804,15 @@ class KubeHTTPClient(object):
             manifest['spec']['revisionHistoryLimit'] = int(kwargs.get('deployment_revision_history'))  # noqa
 
         # tell pod how to execute the process
-        kwargs['args'] = command.split()
+        kwargs['command'] = entrypoint
+        kwargs['args'] = command
 
         # pod manifest spec
         manifest['spec']['template'] = self._build_pod_manifest(namespace, name, image, **kwargs)
 
         return manifest
 
-    def _scale_deployment(self, namespace, name, image, command, **kwargs):
+    def _scale_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
         deployment = self.get_deployment(namespace, name).json()
         desired = int(kwargs.get('replicas'))
         current = int(deployment['spec']['replicas'])
@@ -1797,7 +1823,7 @@ class KubeHTTPClient(object):
             # set the previous replicas count so the wait logic can deal with terminating pods
             kwargs['previous_replicas'] = current
             self.log(namespace, "scaling Deployment {} from {} to {} replicas".format(name, current, desired))  # noqa
-            self.update_deployment(namespace, name, image, command, **kwargs)
+            self.update_deployment(namespace, name, image, entrypoint, command, **kwargs)
 
     def get_replicaset(self, namespace, name):
         url = self._api("/namespaces/{}/replicasets/{}", namespace, name)

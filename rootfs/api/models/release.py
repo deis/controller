@@ -359,9 +359,12 @@ class Release(UuidAuditedModel):
             'version': version
         }
 
+        # see if the app config has deploy timeout preference, otherwise use global
+        deploy_timeout = self.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+
         controllers = self._scheduler.get_rcs(namespace, labels=labels).json()
         for controller in controllers['items']:
-            self._scheduler.cleanup_release(namespace, controller)
+            self._scheduler.cleanup_release(namespace, controller, deploy_timeout)
 
         # remove secret that contains env vars for the release
         try:

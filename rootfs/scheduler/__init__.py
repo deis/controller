@@ -109,7 +109,7 @@ class KubeHTTPClient(object):
 
     def deploy(self, namespace, name, image, command, **kwargs):  # noqa
         """Scale RC or Deployment depending on what's requested"""
-        self.deploy_timeout = kwargs.get('deploy_timeout', 120)
+        self.deploy_timeout = kwargs.get('deploy_timeout')
         if kwargs.get('deployments', False):
             self.deploy_deployment(namespace, name, image, command, **kwargs)
         else:
@@ -163,6 +163,7 @@ class KubeHTTPClient(object):
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
         port = envs.get('PORT', None)
+        timeout = kwargs.get('deploy_timeout')
 
         # Fetch old RC and create the new one for a release
         old_rc = self.get_old_rc(namespace, app_type)
@@ -199,23 +200,23 @@ class KubeHTTPClient(object):
                 self.log(namespace, 'scaling release {} to {} out of final {}'.format(
                     new_name, count, desired
                 ))
-                self._scale_rc(namespace, new_name, count)
+                self._scale_rc(namespace, new_name, count, timeout)
 
                 if old_rc:
                     old_name = old_rc["metadata"]["name"]
                     self.log(namespace, 'scaling old release {} from original {} to {}'.format(
                         old_name, desired, (desired-count))
                     )
-                    self._scale_rc(namespace, old_name, (desired-count))
+                    self._scale_rc(namespace, old_name, (desired-count), timeout)
         except Exception as e:
             # New release is broken. Clean up
 
             # Remove new release of the RC
-            self.cleanup_release(namespace, new_rc)
+            self.cleanup_release(namespace, new_rc, timeout)
 
             # If there was a previous release then bring that back
             if old_rc:
-                self._scale_rc(namespace, old_rc["metadata"]["name"], desired)
+                self._scale_rc(namespace, old_rc["metadata"]["name"], desired, timeout)
 
             raise KubeException(
                 'Could not scale {} to {}. '
@@ -226,20 +227,20 @@ class KubeHTTPClient(object):
 
         # New release is live and kicking. Clean up old release
         if old_rc:
-            self.cleanup_release(namespace, old_rc)
+            self.cleanup_release(namespace, old_rc, timeout)
 
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
         self._update_application_service(namespace, name, app_type, port, routable)
 
-    def cleanup_release(self, namespace, controller):
+    def cleanup_release(self, namespace, controller, timeout):
         """
         Cleans up resources related to an application deployment
         """
         # Deployment takes care of this in the API, RC does not
         # Have the RC scale down pods and delete itself
-        self._scale_rc(namespace, controller['metadata']['name'], 0)
+        self._scale_rc(namespace, controller['metadata']['name'], 0, timeout)
         self.delete_rc(namespace, controller['metadata']['name'])
 
         # Remove stray pods that the scale down will have missed (this can occassionally happen)
@@ -302,10 +303,10 @@ class KubeHTTPClient(object):
 
     def scale(self, namespace, name, image, command, **kwargs):
         """Scale RC or Deployment depending on what's requested"""
+        self.deploy_timeout = kwargs.get('deploy_timeout')
         if kwargs.get('deployments', False):
             self.scale_deployment(namespace, name, image, command, **kwargs)
         else:
-            self.deploy_timeout = kwargs.get('deploy_timeout', 120)
             self.scale_rc(namespace, name, image, command, **kwargs)
 
     def scale_deployment(self, namespace, name, image, command, **kwargs):
@@ -339,7 +340,7 @@ class KubeHTTPClient(object):
                     raise
 
         # let the scale failure bubble up
-        self._scale_rc(namespace, name, replicas)
+        self._scale_rc(namespace, name, replicas, kwargs.get('deploy_timeout'))
 
     def _build_pod_manifest(self, namespace, name, image, **kwargs):
         app_type = kwargs.get('app_type')
@@ -474,7 +475,13 @@ class KubeHTTPClient(object):
         # wait for run pod to start - use the same function as scale
         labels = manifest['metadata']['labels']
         containers = manifest['spec']['containers']
-        self._wait_until_pods_are_ready(namespace, containers, labels, desired=1)
+        self._wait_until_pods_are_ready(
+            namespace,
+            containers,
+            labels,
+            desired=1,
+            timeout=kwargs.get('deploy_timeout')
+        )
 
         try:
             # give pod 20 minutes to execute (after it got into ready state)
@@ -906,12 +913,11 @@ class KubeHTTPClient(object):
 
         return timeout
 
-    def _wait_until_pods_are_ready(self, namespace, containers, labels, desired):  # noqa
+    def _wait_until_pods_are_ready(self, namespace, containers, labels, desired, timeout):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
 
-        timeout = self.deploy_timeout
         timeout = self._deploy_probe_timeout(timeout, namespace, labels, containers)
         self.log(namespace, "waiting for {} pods in {} namespace to be in services ({}s timeout)".format(desired, namespace, timeout))  # noqa
 
@@ -957,7 +963,7 @@ class KubeHTTPClient(object):
 
         self.log(namespace, "{} out of {} pods are in service".format(count, desired))  # noqa
 
-    def _scale_rc(self, namespace, name, desired):
+    def _scale_rc(self, namespace, name, desired, timeout):
         rc = self.get_rc(namespace, name).json()
 
         current = int(rc['spec']['replicas'])
@@ -976,7 +982,7 @@ class KubeHTTPClient(object):
         # Double check enough pods are in the required state to service the application
         labels = rc['metadata']['labels']
         containers = rc['spec']['template']['spec']['containers']
-        self._wait_until_pods_are_ready(namespace, containers, labels, desired)
+        self._wait_until_pods_are_ready(namespace, containers, labels, desired, timeout)
 
         # if it was a scale down operation, wait until terminating pods are done
         if int(desired) < int(current):

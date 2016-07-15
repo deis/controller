@@ -404,6 +404,9 @@ class App(UuidAuditedModel):
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
 
+        # see if the app config has deploy timeout preference, otherwise use global
+        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+
         # see if there is a global or app specific setting to specify Deployments usage
         deployments = bool(envs.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
 
@@ -430,7 +433,7 @@ class App(UuidAuditedModel):
                 'routable': routable,
                 'deployments': deployments,
                 'deploy_batches': batches,
-                'deploy_timeout': 120,  # 2 minutes
+                'deploy_timeout': deploy_timeout,
             }
 
             command = self._get_command(scale_type)
@@ -469,6 +472,9 @@ class App(UuidAuditedModel):
         # see if there is a global or app specific setting to specify Deployments usage
         deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
 
+        # see if the app config has deploy timeout preference, otherwise use global
+        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+
         deployment_history = release.config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
 
         # deploy application to k8s. Also handles initial scaling
@@ -497,7 +503,7 @@ class App(UuidAuditedModel):
                 'healthcheck': release.config.healthcheck,
                 'routable': routable,
                 'deploy_batches': batches,
-                'deploy_timeout': 120,  # 2 minutes
+                'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
                 'deployments': deployments,
                 'release_summary': release.summary
@@ -672,6 +678,9 @@ class App(UuidAuditedModel):
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
 
+        # see if the app config has deploy timeout preference, otherwise use global
+        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+
         # TODO: add support for interactive shell
         entrypoint, command = self._get_command_run(command)
 
@@ -686,6 +695,7 @@ class App(UuidAuditedModel):
             'registry': release.config.registry,
             'version': "v{}".format(release.version),
             'build_type': release.build.type,
+            'deploy_timeout': deploy_timeout
         }
 
         try:

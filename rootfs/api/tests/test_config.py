@@ -771,39 +771,6 @@ class ConfigTest(APITransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
-    def test_healthchecks(self, mock_requests):
-        """
-        Test that healthchecks can be applied
-        """
-        response = self.client.post('/v2/apps')
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
-
-        # Set a healthcheck option before URL is around (URL is required for full setting)
-        resp = self.client.post(
-            '/v2/apps/{app_id}/config'.format(**locals()),
-            {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': '25'})}
-        )
-        self.assertEqual(resp.status_code, 201, response.data)
-        self.assertIn('HEALTHCHECK_INITIAL_DELAY', resp.data['values'])
-        self.assertEqual(resp.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
-
-        # Set healthcheck URL to get defaults set
-        resp = self.client.post(
-            '/v2/apps/{app_id}/config'.format(**locals()),
-            {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
-        )
-        self.assertEqual(resp.status_code, 201, response.data)
-        self.assertIn('HEALTHCHECK_URL', resp.data['values'])
-        self.assertEqual(resp.data['values']['HEALTHCHECK_URL'], '/health')
-
-        # post a new build
-        response = self.client.post(
-            "/v2/apps/{app_id}/builds".format(**locals()),
-            {'image': 'quay.io/autotest/example'}
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-
     def test_healthchecks_validations(self, mock_requests):
         """
         Test that healthchecks validations work
@@ -927,11 +894,21 @@ class ConfigTest(APITransactionTestCase):
             {'values': json.dumps({'HEALTHCHECK_URL': '/health'})}
         )
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertIn('HEALTHCHECK_URL', response.data['values'])
-        self.assertEqual(response.data['values']['HEALTHCHECK_URL'], '/health')
+        # this gets migrated to the new healtcheck format
+        self.assertNotIn('HEALTHCHECK_URL', response.data['values'])
         # legacy defaults
         expected = {
             'livenessProbe': {
+                'initialDelaySeconds': 50,
+                'timeoutSeconds': 50,
+                'periodSeconds': 10,
+                'successThreshold': 1,
+                'failureThreshold': 3,
+                'httpGet': {
+                    'path': '/health'
+                }
+            },
+            'readinessProbe': {
                 'initialDelaySeconds': 50,
                 'timeoutSeconds': 50,
                 'periodSeconds': 10,
@@ -949,6 +926,7 @@ class ConfigTest(APITransactionTestCase):
             '/v2/apps/{app.id}/config'.format(**locals()),
             {
                 'values': json.dumps({
+                    'HEALTHCHECK_URL': '/health',
                     'HEALTHCHECK_INITIAL_DELAY': '25',
                     'HEALTHCHECK_TIMEOUT': '10',
                     'HEALTHCHECK_PERIOD_SECONDS': '5',
@@ -957,8 +935,8 @@ class ConfigTest(APITransactionTestCase):
             }
         )
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertIn('HEALTHCHECK_INITIAL_DELAY', response.data['values'])
-        self.assertEqual(response.data['values']['HEALTHCHECK_INITIAL_DELAY'], '25')
+        # this gets migrated to the new healtcheck format
+        self.assertNotIn('HEALTHCHECK_INITIAL_DELAY', response.data['values'])
         expected['livenessProbe'] = {
             'initialDelaySeconds': 25,
             'timeoutSeconds': 10,
@@ -969,5 +947,6 @@ class ConfigTest(APITransactionTestCase):
                 'path': '/health'
             }
         }
+        expected['readinessProbe'] = expected['livenessProbe']
         actual = app.config_set.latest().healthcheck
         self.assertEqual(expected, actual)

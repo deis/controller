@@ -875,26 +875,45 @@ class KubeHTTPClient(object):
 
         self.log(namespace, "{} pods are terminated".format(delta))
 
+    def _deploy_probe_timeout(self, timeout, namespace, labels, containers):
+        """
+        Added in additional timeouts based on readiness and liveness probe
+
+        Uses the max of the two instead of combining them as the checks are stacked.
+        """
+
+        container_name = '{}-{}'.format(labels['app'], labels['type'])
+        container = self._find_container(container_name, containers)
+
+        # get health info from container
+        added_timeout = []
+        if 'readinessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having readiness check report as failure until
+            # the initial delay period is up
+            added_timeout.append(int(container['readinessProbe'].get('initialDelaySeconds', 50)))
+
+        if 'livenessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having liveness check report as failure until
+            # the initial delay period is up
+            added_timeout.append(int(container['livenessProbe'].get('initialDelaySeconds', 50)))
+
+        if added_timeout:
+            delay = max(added_timeout)
+            self.log(namespace, "adding {}s on to the original {}s timeout to account for the initial delay specified in the liveness / readiness probe".format(delay, timeout))  # noqa
+            timeout += delay
+
+        return timeout
+
     def _wait_until_pods_are_ready(self, namespace, containers, labels, desired):  # noqa
         # If desired is 0 then there is no ready state to check on
         if desired == 0:
             return
 
         timeout = self.deploy_timeout
-
-        container_name = '{}-{}'.format(labels['app'], labels['type'])
-        container = self._find_container(container_name, containers)
-
-        # get health info from container
-        if 'readinessProbe' in container:
-            # If there is initial delay on the readiness check then timeout needs to be higher
-            # this is to account for kubernetes having readiness check report as failure until
-            # the initial delay period is up
-            delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
-            self.log(namespace, "adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, timeout))  # noqa
-            timeout += delay
-
-        self.log(namespace, "waiting for {} pods to be in services ({}s timeout)".format(desired, timeout))  # noqa
+        timeout = self._deploy_probe_timeout(timeout, namespace, labels, containers)
+        self.log(namespace, "waiting for {} pods in {} namespace to be in services ({}s timeout)".format(desired, namespace, timeout))  # noqa
 
         # Ensure the minimum desired number of pods are available
         waited = 0
@@ -1655,15 +1674,7 @@ class KubeHTTPClient(object):
             return
 
         # get health info from container
-        container_name = '{}-{}'.format(labels['app'], labels['type'])
-        container = self._find_container(container_name, containers)
-        if 'readinessProbe' in container:
-            # If there is initial delay on the readiness check then timeout needs to be higher
-            # this is to account for kubernetes having readiness check report as failure until
-            # the initial delay period is up
-            delay = int(container['readinessProbe'].get('initialDelaySeconds', 50))
-            self.log(namespace, "adding {}s on to the original {}s timeout to account for the initial delay specified in the readiness probe".format(delay, deploy_timeout))  # noqa
-            deploy_timeout += delay
+        deploy_timeout = self._deploy_probe_timeout(deploy_timeout, namespace, labels, containers)
 
         # a rough calculation that figures out an overall timeout
         timeout = len(batches) * deploy_timeout

@@ -56,6 +56,20 @@ class Config(UuidAuditedModel):
             }
         }
 
+        self.healthcheck['readinessProbe'] = {
+            'initialDelaySeconds': delay,
+            'timeoutSeconds': timeout,
+            'periodSeconds': period_seconds,
+            'successThreshold': success_threshold,
+            'failureThreshold': failure_threshold,
+            'httpGet': {
+                'path': path,
+            }
+        }
+
+        # Unset all the old values
+        self.values = {k: v for k, v in self.values.items() if not k.startswith('HEALTHCHECK_')}
+
     def set_registry(self):
         # lower case all registry options for consistency
         self.registry = {key.lower(): value for key, value in self.registry.copy().items()}

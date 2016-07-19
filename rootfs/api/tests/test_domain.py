@@ -109,7 +109,7 @@ class DomainTest(APITestCase):
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
             response = self.client.get(url)
             expected = [data['domain'] for data in response.data['results']]
-            self.assertEqual([self.app_id, ace_domain], expected, msg)
+            self.assertEqual(sorted([self.app_id, ace_domain]), sorted(expected), msg)
 
             # Verify creation failure for same domain with different encoding
             if ace_domain != domain:
@@ -146,7 +146,7 @@ class DomainTest(APITestCase):
                 url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
                 response = self.client.get(url)
                 expected = [data['domain'] for data in response.data['results']]
-                self.assertEqual([self.app_id, ace_domain], expected, msg)
+                self.assertEqual(sorted([self.app_id, ace_domain]), sorted(expected), msg)
 
                 # Delete
                 url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=ace_domain,
@@ -173,7 +173,7 @@ class DomainTest(APITestCase):
                 url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
                 response = self.client.get(url)
                 expected = [data['domain'] for data in response.data['results']]
-                self.assertEqual([self.app_id, ace_domain], expected, msg)
+                self.assertEqual(sorted([self.app_id, ace_domain]), sorted(expected), msg)
 
                 # Delete
                 url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=unicode_domain,
@@ -218,7 +218,7 @@ class DomainTest(APITestCase):
             url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
             response = self.client.get(url)
             expected = [data['domain'] for data in response.data['results']]
-            self.assertEqual([self.app_id, domain], expected, msg)
+            self.assertEqual(sorted([self.app_id, domain]), sorted(expected), msg)
 
             # Delete
             url = '/v2/apps/{app_id}/domains/{hostname}'.format(hostname=domain,

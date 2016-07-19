@@ -4,4 +4,4 @@ settings, and WSGI setup. Most application domain-specific code lives in
 the api, provider, cm, and web Django apps.
 """
 
-__version__ = '2.2.0-dev'
+__version__ = '2.2.0'

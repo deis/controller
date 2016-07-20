@@ -37,6 +37,8 @@ The Deis project welcomes contributions from all developers. The high level proc
 
 In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.2 and higher with the following requirements:
 
+* Docker's `insecure-registry` parameter must include the subnets used by your Kubernetes installation
+
 ### Helm Classic
 
 After you have a working Kubernetes cluster, install [helm classic](http://helm.sh) and run the following commands to add the Deis chart repository and install Deis to your new cluster:

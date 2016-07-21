@@ -10,6 +10,7 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.conf import settings
 from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
@@ -391,3 +392,27 @@ class ReleaseTest(APITransactionTestCase):
         self.assertEqual(release.get_port(), 8080)
 
         # TODO(bacongobbler): test dockerfile ports
+
+    def test_release_external_registry(self, mock_requests):
+        """
+        Test that get_port always returns the proper value.
+        """
+        app_id = "test"
+        body = {'id': app_id}
+        response = self.client.post('/v2/apps', body,)
+        self.assertEqual(response.status_code, 201, response.data)
+        body = {'values': json.dumps({'PORT': '3000'})}
+        config_response = self.client.post('/v2/apps/test/config', body)
+        self.assertEqual(config_response.status_code, 201, config_response.data)
+
+        app = App.objects.get(id=app_id)
+        settings.REGISTRY_LOCATION = "off-cluster"
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'test/autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        release = app.release_set.latest()
+
+        self.assertEqual(release.get_port(), 3000)
+
+        self.assertEqual(release.image, 'test/autotest/example')

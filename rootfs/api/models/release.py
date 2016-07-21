@@ -37,6 +37,8 @@ class Release(UuidAuditedModel):
 
     @property
     def image(self):
+        if (settings.REGISTRY_LOCATION != 'on-cluster'):
+            return self.build.image
         # Builder pushes to internal registry, exclude SHA based images from being returned
         registry = self.config.registry
         if (
@@ -111,7 +113,7 @@ class Release(UuidAuditedModel):
             not self.build.sha and
             # hostname tells Builder where to push images
             not registry.get('hostname', None)
-        ):
+        ) or (settings.REGISTRY_LOCATION != 'on-cluster'):
             self.app.log('{} exists in the target registry. Using image for release {} of app {}'.format(self.build.image, self.version, self.app))  # noqa
             return
 
@@ -148,7 +150,7 @@ class Release(UuidAuditedModel):
                 return 5000
 
             # application has registry auth - $PORT is required
-            if creds is not None:
+            if (creds is not None) or (settings.REGISTRY_LOCATION != 'on-cluster'):
                 if envs.get('PORT', None) is None:
                     self.app.log('Private registry detected but no $PORT defined. Defaulting to $PORT 5000', logging.WARNING)  # noqa
                     return 5000

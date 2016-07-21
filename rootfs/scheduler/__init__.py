@@ -643,15 +643,31 @@ class KubeHTTPClient(object):
             self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 
     def _get_private_registry_config(self, registry, image):
-        # try to get the hostname information
-        hostname = registry.get('hostname', None)
-        if not hostname:
-            hostname, _ = docker_auth.split_repo_name(image)
-        if hostname == docker_auth.INDEX_NAME:
-            hostname = "https://index.docker.io/v1/"
+        secret_name = settings.REGISTRY_SECRET_PREFIX
+        if registry:
+            # try to get the hostname information
+            hostname = registry.get('hostname', None)
+            if not hostname:
+                hostname, _ = docker_auth.split_repo_name(image)
+            if hostname == docker_auth.INDEX_NAME:
+                hostname = "https://index.docker.io/v1/"
+            username = registry.get('username')
+            password = registry.get('password')
+        elif settings.REGISTRY_LOCATION == 'off-cluster':
+            secret = self.get_secret('deis', 'registry-secret').json()
+            username = secret['data']['username']
+            password = secret['data']['password']
+            hostname = secret['data']['hostname']
+            if hostname == '':
+                hostname = "https://index.docker.io/v1/"
+            secret_name = secret_name+"-"+settings.REGISTRY_LOCATION
+        elif settings.REGISTRY_LOCATION in ['ecr', 'gcr']:
+            return None, secret_name+"-"+settings.REGISTRY_LOCATION, False
+        else:
+            return None, None, None
 
         # create / update private registry secret
-        auth = bytes('{}:{}'.format(registry.get('username'), registry.get('password')), 'UTF-8')
+        auth = bytes('{}:{}'.format(username, password), 'UTF-8')
         # value has to be a base64 encoded JSON
         docker_config = json.dumps({
             "auths": {
@@ -660,36 +676,34 @@ class KubeHTTPClient(object):
                 }
             }
         })
-        return docker_config
+        return docker_config, secret_name, True
 
     def _set_image_secret(self, data, namespace, **kwargs):
         """
         Take registry information and set as an imagePullSecret for an RC / Deployment
         http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
         """
-        registry = kwargs.get('registry', {})
-        if not registry:
+        docker_config, secret_name, secret_create = self._get_private_registry_config(kwargs.get('registry', {}), kwargs.get('image'))  # noqa
+        if secret_create is None:
             return
-        docker_config = self._get_private_registry_config(registry, kwargs.get('image'))  # noqa
-        secret_data = {'.dockerconfigjson': docker_config}
-
-        secret_name = 'private-registry'
-        try:
-            self.get_secret(namespace, secret_name)
-        except KubeHTTPException:
-            self.create_secret(
-                namespace,
-                secret_name,
-                secret_data,
-                secret_type='kubernetes.io/dockerconfigjson'
-            )
-        else:
-            self.update_secret(
-                namespace,
-                secret_name,
-                secret_data,
-                secret_type='kubernetes.io/dockerconfigjson'
-            )
+        elif secret_create:
+            secret_data = {'.dockerconfigjson': docker_config}
+            try:
+                self.get_secret(namespace, secret_name)
+            except KubeHTTPException:
+                self.create_secret(
+                    namespace,
+                    secret_name,
+                    secret_data,
+                    secret_type='kubernetes.io/dockerconfigjson'
+                )
+            else:
+                self.update_secret(
+                    namespace,
+                    secret_name,
+                    secret_data,
+                    secret_type='kubernetes.io/dockerconfigjson'
+                )
 
         # apply image pull secret to a Pod spec
         data['imagePullSecrets'] = [{'name': secret_name}]
@@ -821,7 +835,10 @@ class KubeHTTPClient(object):
             "kind": "Namespace",
             "apiVersion": "v1",
             "metadata": {
-                "name": namespace
+                "name": namespace,
+                "labels": {
+                    'heritage': 'deis'
+                }
             }
         }
 

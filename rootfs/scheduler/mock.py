@@ -708,6 +708,16 @@ class MockSchedulerClient(KubeHTTPClient):
             self.create_secret('deis', 'objectstorage-keyfile', secrets)
 
         try:
+            self.get_secret('deis', 'registry-secret')
+        except KubeHTTPException:
+            secrets = {
+                'username': 'test',
+                'password': 'test',
+                'hostname': ''
+            }
+            self.create_secret('deis', 'registry-secret', secrets)
+
+        try:
             self.get_namespace('duplicate')
         except KubeHTTPException:
             self.create_namespace('duplicate')

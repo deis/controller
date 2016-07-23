@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.shortcuts import get_object_or_404
 
 from api.models import Key, App, Domain, Certificate, Config
-from api.exceptions import DeisException
+from api.exceptions import DeisException, AlreadyExists
 
 
 class Command(BaseCommand):
@@ -37,6 +37,10 @@ class Command(BaseCommand):
 
             try:
                 application.deploy(rel)
+            except AlreadyExists as error:
+                print('WARNING: {} has a deployment in progress. '
+                      'Skipping deployment...'.format(application))
+                continue
             except DeisException as error:
                 print('ERROR: There was a problem deploying {} '
                       'due to {}'.format(application, str(error)))

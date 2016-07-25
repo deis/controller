@@ -235,7 +235,7 @@ class Release(UuidAuditedModel):
     def delete(self, *args, **kwargs):
         """Delete release DB record and any RCs from the affect release"""
         try:
-            self._delete_release_in_scheduler(self.app.id, self.version)
+            self._delete_release_in_scheduler(self.app.id, "v{}".format(self.version))
         except KubeHTTPException as e:
             # 404 means they were already cleaned up
             if e.response.status_code is not 404:

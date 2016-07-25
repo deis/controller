@@ -1,7 +1,7 @@
 If your change requires any additions or changes to the [documentation][docs] or to the [end-to-end test suite][e2e], please submit them as 1 or more pull requests against that repo and refer to them here.
 
-refs deis/workflow#1234
-refs deis/workflow-e2e#5678
+requires deis/workflow#1234
+requires deis/workflow-e2e#5678
 
 
 [docs]: https://github.com/deis/workflow

@@ -8,14 +8,14 @@ include versioning.mk
 
 SHELL_SCRIPTS = $(wildcard rootfs/bin/*) $(shell find "rootfs" -name '*.sh') $(wildcard _scripts/*.sh)
 
-# Get the component informtation to a tmp location and get replica count
-KUBE := $(shell which kubectl)
-ifdef KUBE
-$(shell kubectl get deployment deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(COMPONENT))
-endif
-
 # Test processes used in quick unit testing
 TEST_PROCS ?= 4
+
+check-kubectl:
+	@if [ -z $$(which kubectl) ]; then \
+	  echo "kubectl binary could not be located"; \
+	  exit 2; \
+	fi
 
 check-docker:
 	@if [ -z $$(which docker) ]; then \
@@ -29,8 +29,8 @@ docker-build: check-docker
 	docker build --rm -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
-deploy: docker-build docker-push
-	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
+deploy: check-kubectl docker-build docker-push
+	kubectl patch deployment deis-$(COMPONENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(IMAGE)"}]'
 
 clean: check-docker
 	docker rmi $(IMAGE)

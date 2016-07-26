@@ -638,7 +638,8 @@ class App(UuidAuditedModel):
 
         # Endpoint did not report healthy in time
         if ('response' in locals() and response.status_code == 404) or failed:
-            delta = time.time() - start
+            # bankers rounding
+            delta = round(time.time() - start)
             self.log(
                 'Router was not ready to serve traffic to process type {} in time, waited {} seconds'.format(app_type, delta),  # noqa
                 level=logging.WARNING

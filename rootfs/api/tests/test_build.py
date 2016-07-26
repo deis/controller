@@ -346,8 +346,7 @@ class BuildTest(APITransactionTestCase):
 
         build = Build.objects.get(uuid=response.data['uuid'])
         release = build.app.release_set.latest()
-        # Registry host is internally stripped off
-        self.assertEqual(release.image, 'autotest/example')
+        self.assertEqual(release.image, image)
 
         # post an image as a build using registry hostname + port
         url = "/v2/apps/test/builds".format(**locals())
@@ -358,8 +357,7 @@ class BuildTest(APITransactionTestCase):
 
         build = Build.objects.get(uuid=response.data['uuid'])
         release = build.app.release_set.latest()
-        # Registry host + port is internally stripped off
-        self.assertEqual(release.image, 'autotest/example')
+        self.assertEqual(release.image, image)
 
     def test_build_image_in_registry_with_auth(self, mock_requests):
         """add authentication to the build"""

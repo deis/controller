@@ -54,9 +54,7 @@ class Release(UuidAuditedModel):
             self.build.image.startswith(settings.REGISTRY_HOST) or
             self.build.image.startswith(settings.REGISTRY_URL)
         ):
-            # strip registry information off first
-            image = self.build.image.replace('{}/'.format(settings.REGISTRY_URL), '')
-            return image.replace('{}/'.format(settings.REGISTRY_HOST), '')
+            return self.build.image
 
         # Sort out image information based on build type
         if self.build.type == 'dockerfile':

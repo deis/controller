@@ -53,14 +53,14 @@ class Build(UuidAuditedModel):
 
     def create(self, user, *args, **kwargs):
         latest_release = self.app.release_set.latest()
-        new_release = latest_release.new(
-            user,
-            build=self,
-            config=latest_release.config,
-            source_version=self.version
-        )
 
         try:
+            new_release = latest_release.new(
+                user,
+                build=self,
+                config=latest_release.config,
+                source_version=self.version
+            )
             self.app.deploy(new_release)
             return new_release
         except Exception as e:

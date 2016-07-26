@@ -619,11 +619,13 @@ class KubeHTTPClient(object):
             if mem[-2:-1].isalpha() and mem[-1].isalpha():
                 mem = mem[:-1]
 
-            mem = mem + "i"
+            # memory needs to be upper cased (only first char)
+            mem = mem.upper() + "i"
             data["resources"]["limits"]["memory"] = mem
 
         if cpu:
-            data["resources"]["limits"]["cpu"] = cpu
+            # CPU needs to be defined as lower case
+            data["resources"]["limits"]["cpu"] = cpu.lower()
 
         # add in healthchecks
         healthchecks = kwargs.get('healthcheck', None)

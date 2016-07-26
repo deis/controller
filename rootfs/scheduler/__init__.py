@@ -525,6 +525,12 @@ class KubeHTTPClient(object):
             if waited == timeout:
                 raise KubeException('Timed out (20 mins) while running')
 
+            # check if it is possible to get logs
+            state = self.pod_state(self.get_pod(namespace, name).json())
+            # States below up do not have logs
+            if state < PodState.up:
+                return exit_code, 'Could not get logs. Pod is in state {}'.format(str(state))
+
             # grab log information
             log = self._pod_log(namespace, name)
             log.encoding = 'utf-8'  # defaults to "ISO-8859-1" otherwise...
@@ -698,8 +704,9 @@ class KubeHTTPClient(object):
             'Unknown': PodState.error,
         }
 
-        # being in a Pending state can mean different things, introspecting app container first
-        if pod['status']['phase'] == 'Pending':
+        # being in a Pending/ContainerCreating state can mean different things
+        # introspecting app container first
+        if pod['status']['phase'] in ['Pending', 'ContainerCreating']:
             pod_state, _ = self._pod_pending_status(pod)
         # being in a running state can mean a pod is starting, actually running or terminating
         elif pod['status']['phase'] == 'Running':
@@ -942,7 +949,7 @@ class KubeHTTPClient(object):
             pods = self.get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
                 # Get more information on why a pod is pending
-                if pod['status']['phase'] == 'Pending':
+                if pod['status']['phase'] in ['Pending', 'ContainerCreating']:
                     reason, message = self._pod_pending_status(pod)
                     # If pulling an image is taking long then increase the timeout
                     timeout += self._handle_pod_long_image_pulling(pod, reason)
@@ -1723,7 +1730,7 @@ class KubeHTTPClient(object):
                 pods = self.get_pods(namespace, labels=labels).json()
                 for pod in pods['items']:
                     # Get more information on why a pod is pending
-                    if pod['status']['phase'] == 'Pending':
+                    if pod['status']['phase'] in ['Pending', 'ContainerCreating']:
                         reason, message = self._pod_pending_status(pod)
                         # If pulling an image is taking long then increase the timeout
                         timeout += self._handle_pod_long_image_pulling(pod, reason)

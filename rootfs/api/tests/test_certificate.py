@@ -144,3 +144,41 @@ class CertificateTest(APITestCase):
                 certificate='i am bad data',
                 key='i am bad data as well'
             )
+
+    def test_certs_fetch_limit(self):
+        """
+        When a user retrieves a certificate, make sure limits work
+        """
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert1',
+                'certificate': self.cert,
+                'key': self.key
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert2',
+                'certificate': self.cert,
+                'key': self.key
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # limit=0 is invalid as of DRF 3.4
+        # https://github.com/tomchristie/django-rest-framework/pull/4194
+        response = self.client.get('{}?limit=0'.format(self.url))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 2, 'limit=0 should return 2')
+
+        response = self.client.get('{}?limit=1'.format(self.url))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1, 'limit=1 should return 1')
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 2)

@@ -3,7 +3,7 @@ backoff==1.2.1
 Django==1.9.7
 django-cors-headers==1.1.0
 django-guardian==1.4.4
-djangorestframework==3.3.3
+djangorestframework==3.4.0
 docker-py==1.8.1
 gunicorn==19.6.0
 jsonfield==1.0.3

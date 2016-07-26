@@ -11,8 +11,7 @@ SHELL_SCRIPTS = $(wildcard rootfs/bin/*) $(shell find "rootfs" -name '*.sh') $(w
 # Get the component informtation to a tmp location and get replica count
 KUBE := $(shell which kubectl)
 ifdef KUBE
-$(shell kubectl get rc deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(COMPONENT))
-DESIRED_REPLICAS=$(shell kubectl get -o template rc/deis-$(COMPONENT) --template={{.status.replicas}} --namespace deis)
+$(shell kubectl get deployment deis-$(COMPONENT) --namespace deis -o yaml > /tmp/deis-$(COMPONENT))
 endif
 
 # Test processes used in quick unit testing
@@ -32,8 +31,6 @@ docker-build: check-docker
 
 deploy: docker-build docker-push
 	sed 's#\(image:\) .*#\1 $(IMAGE)#' /tmp/deis-$(COMPONENT) | kubectl apply --validate=true -f -
-	kubectl scale rc deis-$(COMPONENT) --replicas 0 --namespace deis
-	kubectl scale rc deis-$(COMPONENT) --replicas $(DESIRED_REPLICAS) --namespace deis
 
 clean: check-docker
 	docker rmi $(IMAGE)

@@ -1393,7 +1393,12 @@ class KubeHTTPClient(object):
 
             if reason == 'ContainerCreating':
                 # get the last event
-                event = self._pod_events(pod).pop()
+                events = self._pod_events(pod)
+                if not events:
+                    # could not find any events
+                    return reason, message
+
+                event = events.pop()
                 return event['reason'], event['message']
 
             return reason, message

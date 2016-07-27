@@ -521,12 +521,12 @@ class App(UuidAuditedModel):
         deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
 
         for scale_type, kwargs in deploys.items():
-            try:
-                # Is there an existing deployment in progress?
-                name = self._get_job_id(scale_type)
-                if not force_deploy and release.deployment_in_progress(self.id, name):
-                    raise AlreadyExists('Deployment for {} is already in progress'.format(name))
+            # Is there an existing deployment in progress?
+            name = self._get_job_id(scale_type)
+            if not force_deploy and release.deployment_in_progress(self.id, name):
+                raise AlreadyExists('Deployment for {} is already in progress'.format(name))
 
+            try:
                 self._scheduler.deploy(
                     namespace=self.id,
                     name=self._get_job_id(scale_type),

@@ -53,3 +53,16 @@ class SchedulerTest(TestCase):
                                              data,
                                              healthcheck=healthcheck)
         self.assertEqual(data.get('livenessProbe'), None)
+
+    def test_set_container_limits(self):
+        """
+        Test that when _set_container has limits that is sets them properly
+        """
+        data = {}
+        self.scheduler_client._set_container(
+            'foo', 'bar', data, app_type='fake', cpu={'fake': '500M'}, memory={'fake': '1024m'}
+        )
+        # make sure CPU gets lower cased
+        self.assertEqual(data['resources']['limits']['cpu'], '500m', 'CPU should be lower cased')
+        # make sure first char of Memory is upper cased
+        self.assertEqual(data['resources']['limits']['memory'], '1024Mi', 'Memory should be upper cased')  # noqa

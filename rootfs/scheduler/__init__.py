@@ -655,6 +655,8 @@ class KubeHTTPClient(object):
         hostname = registry.get('hostname', None)
         if not hostname:
             hostname, _ = docker_auth.split_repo_name(kwargs.get('image'))
+        if hostname == docker_auth.INDEX_NAME:
+            hostname = "https://index.docker.io/v1/"
 
         # create / update private registry secret
         auth = bytes('{}:{}'.format(registry.get('username'), registry.get('password')), 'UTF-8')
@@ -662,8 +664,7 @@ class KubeHTTPClient(object):
         docker_config = json.dumps({
             "auths": {
                 hostname: {
-                    "auth": base64.b64encode(auth).decode(encoding='UTF-8'),
-                    "email": 'not@valid.id'
+                    "auth": base64.b64encode(auth).decode(encoding='UTF-8')
                 }
             }
         })

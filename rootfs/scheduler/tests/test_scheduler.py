@@ -7,6 +7,8 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from scheduler import mock
+import base64
+import json
 
 
 class SchedulerTest(TestCase):
@@ -66,3 +68,25 @@ class SchedulerTest(TestCase):
         self.assertEqual(data['resources']['limits']['cpu'], '500m', 'CPU should be lower cased')
         # make sure first char of Memory is upper cased
         self.assertEqual(data['resources']['limits']['memory'], '1024Mi', 'Memory should be upper cased')  # noqa
+
+    def test_get_private_registry_config(self):
+        registry = {'username': 'test', 'password': 'test'}
+        auth = bytes('{}:{}'.format("test", "test"), 'UTF-8')
+        encAuth = base64.b64encode(auth).decode(encoding='UTF-8')
+        image = 'test/test'
+
+        dockerConfig = self.scheduler_client._get_private_registry_config(registry, image)
+        dockerConfig = json.loads(dockerConfig)
+        expected = {"https://index.docker.io/v1/": {
+            "auth": encAuth
+        }}
+        self.assertEqual(dockerConfig.get('auths'), expected)
+
+        image = "quay.io/test/test"
+
+        dockerConfig = self.scheduler_client._get_private_registry_config(registry, image)
+        dockerConfig = json.loads(dockerConfig)
+        expected = {"quay.io": {
+            "auth": encAuth
+        }}
+        self.assertEqual(dockerConfig.get('auths'), expected)

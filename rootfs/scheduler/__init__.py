@@ -642,19 +642,11 @@ class KubeHTTPClient(object):
         else:
             self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 
-    def _set_image_secret(self, data, namespace, **kwargs):
-        """
-        Take registry information and set as an imagePullSecret for an RC / Deployment
-        http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
-        """
-        registry = kwargs.get('registry', {})
-        if not registry:
-            return
-
+    def _get_private_registry_config(self, registry, image):
         # try to get the hostname information
         hostname = registry.get('hostname', None)
         if not hostname:
-            hostname, _ = docker_auth.split_repo_name(kwargs.get('image'))
+            hostname, _ = docker_auth.split_repo_name(image)
         if hostname == docker_auth.INDEX_NAME:
             hostname = "https://index.docker.io/v1/"
 
@@ -668,6 +660,17 @@ class KubeHTTPClient(object):
                 }
             }
         })
+        return docker_config
+
+    def _set_image_secret(self, data, namespace, **kwargs):
+        """
+        Take registry information and set as an imagePullSecret for an RC / Deployment
+        http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
+        """
+        registry = kwargs.get('registry', {})
+        if not registry:
+            return
+        docker_config = self._get_private_registry_config(registry, kwargs.get('image'))  # noqa
         secret_data = {'.dockerconfigjson': docker_config}
 
         secret_name = 'private-registry'

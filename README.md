@@ -52,7 +52,17 @@ helmc install workflow-dev
 
 ### Python
 
-Python 3.5 is a minimum requirement and can be installed via [Homebrew](http://brew.sh) for OS X or the package manager of choice on your OS.
+Python 3.5 is a minimum requirement and can be installed via `homebrew`:
+
+```
+brew install python3
+```
+
+Or via your package manager. For example, on Debian Jessie:
+
+```
+apt-get install python3 python3-dev python3-venv
+```
 
 With the correct Python in place the quickest way to get up and running is to run `make setup-venv` which will install the Python specific dependencies via [PIP](https://pip.pypa.io/en/stable/) inside an isolated (virtualenv)[https://docs.python.org/3/library/venv.html].
 Running `python --version` to verify the correct version is recommend.

@@ -23,19 +23,28 @@ chgrp deis /var/run/docker.sock
 groupadd -g "$(stat -c "%g" /var/run/docker.sock)" docker || true
 usermod -a -G docker deis || true
 
+echo ""
 echo "Django checks:"
 python /app/manage.py check --deploy api
 
+echo ""
 echo "Health Checks:"
 python /app/manage.py healthchecks
 
+echo ""
 echo "Database Migrations:"
 sudo -E -u deis python /app/manage.py migrate --noinput
 
 # spawn a gunicorn server in the background
+echo ""
+echo "Starting up Gunicorn"
 sudo -E -u deis gunicorn -c /app/deis/gunicorn/config.py api.wsgi &
 
-python /app/manage.py load_db_state_to_k8s
+echo ""
+echo "Loading database information to Kubernetes in the background"
+echo "Log of the run can be found in /app/data/logs/load_db_state_to_k8s.log"
+# python -u avoids output buffering
+nohup python -u /app/manage.py load_db_state_to_k8s > /app/data/logs/load_db_state_to_k8s.log &
 
 # smart shutdown on SIGTERM (SIGINT is handled by gunicorn)
 function on_exit() {
@@ -46,6 +55,7 @@ function on_exit() {
 }
 trap on_exit TERM
 
+echo ""
 echo deis-controller running...
 
 wait

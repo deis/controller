@@ -11,9 +11,13 @@ from django.views.generic import View
 from rest_framework import mixins, renderers, status
 from rest_framework.exceptions import PermissionDenied, NotFound, AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.schemas import SchemaGenerator
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.authtoken.models import Token
+from rest_framework.decorators import api_view, renderer_classes
+from rest_framework.renderers import CoreJSONRenderer
+from rest_framework_swagger.renderers import OpenAPIRenderer
 
 from api import authentication, models, permissions, serializers, viewsets
 from api.models import AlreadyExists, ServiceUnavailable, DeisException, UnprocessableEntity
@@ -21,6 +25,13 @@ from api.models import AlreadyExists, ServiceUnavailable, DeisException, Unproce
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+@api_view()
+@renderer_classes([OpenAPIRenderer, CoreJSONRenderer])
+def schema_view(request):
+    generator = SchemaGenerator(title='Deis Workflow Controller API')
+    return Response(generator.get_schema(request=request))
 
 
 class ReadinessCheckView(View):
@@ -543,6 +554,7 @@ class AppPermsViewSet(BaseDeisViewSet):
     """RESTful views for sharing apps with collaborators."""
 
     model = models.App  # models class
+    serializer_class = serializers.UserSerializer
     perm = 'use_app'    # short name for permission
 
     def get_queryset(self):

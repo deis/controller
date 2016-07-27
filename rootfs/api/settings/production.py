@@ -101,6 +101,7 @@ INSTALLED_APPS = (
     'jsonfield',
     'rest_framework',
     'rest_framework.authtoken',
+    'rest_framework_swagger',
     # Deis apps
     'api'
 )
@@ -160,6 +161,15 @@ REST_FRAMEWORK = {
     'TEST_REQUEST_DEFAULT_FORMAT': 'json',
     'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler'
 }
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+#         'basic': {
+#             'type': 'apiKey'
+#         }
+    },
+}
+
 
 # URLs that end with slashes are ugly
 APPEND_SLASH = False

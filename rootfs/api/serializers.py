@@ -3,6 +3,7 @@ Classes to serialize the RESTful representation of Deis API models.
 """
 
 import json
+import jmespath
 import re
 import jsonschema
 import idna
@@ -336,6 +337,15 @@ class ConfigSerializer(serializers.ModelSerializer):
             except jsonschema.ValidationError as e:
                 raise serializers.ValidationError(
                     "could not validate {}: {}".format(value, e.message))
+
+        # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_probe
+        # liveness only supports successThreshold=1, no other value
+        # This is not in the schema since readiness supports other values
+        threshold = jmespath.search('livenessProbe.successThreshold', data)
+        if threshold is not None and threshold != 1:
+            raise serializers.ValidationError(
+                'livenessProbe successThreshold can only be 1'
+            )
 
         return data
 

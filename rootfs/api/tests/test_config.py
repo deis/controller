@@ -833,7 +833,9 @@ class ConfigTest(APITransactionTestCase):
         self.assertIn('readinessProbe', resp.data['healthcheck'])
         self.assertEqual(resp.data['healthcheck'], readiness_probe['healthcheck'])
 
-        liveness_probe = {'healthcheck': {'livenessProbe': {'httpGet': {'port': 5000}}}}
+        liveness_probe = {'healthcheck': {'livenessProbe':
+                                          {'httpGet': {'port': 5000},
+                                           'successThreshold': 1}}}
         resp = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             liveness_probe)
@@ -876,6 +878,16 @@ class ConfigTest(APITransactionTestCase):
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'healthcheck': json.dumps({'livenessProbe':
                                         {'httpGet': {'path': '/'}, 'initialDelaySeconds': 1}})}
+        )
+        self.assertEqual(resp.status_code, 400, response.data)
+
+        # set liveness success threshold to a non-1 value
+        # Don't set one of the mandatory value
+        resp = self.client.post(
+            '/v2/apps/{app_id}/config'.format(**locals()),
+            {'healthcheck': {'livenessProbe':
+                             {'httpGet': {'path': '/', 'port': 5000},
+                              'successThreshold': 5}}}
         )
         self.assertEqual(resp.status_code, 400, response.data)
 

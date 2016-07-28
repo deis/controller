@@ -6,6 +6,7 @@ django-guardian==1.4.4
 djangorestframework==3.4.0
 docker-py==1.9.0
 gunicorn==19.6.0
+jmespath==0.9.0
 jsonfield==1.0.3
 morph==0.1.2
 ndg-httpsclient==0.4.2

@@ -326,27 +326,29 @@ class ConfigSerializer(serializers.ModelSerializer):
         return data
 
     def validate_healthcheck(self, data):
-        for key, value in data.items():
-            if value is None:
+        for procType, healthcheck in data.items():
+            if healthcheck is None:
                 continue
+            for key, value in healthcheck.items():
+                if value is None:
+                    continue
+                if key not in ['livenessProbe', 'readinessProbe']:
+                    raise serializers.ValidationError(
+                        "Healthcheck keys must be either livenessProbe or readinessProbe")
+                try:
+                    jsonschema.validate(value, PROBE_SCHEMA)
+                except jsonschema.ValidationError as e:
+                    raise serializers.ValidationError(
+                        "could not validate {}: {}".format(value, e.message))
 
-            if key not in ['livenessProbe', 'readinessProbe']:
+            # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_probe
+            # liveness only supports successThreshold=1, no other value
+            # This is not in the schema since readiness supports other values
+            threshold = jmespath.search('livenessProbe.successThreshold', healthcheck)
+            if threshold is not None and threshold != 1:
                 raise serializers.ValidationError(
-                    "Healthcheck keys must be either livenessProbe or readinessProbe")
-            try:
-                jsonschema.validate(value, PROBE_SCHEMA)
-            except jsonschema.ValidationError as e:
-                raise serializers.ValidationError(
-                    "could not validate {}: {}".format(value, e.message))
-
-        # http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_probe
-        # liveness only supports successThreshold=1, no other value
-        # This is not in the schema since readiness supports other values
-        threshold = jmespath.search('livenessProbe.successThreshold', data)
-        if threshold is not None and threshold != 1:
-            raise serializers.ValidationError(
-                'livenessProbe successThreshold can only be 1'
-            )
+                    'livenessProbe successThreshold can only be 1'
+                )
 
         return data
 

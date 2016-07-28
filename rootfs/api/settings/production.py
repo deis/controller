@@ -81,7 +81,6 @@ MIDDLEWARE_CLASSES = (
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'api.middleware.APIVersionMiddleware',
-    'deis.middleware.PlatformVersionMiddleware',
 )
 
 ROOT_URLCONF = 'deis.urls'

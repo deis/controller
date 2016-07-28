@@ -17,7 +17,7 @@ import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
 
-from deis import __version__ as deis_version
+from api import __version__ as deis_version
 
 
 logger = logging.getLogger(__name__)

@@ -13,6 +13,7 @@ import docker
 import docker.constants
 from docker.auth import auth
 from docker.errors import APIError
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -173,10 +174,14 @@ def check_blacklist(repo):
 
 def log_output(stream, operation, repo, tag):
     """Log a stream at DEBUG level, and raise RegistryException if it contains an error"""
-    for chunk in stream:
-        # error handling requires looking at the response body
-        if 'error' in chunk:
-            stream_error(chunk, operation, repo, tag)
+    try:
+        for chunk in stream:
+            # error handling requires looking at the response body
+            if 'error' in chunk:
+                stream_error(chunk, operation, repo, tag)
+    except requests.packages.urllib3.exceptions.ReadTimeoutError as e:
+        message = 'Operation {} timed out for image {}:{}'.format(operation, repo, tag)
+        raise RegistryException(message) from e
 
 
 def stream_error(chunk, operation, repo, tag):

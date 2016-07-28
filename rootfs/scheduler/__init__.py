@@ -642,6 +642,26 @@ class KubeHTTPClient(object):
         else:
             self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
 
+    def _get_private_registry_config(self, registry, image):
+        # try to get the hostname information
+        hostname = registry.get('hostname', None)
+        if not hostname:
+            hostname, _ = docker_auth.split_repo_name(image)
+        if hostname == docker_auth.INDEX_NAME:
+            hostname = "https://index.docker.io/v1/"
+
+        # create / update private registry secret
+        auth = bytes('{}:{}'.format(registry.get('username'), registry.get('password')), 'UTF-8')
+        # value has to be a base64 encoded JSON
+        docker_config = json.dumps({
+            "auths": {
+                hostname: {
+                    "auth": base64.b64encode(auth).decode(encoding='UTF-8')
+                }
+            }
+        })
+        return docker_config
+
     def _set_image_secret(self, data, namespace, **kwargs):
         """
         Take registry information and set as an imagePullSecret for an RC / Deployment
@@ -650,23 +670,7 @@ class KubeHTTPClient(object):
         registry = kwargs.get('registry', {})
         if not registry:
             return
-
-        # try to get the hostname information
-        hostname = registry.get('hostname', None)
-        if not hostname:
-            hostname, _ = docker_auth.split_repo_name(kwargs.get('image'))
-
-        # create / update private registry secret
-        auth = bytes('{}:{}'.format(registry.get('username'), registry.get('password')), 'UTF-8')
-        # value has to be a base64 encoded JSON
-        docker_config = json.dumps({
-            "auths": {
-                hostname: {
-                    "auth": base64.b64encode(auth).decode(encoding='UTF-8'),
-                    "email": 'not@valid.id'
-                }
-            }
-        })
+        docker_config = self._get_private_registry_config(registry, kwargs.get('image'))  # noqa
         secret_data = {'.dockerconfigjson': docker_config}
 
         secret_name = 'private-registry'

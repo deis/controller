@@ -88,7 +88,7 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 201, response.data)
         body = {'id': response.data['id']}
         response = self.client.post('/v2/apps', body)
-        self.assertContains(response, 'App with this id already exists.', status_code=400)
+        self.assertContains(response, 'Application with this id already exists.', status_code=400)
         return response
 
     @mock.patch('requests.get')

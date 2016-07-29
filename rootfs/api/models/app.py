@@ -86,6 +86,7 @@ class App(UuidAuditedModel):
     structure = JSONField(default={}, blank=True, validators=[validate_app_structure])
 
     class Meta:
+        verbose_name = 'Application'
         permissions = (('use_app', 'Can use app'),)
         ordering = ['id']
 

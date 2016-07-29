@@ -76,7 +76,7 @@ class DockerClient(object):
         if not deis_registry:
             self.login(repo, creds)
 
-        info = self.inspect_image(target, deis_registry)
+        info = self.inspect_image(target)
         if 'ExposedPorts' not in info['Config']:
             return None
 
@@ -103,11 +103,11 @@ class DockerClient(object):
 
         try:
             # log into pull repo
-            if not deis_registry:
+            if creds is not None:
                 self.login(repo, creds)
 
             # pull image from source repository
-            self.pull(repo, src_tag, deis_registry)
+            self.pull(repo, src_tag)
 
             # tag the image locally without the repository URL
             image = "{}:{}".format(src_name, src_tag)
@@ -118,24 +118,18 @@ class DockerClient(object):
         except APIError as e:
             raise RegistryException(str(e))
 
-    def pull(self, repo, tag, insecure_registry=True):
+    def pull(self, repo, tag):
         """Pull a Docker image into the local storage graph."""
         check_blacklist(repo)
         logger.info("Pulling Docker image {}:{}".format(repo, tag))
         with SimpleFlock(self.FLOCKFILE, timeout=1200):
-            stream = self.client.pull(
-                repo, tag=tag, stream=True, decode=True,
-                insecure_registry=insecure_registry
-            )
+            stream = self.client.pull(repo, tag=tag, stream=True, decode=True)
             log_output(stream, 'pull', repo, tag)
 
     def push(self, repo, tag):
         """Push a local Docker image to a registry."""
         logger.info("Pushing Docker image {}:{}".format(repo, tag))
-        stream = self.client.push(
-            repo, tag=tag, stream=True, decode=True,
-            insecure_registry=True
-        )
+        stream = self.client.push(repo, tag=tag, stream=True, decode=True)
         log_output(stream, 'push', repo, tag)
 
     def tag(self, image, repo, tag):
@@ -146,7 +140,7 @@ class DockerClient(object):
             raise RegistryException('Tagging {} as {}:{} failed'.format(image, repo, tag))
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
-    def inspect_image(self, target, insecure_registry=True):
+    def inspect_image(self, target):
         """
         Inspect docker image to gather information from it
 
@@ -156,7 +150,7 @@ class DockerClient(object):
         repo, tag = docker.utils.parse_repository_tag(target)
 
         # make sure image is pulled locally already
-        self.pull(repo, tag=tag, insecure_registry=insecure_registry)
+        self.pull(repo, tag=tag)
 
         # inspect the image
         return self.client.inspect_image(target)

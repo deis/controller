@@ -74,8 +74,8 @@ class DockerClientTest(unittest.TestCase):
         publish_release('ozzy/embryo:git-f2a8020', 'quay.io/ozzy/embryo:v4', True)
         docker_push = self.client.client.push
         docker_push.assert_called_with(
-            'localhost:5000/ozzy/embryo', tag='v4', insecure_registry=True,
-            decode=True, stream=True)
+            'localhost:5000/ozzy/embryo', tag='v4', decode=True, stream=True
+        )
 
         # Test that blacklisted image names can't be published
         with self.assertRaises(PermissionDenied):
@@ -173,8 +173,7 @@ class DockerClientTest(unittest.TestCase):
         self.client = DockerClient()
         self.client.pull('alpine', '3.2')
         docker_pull = self.client.client.pull
-        docker_pull.assert_called_once_with(
-            'alpine', tag='3.2', insecure_registry=True, decode=True, stream=True)
+        docker_pull.assert_called_once_with('alpine', tag='3.2', decode=True, stream=True)
         # Test that blacklisted image names can't be pulled
         with self.assertRaises(PermissionDenied):
             self.client.pull('deis/controller', 'v1.11.1')
@@ -185,8 +184,7 @@ class DockerClientTest(unittest.TestCase):
         self.client = DockerClient()
         self.client.push('ozzy/embryo', 'v4')
         docker_push = self.client.client.push
-        docker_push.assert_called_once_with(
-            'ozzy/embryo', tag='v4', insecure_registry=True, decode=True, stream=True)
+        docker_push.assert_called_once_with('ozzy/embryo', tag='v4', decode=True, stream=True)
 
     def test_tag(self, mock_client):
         self.client = DockerClient()

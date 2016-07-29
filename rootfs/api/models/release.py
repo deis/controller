@@ -481,6 +481,17 @@ class Release(UuidAuditedModel):
                         self.summary += ' and '
                     self.summary += "{} {}".format(self.config.owner, changes)
 
+                # if the routable flag changed, log that too
+                changes = []
+                old_routable = old_config.routable if old_config else True
+                enabled = "enabled routing" if self.config.routable and not old_routable else ''
+                disabled = "disabled routing" if not self.config.routable and old_routable else ''
+                changes = ', '.join(i for i in (enabled, disabled) if i)
+                if changes:
+                    if self.summary:
+                        self.summary += ' and '
+                    self.summary += "{} {}".format(self.config.owner, changes)
+
             if not self.summary:
                 if self.version == 1:
                     self.summary = "{} created the initial release".format(self.owner)

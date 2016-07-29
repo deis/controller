@@ -498,6 +498,7 @@ class AppTest(DeisTestCase):
         self.assertEqual(apps[2]['id'], 'tango')
         self.assertEqual(apps[3]['id'], 'zulu')
 
+
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5
 2013-08-15 12:41:25 [33454] [INFO] Listening at: http://0.0.0.0:5000 (33454)

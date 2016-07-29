@@ -75,7 +75,7 @@ class DomainTest(APITestCase):
         url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)
         response = self.client.get(url)
         expected = [data['domain'] for data in response.data['results']]
-        self.assertEqual([self.app_id, domain], expected, msg)
+        self.assertEqual(sorted([self.app_id, domain]), expected, msg)
 
     def test_manage_idn_domain(self):
         url = '/v2/apps/{app_id}/domains'.format(app_id=self.app_id)

@@ -32,6 +32,7 @@ class Key(UuidAuditedModel):
     class Meta:
         verbose_name = 'SSH Key'
         unique_together = (('owner', 'fingerprint'))
+        ordering = ['public']
 
     def __str__(self):
         return "{}...{}".format(self.public[:18], self.public[-31:])

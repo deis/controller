@@ -91,6 +91,9 @@ class Certificate(AuditedModel):
     issuer = models.TextField(editable=False)
     subject = models.TextField(editable=False)
 
+    class Meta:
+        ordering = ['name', 'common_name', 'expires']
+
     @property
     def domains(self):
         domains = []

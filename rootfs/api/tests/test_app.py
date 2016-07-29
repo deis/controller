@@ -523,6 +523,21 @@ class AppTest(APITestCase):
         self.assertEqual(mr.called, True)
         self.assertEqual(mr.call_count, 10)
 
+    def test_list_ordering(self, mock_requests):
+        """
+        Test that a list of apps is sorted by name
+        """
+        for name in ['zulu', 'tango', 'alpha', 'foxtrot']:
+            response = self.client.post('/v2/apps', {'id': name})
+            self.assertEqual(response.status_code, 201, response.data)
+
+        response = self.client.get('/v2/apps')
+        apps = response.data['results']
+        self.assertEqual(apps[0]['id'], 'alpha')
+        self.assertEqual(apps[1]['id'], 'foxtrot')
+        self.assertEqual(apps[2]['id'], 'tango')
+        self.assertEqual(apps[3]['id'], 'zulu')
+
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5
 2013-08-15 12:41:25 [33454] [INFO] Listening at: http://0.0.0.0:5000 (33454)

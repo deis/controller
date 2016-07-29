@@ -87,6 +87,7 @@ class App(UuidAuditedModel):
 
     class Meta:
         permissions = (('use_app', 'Can use app'),)
+        ordering = ['id']
 
     def save(self, *args, **kwargs):
         if not self.id:

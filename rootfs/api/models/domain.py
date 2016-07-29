@@ -20,6 +20,9 @@ class Domain(AuditedModel):
         null=True
     )
 
+    class Meta:
+        ordering = ['domain', 'certificate']
+
     def save(self, *args, **kwargs):
         app = str(self.app)
         domain = str(self.domain)

@@ -1,7 +1,7 @@
-import asyncio
 import backoff
 from collections import OrderedDict
 from datetime import datetime
+import functools
 import logging
 import random
 import re
@@ -19,7 +19,7 @@ from jsonfield import JSONField
 from api import __version__ as deis_version
 from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
 
-from api.utils import generate_app_name
+from api.utils import generate_app_name, async_run
 from api.models.release import Release
 from api.models.config import Config
 from api.models.domain import Domain
@@ -295,24 +295,15 @@ class App(UuidAuditedModel):
             return []
 
         try:
-            @asyncio.coroutine
-            def delete_pod(namespace, name, loop):
-                """
-                A synchronous function that deletes a pod
-                """
-                logger.debug('Deleting pod {} as part of a pod restart call'.format(name))
-                # Gives a pod however long the termination grace period is to terminate
-                # This executes a delete in its own thread (in parallel)
-                yield from loop.run_in_executor(None, self._scheduler.delete_pod, namespace, name)
-                logger.debug('Finished deleting pod {}'.format(name))
+            tasks = [
+                functools.partial(
+                    self._scheduler.delete_pod,
+                    self.id,
+                    pod['name']
+                ) for pod in self.list_pods(**kwargs)
+            ]
 
-            # gather all pods to be deleted
-            loop = asyncio.get_event_loop()
-            tasks = [delete_pod(self.id, pod['name'], loop) for pod in self.list_pods(**kwargs)]
-            if tasks:
-                # run deletes in parallel
-                loop.run_until_complete(asyncio.wait(tasks))
-
+            async_run(tasks)
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
             self.log(err, logging.WARNING)
@@ -436,6 +427,7 @@ class App(UuidAuditedModel):
         # see if there is a global or app specific setting to specify Deployments usage
         deployments = bool(envs.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
 
+        tasks = []
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
@@ -462,8 +454,10 @@ class App(UuidAuditedModel):
                 'deploy_timeout': deploy_timeout,
             }
 
-            try:
-                self._scheduler.scale(
+            # gather all proc types to be deployed
+            tasks.append(
+                functools.partial(
+                    self._scheduler.scale,
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
                     image=release.image,
@@ -471,10 +465,14 @@ class App(UuidAuditedModel):
                     command=self._get_command(scale_type),
                     **kwargs
                 )
-            except Exception as e:
-                err = '{} (scale): {}'.format(self._get_job_id(scale_type), e)
-                self.log(err, logging.ERROR)
-                raise ServiceUnavailable(err) from e
+            )
+
+        try:
+            async_run(tasks)
+        except Exception as e:
+            err = '(scale): {}'.format(e)
+            self.log(err, logging.ERROR)
+            raise ServiceUnavailable(err) from e
 
     def deploy(self, release, force_deploy=False):
         """
@@ -538,32 +536,38 @@ class App(UuidAuditedModel):
         # Sort deploys so routable comes first
         deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
 
+        # Check if any proc type has a Deployment in progress
         for scale_type, kwargs in deploys.items():
             # Is there an existing deployment in progress?
             name = self._get_job_id(scale_type)
             if not force_deploy and release.deployment_in_progress(self.id, name):
                 raise AlreadyExists('Deployment for {} is already in progress'.format(name))
 
-            try:
-                self._scheduler.deploy(
+        try:
+            # gather all proc types to be deployed
+            tasks = [
+                functools.partial(
+                    self._scheduler.deploy,
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
                     image=release.image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
                     **kwargs
-                )
+                ) for scale_type, kwargs in deploys.items()
+            ]
 
-                # Wait until application is available in the router
-                # Only run when there is no previous build / release
-                old = release.previous()
-                if old is None or old.build is None:
-                    self.verify_application_health(**kwargs)
+            async_run(tasks)
+        except Exception as e:
+            err = '(app::deploy): {}'.format(e)
+            self.log(err, logging.ERROR)
+            raise ServiceUnavailable(err) from e
 
-            except Exception as e:
-                err = '{} (app::deploy): {}'.format(self._get_job_id(scale_type), e)
-                self.log(err, logging.ERROR)
-                raise ServiceUnavailable(err) from e
+        # Wait until application is available in the router
+        # Only run when there is no previous build / release
+        old = release.previous()
+        if old is None or old.build is None:
+            self.verify_application_health(**kwargs)
 
         # cleanup old release objects from kubernetes
         release.cleanup_old(deployments)

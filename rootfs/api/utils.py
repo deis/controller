@@ -1,6 +1,7 @@
 """
 Helper functions used by the Deis server.
 """
+import asyncio
 import base64
 import hashlib
 import random
@@ -138,6 +139,26 @@ def dict_merge(origin, merge):
             else:
                 result[key] = deepcopy(value)
     return result
+
+
+def async_run(tasks):
+    """
+    run a group of tasks async
+    Requires the tasks arg to be a list of function.partial
+    """
+    # start a new async event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async_tasks = [loop.run_in_executor(None, task) for task in tasks]
+    if async_tasks:
+        # run deploys in parallel
+        loop.run_until_complete(asyncio.wait(async_tasks))
+        # deal with errors (exceptions, etc)
+        for task in async_tasks:
+            error = task.exception()
+            if error is not None:
+                raise error
 
 
 if __name__ == "__main__":

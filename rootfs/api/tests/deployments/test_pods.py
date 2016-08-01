@@ -304,7 +304,7 @@ class PodTest(APITransactionTestCase):
                                                    "int() with base 10: 'not_an_int'"})
         body = {'invalid': 1}
         response = self.client.post(url, body)
-        self.assertContains(response, 'Container type invalid', status_code=400)
+        self.assertContains(response, 'Container type invalid', status_code=404)
 
     def test_container_str(self, mock_requests):
         """Test the text representation of a container."""
@@ -436,6 +436,12 @@ class PodTest(APITransactionTestCase):
         body = {'web': [1]}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
+
+        # scale with a non-existent proc type
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'foo': 1}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 404, response.data)
 
         # scale up to an integer as a sanity check
         url = "/v2/apps/{app_id}/scale".format(**locals())

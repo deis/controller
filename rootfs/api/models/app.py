@@ -379,7 +379,7 @@ class App(UuidAuditedModel):
                 continue  # allow docker cmd types in case we don't have the image source
 
             if container_type not in available_process_types:
-                raise DeisException(
+                raise NotFound(
                     'Container type {} does not exist in application'.format(container_type))
 
         # merge current structure and the new items together

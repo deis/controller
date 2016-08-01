@@ -12,20 +12,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Publishes Deis platform state from the database to kubernetes."""
         print("Publishing DB state to kubernetes...")
-        for app in App.objects.all():
-            try:
-                app.save()
-                app.config_set.latest().save()
-            except DeisException as error:
-                print('ERROR: Problem saving to model {} for {}'
-                      'due to {}'.format(str(App.__name__), str(app), str(error)))
-        for model in (Key, Domain, Certificate):
-            for obj in model.objects.all():
-                try:
-                    obj.save()
-                except DeisException as error:
-                    print('ERROR: Problem saving to model {} for {}'
-                          'due to {}'.format(str(model.__name__), str(obj), str(error)))
+
+        self.save_apps()
 
         # certificates have to be attached to domains to create k8s secrets
         for cert in Certificate.objects.all():
@@ -53,3 +41,20 @@ class Command(BaseCommand):
                       'due to {}'.format(application, str(error)))
 
         print("Done Publishing DB state to kubernetes.")
+
+    def save_apps(self):
+        """Saves important Django data models to the database."""
+        for app in App.objects.all():
+            try:
+                app.save()
+                app.config_set.latest().save()
+            except DeisException as error:
+                print('ERROR: Problem saving to model {} for {}'
+                      'due to {}'.format(str(App.__name__), str(app), str(error)))
+        for model in (Key, Domain, Certificate):
+            for obj in model.objects.all():
+                try:
+                    obj.save()
+                except DeisException as error:
+                    print('ERROR: Problem saving to model {} for {}'
+                          'due to {}'.format(str(model.__name__), str(obj), str(error)))

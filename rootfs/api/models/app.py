@@ -1,3 +1,4 @@
+import asyncio
 import backoff
 from collections import OrderedDict
 from datetime import datetime
@@ -294,9 +295,24 @@ class App(UuidAuditedModel):
             return []
 
         try:
-            for pod in self.list_pods(**kwargs):
-                # This function verifies the delete
-                self._scheduler.delete_pod(self.id, pod['name'])
+            @asyncio.coroutine
+            def delete_pod(namespace, name, loop):
+                """
+                A synchronous function that deletes a pod
+                """
+                logger.debug('Deleting pod {} as part of a pod restart call'.format(name))
+                # Gives a pod however long the termination grace period is to terminate
+                # This executes a delete in its own thread (in parallel)
+                yield from loop.run_in_executor(None, self._scheduler.delete_pod, namespace, name)
+                logger.debug('Finished deleting pod {}'.format(name))
+
+            # gather all pods to be deleted
+            loop = asyncio.get_event_loop()
+            tasks = [delete_pod(self.id, pod['name'], loop) for pod in self.list_pods(**kwargs)]
+            if tasks:
+                # run deletes in parallel
+                loop.run_until_complete(asyncio.wait(tasks))
+
         except Exception as e:
             err = "warning, some pods failed to stop:\n{}".format(str(e))
             self.log(err, logging.WARNING)

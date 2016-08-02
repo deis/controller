@@ -18,5 +18,7 @@ class APIVersionMiddleware(object):
         a response header.
         """
         # clients shouldn't care about the patch release
-        response['DEIS_API_VERSION'] = __version__.rsplit('.', 1)[0]
+        version = __version__.rsplit('.', 1)[0]
+        response['DEIS_API_VERSION'] = version
+        response['DEIS_PLATFORM_VERSION'] = __version__
         return response

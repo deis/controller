@@ -16,7 +16,7 @@ from django.db import models
 from rest_framework.exceptions import ValidationError, NotFound
 from jsonfield import JSONField
 
-from deis import __version__ as deis_version
+from api import __version__ as deis_version
 from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
 
 from api.utils import generate_app_name

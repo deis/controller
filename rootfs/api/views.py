@@ -132,7 +132,7 @@ class TokenManagementViewSet(GenericViewSet,
 
         if 'all' in request.data:
             for user in User.objects.all():
-                if not user.is_anonymous():
+                if not user.is_anonymous:
                     token = Token.objects.get(user=user)
                     token.delete()
                     Token.objects.create(user=user)

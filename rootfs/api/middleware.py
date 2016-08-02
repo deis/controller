@@ -1,7 +1,7 @@
 """
 HTTP middleware for the Deis REST API.
 
-See https://docs.djangoproject.com/en/1.6/topics/http/middleware/
+See https://docs.djangoproject.com/en/1.10/topics/http/middleware/
 """
 
 from api import __version__
@@ -11,12 +11,15 @@ class APIVersionMiddleware(object):
     """
     Include that REST API version with each response.
     """
+    def __init__(self, get_response):
+        self.get_response = get_response
 
-    def process_response(self, request, response):
+    def __call__(self, request):
         """
         Include the controller's REST API major and minor version in
         a response header.
         """
+        response = self.get_response(request)
         # clients shouldn't care about the patch release
         version = __version__.rsplit('.', 1)[0]
         response['DEIS_API_VERSION'] = version

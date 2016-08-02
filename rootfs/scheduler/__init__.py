@@ -540,7 +540,30 @@ class KubeHTTPClient(object):
             # cleanup
             self.delete_pod(namespace, name)
 
-    def _set_container(self, namespace, container_name, data, **kwargs):  # noqa
+    def set_application_config(self, namespace, env, version):
+        # env vars are stored in secrets and mapped to env in k8s
+        try:
+            labels = {
+                'version': version,
+                'type': 'env'
+            }
+
+            # secrets use dns labels for keys, map those properly here
+            secrets_env = {}
+            for key, value in env.items():
+                secrets_env[key.lower().replace('_', '-')] = str(value)
+
+            # dictionary sorted by key
+            secrets_env = OrderedDict(sorted(secrets_env.items(), key=lambda t: t[0]))
+
+            secret_name = "{}-{}-env".format(namespace, version)
+            self.get_secret(namespace, secret_name)
+        except KubeHTTPException:
+            self.create_secret(namespace, secret_name, secrets_env, labels=labels)
+        else:
+            self.update_secret(namespace, secret_name, secrets_env, labels=labels)
+
+    def _set_container(self, namespace, container_name, data, **kwargs):
         """Set app container information (env, healthcheck, etc) on a Pod"""
         app_type = kwargs.get('app_type')
         mem = kwargs.get('memory', {}).get(app_type)
@@ -561,28 +584,10 @@ class KubeHTTPClient(object):
             data['env'] = []
 
         if env:
-            # env vars are stored in secrets and mapped to env in k8s
-            try:
-                labels = {
-                    'version': kwargs.get('version'),
-                    'type': 'env'
-                }
+            self.set_application_config(namespace, env, kwargs.get('version'))
 
-                # secrets use dns labels for keys, map those properly here
-                secrets_env = {}
-                for key, value in env.items():
-                    secrets_env[key.lower().replace('_', '-')] = str(value)
-
-                # dictionary sorted by key
-                secrets_env = OrderedDict(sorted(secrets_env.items(), key=lambda t: t[0]))
-
-                secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
-                self.get_secret(namespace, secret_name)
-            except KubeHTTPException:
-                self.create_secret(namespace, secret_name, secrets_env, labels=labels)
-            else:
-                self.update_secret(namespace, secret_name, secrets_env, labels=labels)
-
+            # map application configuration (env secret) to env vars
+            secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
             for key in env.keys():
                 item = {
                     "name": key,

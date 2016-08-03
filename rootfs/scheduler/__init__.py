@@ -1209,6 +1209,9 @@ class KubeHTTPClient(object):
         # decode the base64 data
         secrets = response.json()
         for key, value in secrets['data'].items():
+            if value is None:
+                secrets['data'][key] = ""
+                continue
             value = base64.b64decode(value)
             value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
             secrets['data'][key] = value.decode(encoding='UTF-8')

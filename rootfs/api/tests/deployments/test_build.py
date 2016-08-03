@@ -11,7 +11,6 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.conf import settings
 from django.test import override_settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
@@ -19,8 +18,7 @@ from api.models import Build
 from registry.dockerclient import RegistryException
 from scheduler import KubeException
 
-from api.tests import adapter
-from api.tests import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
@@ -28,7 +26,7 @@ import requests_mock
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class BuildTest(APITransactionTestCase):
+class BuildTest(DeisTransactionTestCase):
 
     """Tests build notification from build system"""
 
@@ -47,10 +45,7 @@ class BuildTest(APITransactionTestCase):
         """
         Test that a null build is created and that users can post new builds
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # check to see that no initial build was created
         url = "/v2/apps/{app_id}/builds".format(**locals())
         response = self.client.get(url)
@@ -109,10 +104,7 @@ class BuildTest(APITransactionTestCase):
         self.assertDictContainsSubset(expected, response.data)
 
     def test_build_default_containers(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post an image as a build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
@@ -133,10 +125,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {
@@ -161,10 +150,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -193,10 +179,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post a new build with procfile
 
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -226,10 +209,7 @@ class BuildTest(APITransactionTestCase):
 
     def test_build_str(self, mock_requests):
         """Test the text representation of a build."""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
@@ -248,10 +228,7 @@ class BuildTest(APITransactionTestCase):
         token = Token.objects.get(user=user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build as admin
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
@@ -289,10 +266,7 @@ class BuildTest(APITransactionTestCase):
         After the first initial deploy, if the containers are scaled down to zero,
         they should stay that way on a new release.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())

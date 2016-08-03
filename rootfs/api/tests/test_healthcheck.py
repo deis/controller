@@ -1,37 +1,33 @@
 
-from rest_framework.test import APITestCase
+from api.tests import DeisTestCase
 
 
-class HealthCheckTest(APITestCase):
+class HealthCheckTest(DeisTestCase):
 
     def test_healthcheck_liveness(self):
         # GET and HEAD (no auth required)
-        url = '/healthz'
-        resp = self.client.get(url)
-        self.assertContains(resp, "OK", status_code=200)
+        response = self.client.get('/healthz')
+        self.assertContains(response, "OK", status_code=200)
 
-        resp = self.client.head(url)
-        self.assertEqual(resp.status_code, 200)
+        response = self.client.head('/healthz')
+        self.assertEqual(response.status_code, 200)
 
     def test_healthcheck_liveness_invalid(self):
-        url = '/healthz'
         for method in ('put', 'post', 'patch', 'delete'):
-            resp = getattr(self.client, method)(url)
+            response = getattr(self.client, method)('/healthz')
             # method not allowed
-            self.assertEqual(resp.status_code, 405)
+            self.assertEqual(response.status_code, 405)
 
     def test_healthcheck_readiness(self):
         # GET and HEAD (no auth required)
-        url = '/readiness'
-        resp = self.client.get(url)
-        self.assertContains(resp, "OK", status_code=200)
+        response = self.client.get('/readiness')
+        self.assertContains(response, "OK", status_code=200)
 
-        resp = self.client.head(url)
-        self.assertEqual(resp.status_code, 200)
+        response = self.client.head('/readiness')
+        self.assertEqual(response.status_code, 200)
 
     def test_healthcheck_readiness_invalid(self):
-        url = '/readiness'
         for method in ('put', 'post', 'patch', 'delete'):
-            resp = getattr(self.client, method)(url)
+            response = getattr(self.client, method)('/readiness')
             # method not allowed
-            self.assertEqual(resp.status_code, 405)
+            self.assertEqual(response.status_code, 405)

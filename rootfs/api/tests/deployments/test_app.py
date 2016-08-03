@@ -11,14 +11,12 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App
 from scheduler import KubeException
 
-from api.tests import adapter
-from api.tests import mock_port
+from api.tests import adapter, mock_port, DeisTestCase
 import requests_mock
 
 
@@ -34,7 +32,7 @@ def _mock_run(*args, **kwargs):
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class AppTest(APITestCase):
+class AppTest(DeisTestCase):
     """Tests creation of applications"""
 
     fixtures = ['tests.json']
@@ -52,14 +50,7 @@ class AppTest(APITestCase):
         """
         Test that a user can create, read, update and delete an application
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']  # noqa
-        self.assertIn('id', response.data)
-        response = self.client.get('/v2/apps')
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(len(response.data['results']), 1)
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}'.format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
@@ -186,12 +177,7 @@ class AppTest(APITestCase):
 
     def test_app_structure_is_valid_json(self, mock_requests):
         """Application structures should be valid JSON objects."""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
-        self.assertIn('structure', response.data)
-        self.assertEqual(response.data['structure'], {})
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
         app.structure = {'web': 1}
         app.save()

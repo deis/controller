@@ -6,11 +6,11 @@ Run the tests with "./manage.py test api"
 """
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Key
 from api.utils import fingerprint
+from api.tests import DeisTestCase
 
 
 RSA_PUBKEY = (
@@ -48,7 +48,7 @@ BAD_KEY = (
 )
 
 
-class KeyTest(APITestCase):
+class KeyTest(DeisTestCase):
 
     """Tests cloud provider credentials"""
 

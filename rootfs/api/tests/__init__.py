@@ -6,6 +6,7 @@ from os.path import dirname, realpath
 
 from django.conf import settings
 from django.test.runner import DiscoverRunner
+from rest_framework.test import APITestCase, APITransactionTestCase
 
 
 def mock_port(*args, **kwargs):
@@ -53,3 +54,27 @@ class SilentDjangoTestSuiteRunner(DiscoverRunner):
         logging.disable(logging.ERROR)
         return super(SilentDjangoTestSuiteRunner, self).run_tests(
             test_labels, extra_tests, **kwargs)
+
+
+class DeisTestCase(APITestCase):
+    def create_app(self, name=None):
+        body = {}
+        if name:
+            body = {'id': name}
+
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('id', response.data)
+        return response.data['id']
+
+
+class DeisTransactionTestCase(APITransactionTestCase):
+    def create_app(self, name=None):
+        body = {}
+        if name:
+            body = {'id': name}
+
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('id', response.data)
+        return response.data['id']

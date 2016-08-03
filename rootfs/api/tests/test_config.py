@@ -8,21 +8,19 @@ import json
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Config
 
-from . import adapter
-from . import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class ConfigTest(APITransactionTestCase):
+class ConfigTest(DeisTransactionTestCase):
 
     """Tests setting and updating config values"""
 
@@ -47,10 +45,7 @@ class ConfigTest(APITransactionTestCase):
         Test that config is auto-created for a new app and that
         config can be updated using a PATCH
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check to see that an initial/empty config was created
         url = "/v2/apps/{app_id}/config".format(**locals())
@@ -128,9 +123,9 @@ class ConfigTest(APITransactionTestCase):
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
-        body = {'id': 'test'}
-        response = self.client.post('/v2/apps', body)
-        url = "/v2/apps/test/config"
+        app_id = self.create_app()
+
+        url = "/v2/apps/{app_id}/config".format(**locals())
 
         # set an initial config value
         body = {'values': json.dumps({'PORT': '5000'})}
@@ -140,7 +135,7 @@ class ConfigTest(APITransactionTestCase):
                                 'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
-            'app': 'test',
+            'app': app_id,
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {},
@@ -151,9 +146,9 @@ class ConfigTest(APITransactionTestCase):
 
     def test_response_data_types_converted(self, mock_requests):
         """Test that config data is converted into the correct type."""
-        body = {'id': 'test'}
-        response = self.client.post('/v2/apps', body)
-        url = "/v2/apps/test/config"
+        app_id = self.create_app()
+
+        url = "/v2/apps/{app_id}/config".format(**locals())
 
         body = {'values': json.dumps({'PORT': 5000}), 'cpu': json.dumps({'web': '1024'})}
         response = self.client.post(url, body)
@@ -163,7 +158,7 @@ class ConfigTest(APITransactionTestCase):
                                 'cpu', 'tags', 'registry', 'healthcheck'])
         expected = {
             'owner': self.user.username,
-            'app': 'test',
+            'app': app_id,
             'values': {'PORT': '5000'},
             'memory': {},
             'cpu': {'web': "1024"},
@@ -181,10 +176,7 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that config sets on the same key function properly
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = "/v2/apps/{app_id}/config".format(**locals())
 
         # set an initial config value
@@ -204,10 +196,7 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that config sets with unicode values are accepted.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = "/v2/apps/{app_id}/config".format(**locals())
 
         # set an initial config value
@@ -239,25 +228,19 @@ class ConfigTest(APITransactionTestCase):
         """Test that valid config keys are accepted.
         """
         keys = ("FOO", "_foo", "f001", "FOO_BAR_BAZ_")
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
         for k in keys:
             body = {'values': json.dumps({k: "testvalue"})}
-            resp = self.client.post(url, body)
-            self.assertEqual(resp.status_code, 201)
-            self.assertIn(k, resp.data['values'])
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 201)
+            self.assertIn(k, response.data['values'])
 
     def test_config_deploy_failure(self, mock_requests):
         """
         Cause an Exception in app.deploy to cause a release.delete
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # deploy app to get a build
         url = "/v2/apps/{}/builds".format(app_id)
@@ -270,22 +253,19 @@ class ConfigTest(APITransactionTestCase):
             mock_deploy.side_effect = Exception('Boom!')
             url = '/v2/apps/{app_id}/config'.format(**locals())
             body = {'values': json.dumps({'test': "testvalue"})}
-            resp = self.client.post(url, body)
-            self.assertEqual(resp.status_code, 400)
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
 
     def test_invalid_config_keys(self, mock_requests):
         """Test that invalid config keys are rejected.
         """
         keys = ("123", "../../foo", "FOO/", "FOO-BAR")
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
         for k in keys:
             body = {'values': json.dumps({k: "testvalue"})}
-            resp = self.client.post(url, body)
-            self.assertEqual(resp.status_code, 400)
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
 
     def test_invalid_config_values(self, mock_requests):
         """
@@ -296,15 +276,12 @@ class ConfigTest(APITransactionTestCase):
             {'field': 'PORT', 'value': 'dog'},
             {'field': 'PORT', 'value': 99999}
         ]
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
         for row in data:
             body = {'values': json.dumps({row['field']: row['value']})}
-            resp = self.client.post(url, body)
-            self.assertEqual(resp.status_code, 400, response.data)
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400, response.data)
 
     def test_admin_can_create_config_on_other_apps(self, mock_requests):
         """If a non-admin creates an app, an administrator should be able to set config
@@ -312,11 +289,9 @@ class ConfigTest(APITransactionTestCase):
         """
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
-        url = '/v2/apps'
+
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = "/v2/apps/{app_id}/config".format(**locals())
 
         # set an initial config value
@@ -332,10 +307,7 @@ class ConfigTest(APITransactionTestCase):
         Test that limit is auto-created for a new app and that
         limits can be updated using a PATCH
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
 
         # check default limit
@@ -432,10 +404,7 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that CPU limits can be set
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
 
         # check default limit
@@ -515,10 +484,7 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that tags can be set on an application
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check default
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -623,10 +589,7 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that registry information can be set on an application
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check default
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -711,13 +674,10 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that registry information can be applied
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # Set mandatory PORT
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'PORT': '4999'})}
         )
@@ -727,15 +687,15 @@ class ConfigTest(APITransactionTestCase):
             'username': 'bob',
             'password': 's3cur3pw1'
         })}
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             body
         )
-        self.assertEqual(resp.status_code, 201, response.data)
-        self.assertIn('username', resp.data['registry'])
-        self.assertIn('password', resp.data['registry'])
-        self.assertEqual(resp.data['registry']['username'], 'bob')
-        self.assertEqual(resp.data['registry']['password'], 's3cur3pw1')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('username', response.data['registry'])
+        self.assertIn('password', response.data['registry'])
+        self.assertEqual(response.data['registry']['username'], 'bob')
+        self.assertEqual(response.data['registry']['password'], 's3cur3pw1')
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -758,15 +718,12 @@ class ConfigTest(APITransactionTestCase):
         Since an unauthorized user can't access the application, these
         requests should return a 403.
         """
-        app_id = 'autotest'
-        base_url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(base_url, body)
+        app_id = self.create_app()
 
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
-        url = '{}/{}/config'.format(base_url, app_id)
+        url = '/v2/apps/{}/config'.format(app_id)
         body = {'values': {'FOO': 'bar'}}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
@@ -775,79 +732,75 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that healthchecks validations work
         """
-        response = self.client.post('/v2/apps')
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # Set one of the values that require a numeric value to a string
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_INITIAL_DELAY': 'horse'})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # test URL - Path is the only allowed thing
         # Try setting various things such as query param
 
         # query param
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_URL': '/health?testing=0'})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # fragment
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_URL': '/health#db'})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # netloc
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com/health/'})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # no path
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'values': json.dumps({'HEALTHCHECK_URL': 'http://someurl.com'})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
     def test_config_healthchecks(self, mock_requests):
         """
         Test that healthchecks can be applied
         """
-        response = self.client.post('/v2/apps')
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         readiness_probe = {'healthcheck': {'readinessProbe': {'httpGet': {'port': 5000}}}}
 
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             readiness_probe)
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertIn('readinessProbe', resp.data['healthcheck'])
-        self.assertEqual(resp.data['healthcheck'], readiness_probe['healthcheck'])
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('readinessProbe', response.data['healthcheck'])
+        self.assertEqual(response.data['healthcheck'], readiness_probe['healthcheck'])
 
         liveness_probe = {'healthcheck': {'livenessProbe':
                                           {'httpGet': {'port': 5000},
                                            'successThreshold': 1}}}
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             liveness_probe)
-        self.assertEqual(resp.status_code, 201, resp.data)
-        self.assertIn('livenessProbe', resp.data['healthcheck'])
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('livenessProbe', response.data['healthcheck'])
         self.assertEqual(
-            resp.data['healthcheck']['livenessProbe'],
+            response.data['healthcheck']['livenessProbe'],
             liveness_probe['healthcheck']['livenessProbe'])
         # check that the readiness probe is still there too!
-        self.assertIn('readinessProbe', resp.data['healthcheck'])
+        self.assertIn('readinessProbe', response.data['healthcheck'])
         self.assertEqual(
-            resp.data['healthcheck']['readinessProbe'],
+            response.data['healthcheck']['readinessProbe'],
             readiness_probe['healthcheck']['readinessProbe'])
 
         # post a new build
@@ -861,44 +814,41 @@ class ConfigTest(APITransactionTestCase):
         """
         Test that healthchecks validations work
         """
-        response = self.client.post('/v2/apps')
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # Set one of the values that require a numeric value to a string
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'healthcheck': json.dumps({'livenessProbe':
                                         {'httpGet': {'port': '50'}, 'initialDelaySeconds': "t"}})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # Don't set one of the mandatory value
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'healthcheck': json.dumps({'livenessProbe':
                                         {'httpGet': {'path': '/'}, 'initialDelaySeconds': 1}})}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # set liveness success threshold to a non-1 value
         # Don't set one of the mandatory value
-        resp = self.client.post(
+        response = self.client.post(
             '/v2/apps/{app_id}/config'.format(**locals()),
             {'healthcheck': {'livenessProbe':
                              {'httpGet': {'path': '/', 'port': 5000},
                               'successThreshold': 5}}}
         )
-        self.assertEqual(resp.status_code, 400, response.data)
+        self.assertEqual(response.status_code, 400, response.data)
 
     def test_config_healthchecks_legacy(self, mock_requests):
         """
         Test that when a user uses `deis config:set HEALTHCHECK_URL=/`, the config
         object is rolled over to the `healthcheck` field.
         """
-        response = self.client.post('/v2/apps')
-        self.assertEqual(response.status_code, 201, response.data)
-        app = App.objects.get(id=response.data['id'])
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
 
         # Set healthcheck URL to get defaults set
         response = self.client.post(

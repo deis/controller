@@ -4,12 +4,12 @@ Unit tests for the Deis api app.
 Run the tests with "./manage.py test api"
 """
 from django.contrib.auth.models import User
-from rest_framework.test import APITestCase
 from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
+from api.tests import DeisTestCase
 
 
-class AuthTest(APITestCase):
+class AuthTest(DeisTestCase):
 
     fixtures = ['test_auth.json']
 

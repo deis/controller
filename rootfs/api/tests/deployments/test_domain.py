@@ -8,17 +8,17 @@ from unittest import mock
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Domain
+from api.tests import DeisTestCase
 from scheduler import KubeException
 
 import idna
 
 
 @override_settings(DEIS_KUBERNETES_DEPLOYMENTS='1')
-class DomainTest(APITestCase):
+class DomainTest(DeisTestCase):
 
     """Tests creation of domains"""
 

@@ -68,7 +68,7 @@ class AppTest(DeisTestCase):
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
-        body = {'id':'app-{}'.format(random.randrange(1000, 10000))}
+        body = {'id': 'app-{}'.format(random.randrange(1000, 10000))}
         response = self.client.post('/v2/apps', body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'created', 'updated', 'id', 'owner', 'structure'])

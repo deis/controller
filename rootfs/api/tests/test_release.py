@@ -11,21 +11,19 @@ import uuid
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.conf import settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Release
 from scheduler import KubeHTTPException
-from . import adapter
-from . import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class ReleaseTest(APITransactionTestCase):
+class ReleaseTest(DeisTransactionTestCase):
 
     """Tests push notification from build system"""
 
@@ -45,10 +43,7 @@ class ReleaseTest(APITransactionTestCase):
         Test that a release is created when an app is created, and
         that updating config or build or triggers a new release
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
@@ -113,18 +108,18 @@ class ReleaseTest(APITransactionTestCase):
         return release3
 
     def test_response_data(self, mock_requests):
-        body = {'id': 'test'}
-        response = self.client.post('/v2/apps', body,)
+        app_id = self.create_app()
         body = {'values': json.dumps({'NEW_URL': 'http://localhost:8080/'})}
-        config_response = self.client.post('/v2/apps/test/config', body)
-        url = '/v2/apps/test/releases/v2'
+        url = '/v2/apps/{}/config'.format(app_id)
+        config_response = self.client.post(url, body)
+        url = '/v2/apps/{}/releases/v2'.format(app_id)
         response = self.client.get(url)
         for key in response.data.keys():
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'build', 'config',
                                 'summary', 'version'])
         expected = {
             'owner': self.user.username,
-            'app': 'test',
+            'app': app_id,
             'build': None,
             'config': uuid.UUID(config_response.data['uuid']),
             'summary': '{} added NEW_URL'.format(self.user.username),
@@ -133,10 +128,7 @@ class ReleaseTest(APITransactionTestCase):
         self.assertDictContainsSubset(expected, response.data)
 
     def test_release_rollback(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
         # try to rollback with only 1 release extant, expecting 400
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
@@ -211,11 +203,8 @@ class ReleaseTest(APITransactionTestCase):
         """If a non-user creates an app, an admin should be able to create releases."""
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
-        url = '/v2/apps'
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
@@ -237,18 +226,15 @@ class ReleaseTest(APITransactionTestCase):
         Since an unauthorized user should not know about the application at all, these
         requests should return a 404.
         """
-        app_id = 'autotest'
-        base_url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(base_url, body)
+        app_id = self.create_app()
 
         # push a new build
-        url = '{base_url}/{app_id}/builds'.format(**locals())
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
         body = {'image': 'test'}
         response = self.client.post(url, body)
 
         # update config to roll a new release
-        url = '{base_url}/{app_id}/config'.format(**locals())
+        url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         unauthorized_user = User.objects.get(username='autotest2')
@@ -256,7 +242,7 @@ class ReleaseTest(APITransactionTestCase):
 
         # try to rollback
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
-        url = '{base_url}/{app_id}/releases/rollback/'.format(**locals())
+        url = '/v2/apps/{app_id}/releases/rollback/'.format(**locals())
         response = self.client.post(url)
         self.assertEqual(response.status_code, 403)
 
@@ -264,24 +250,23 @@ class ReleaseTest(APITransactionTestCase):
         """
         Cause an Exception in app.deploy to cause a release.delete
         """
-        body = {'id': 'test'}
-        self.client.post('/v2/apps', body)
+        app_id = self.create_app()
 
         # deploy app to get a build
-        url = "/v2/apps/test/builds"
+        url = "/v2/apps/{}/builds".format(app_id)
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['image'], body['image'])
 
         # update config to roll a new release
-        url = '/v2/apps/test/config'
+        url = '/v2/apps/{}/config'.format(app_id)
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
         # update config to roll a new release
-        url = '/v2/apps/test/config'
+        url = '/v2/apps/{}/config'.format(app_id)
         body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -289,7 +274,7 @@ class ReleaseTest(APITransactionTestCase):
         # app.deploy exception
         with mock.patch('api.models.App.deploy') as mock_deploy:
             mock_deploy.side_effect = Exception('Boom!')
-            url = "/v2/apps/test/releases/rollback/"
+            url = "/v2/apps/{}/releases/rollback/".format(app_id)
             body = {'version': 2}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)
@@ -309,7 +294,7 @@ class ReleaseTest(APITransactionTestCase):
                 kube_exception = KubeHTTPException(response, 'big boom')
                 mock_kube.side_effect = kube_exception
 
-                url = "/v2/apps/test/releases/rollback/"
+                url = "/v2/apps/{}/releases/rollback/".format(app_id)
                 body = {'version': 2}
                 response = self.client.post(url, body)
                 self.assertEqual(response.status_code, 400, response.data)
@@ -319,10 +304,7 @@ class ReleaseTest(APITransactionTestCase):
         Test that a release is created when an app is created, a config can be
         set and then unset without causing a 409 (conflict)
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -336,10 +318,7 @@ class ReleaseTest(APITransactionTestCase):
         then has 2 identical config set, causing a 409 as there was
         no change
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -358,10 +337,7 @@ class ReleaseTest(APITransactionTestCase):
         """
         Test that get_port always returns the proper value.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
 
         url = '/v2/apps/{app_id}/builds'.format(**locals())

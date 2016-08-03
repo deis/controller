@@ -1,9 +1,9 @@
 from django.contrib.auth.models import User
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
+from api.tests import DeisTestCase
 
 
-class TestAdminPerms(APITestCase):
+class TestAdminPerms(DeisTestCase):
 
     def test_first_signup(self):
         # register a first user
@@ -145,7 +145,7 @@ class TestAdminPerms(APITestCase):
         self.assertNotIn('two', str(response.data['results']))
 
 
-class TestAppPerms(APITestCase):
+class TestAppPerms(DeisTestCase):
 
     fixtures = ['test_sharing.json']
 

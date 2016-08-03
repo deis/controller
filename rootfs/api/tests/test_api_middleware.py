@@ -5,13 +5,13 @@ Run the tests with "./manage.py test api"
 """
 
 from django.contrib.auth.models import User
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
+from api.tests import DeisTestCase
 
 from api import __version__
 
 
-class APIMiddlewareTest(APITestCase):
+class APIMiddlewareTest(DeisTestCase):
 
     """Tests middleware.py's business logic"""
 

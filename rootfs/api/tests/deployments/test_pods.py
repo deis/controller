@@ -9,7 +9,6 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 from test.support import EnvironmentVarGuard
@@ -17,8 +16,7 @@ from test.support import EnvironmentVarGuard
 from api.models import App, Build, Release
 from scheduler import KubeException
 
-from api.tests import adapter
-from api.tests import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
@@ -26,7 +24,7 @@ import requests_mock
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class PodTest(APITransactionTestCase):
+class PodTest(DeisTransactionTestCase):
     """Tests creation of pods on nodes"""
 
     fixtures = ['tests.json']
@@ -41,10 +39,7 @@ class PodTest(APITransactionTestCase):
         cache.clear()
 
     def test_container_api_heroku(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
@@ -137,10 +132,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 200, response.data)
 
     def test_container_api_docker(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
@@ -209,10 +201,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.status_code, 200, response.data)
 
     def test_release(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
@@ -277,10 +266,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(response.data['results'][0]['release'], 'v4')
 
     def test_container_errors(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # create a release so we can scale
         app = App.objects.get(id=app_id)
@@ -308,10 +294,7 @@ class PodTest(APITransactionTestCase):
 
     def test_container_str(self, mock_requests):
         """Test the text representation of a container."""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -349,10 +332,7 @@ class PodTest(APITransactionTestCase):
 
     def test_pod_command_format(self, mock_requests):
         # regression test for https://github.com/deis/deis/pull/1285
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -393,10 +373,7 @@ class PodTest(APITransactionTestCase):
         self.assertNotIn('{c_type}', data._get_command('web'))
 
     def test_scale_errors(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # should start with zero
         url = "/v2/apps/{app_id}/pods".format(**locals())
@@ -463,10 +440,7 @@ class PodTest(APITransactionTestCase):
         token = Token.objects.get(user=user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -502,10 +476,7 @@ class PodTest(APITransactionTestCase):
 
     def test_command_good(self, mock_requests):
         """Test the default command for each container workflow"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
         user = User.objects.get(username='autotest')
 
@@ -560,10 +531,7 @@ class PodTest(APITransactionTestCase):
 
     def test_run_command_good(self, mock_requests):
         """Test the run command for each container workflow"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
 
         # dockerfile + procfile worflow
@@ -624,10 +592,7 @@ class PodTest(APITransactionTestCase):
         env = EnvironmentVarGuard()
         env['DEIS_DEBUG'] = 'true'
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
 
         # dockerfile + procfile worflow
@@ -662,10 +627,7 @@ class PodTest(APITransactionTestCase):
 
     def test_scaling_does_not_add_run_proctypes_to_structure(self, mock_requests):
         """Test that app info doesn't show transient "run" proctypes."""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
         user = User.objects.get(username='autotest')
 
@@ -715,10 +677,7 @@ class PodTest(APITransactionTestCase):
         If an unauthorized user is trying to scale an app he or she does not have access to, it
         should return a 403.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -743,10 +702,7 @@ class PodTest(APITransactionTestCase):
         When a new procfile is posted which removes a certain process type, deis should stop the
         existing pods.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         build_url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -781,10 +737,7 @@ class PodTest(APITransactionTestCase):
         self.assertEqual(len(pods), 0)
 
     def test_restart_pods(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         build_url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -846,10 +799,7 @@ class PodTest(APITransactionTestCase):
         Listing all available pods exceptions
         """
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         with mock.patch('scheduler.KubeHTTPClient.get_pod') as kube_pod:
             with mock.patch('scheduler.KubeHTTPClient.get_pods') as kube_pods:

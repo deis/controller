@@ -5,19 +5,18 @@ Run the tests with "./manage.py test api"
 """
 import logging
 from unittest import mock
+import random
 import requests
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App
 from scheduler import KubeException
 
-from . import adapter
-from . import mock_port
+from api.tests import adapter, mock_port, DeisTestCase
 import requests_mock
 
 
@@ -32,7 +31,7 @@ def _mock_run(*args, **kwargs):
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class AppTest(APITestCase):
+class AppTest(DeisTestCase):
     """Tests creation of applications"""
 
     fixtures = ['tests.json']
@@ -50,52 +49,45 @@ class AppTest(APITestCase):
         """
         Test that a user can create, read, update and delete an application
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']  # noqa
-        self.assertIn('id', response.data)
+        app_id = self.create_app()
+
         response = self.client.get('/v2/apps')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 1)
+
         url = '/v2/apps/{app_id}'.format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
+
         body = {'id': 'new'}
         response = self.client.patch(url, body)
         self.assertEqual(response.status_code, 405, response.content)
+
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204, response.data)
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
-        body = {'id': 'test'}
+        body = {'id': 'app-{}'.format(random.randrange(1000, 10000))}
         response = self.client.post('/v2/apps', body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'created', 'updated', 'id', 'owner', 'structure'])
         expected = {
-            'id': 'test',
+            'id': body['id'],
             'owner': self.user.username,
             'structure': {}
         }
         self.assertDictContainsSubset(expected, response.data)
 
     def test_app_override_id(self, mock_requests):
-        body = {'id': 'myid'}
-        response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201, response.data)
-        body = {'id': response.data['id']}
-        response = self.client.post('/v2/apps', body)
+        app_id = self.create_app()
+
+        response = self.client.post('/v2/apps', {'id': app_id})
         self.assertContains(response, 'Application with this id already exists.', status_code=400)
-        return response
 
     @mock.patch('requests.get')
     def test_app_actions(self, mock_requests, mock_get):
-        url = '/v2/apps'
-        body = {'id': 'autotest'}
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']  # noqa
+        app_id = self.create_app()
 
         # test logs - 204 from deis-logger
         mock_response = mock.Mock()
@@ -137,30 +129,22 @@ class AppTest(APITestCase):
     @mock.patch('api.models.logger')
     def test_app_release_notes_in_logs(self, mock_requests, mock_logger):
         """Verifies that an app's release summary is dumped into the logs."""
-        url = '/v2/apps'
-        body = {'id': 'autotest'}
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201, response.data)
+        self.create_app()
+
         # check app logs
         exp_msg = "autotest created initial release"
         exp_log_call = mock.call(logging.INFO, exp_msg)
         mock_logger.log.has_calls(exp_log_call)
 
     def test_app_errors(self, mock_requests):
-        app_id = 'autotest-errors'
-        url = '/v2/apps'
-        body = {'id': 'camelCase'}
-        response = self.client.post(url, body)
+        response = self.client.post('/v2/apps', {'id': 'camelCase'})
         self.assertContains(
             response,
             'App name can only contain a-z (lowercase), 0-9 and hyphens',
             status_code=400
         )
-        url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']  # noqa
+
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}'.format(**locals())
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204, response.data)
@@ -171,12 +155,10 @@ class AppTest(APITestCase):
 
     def test_app_reserved_names(self, mock_requests):
         """Nobody should be able to create applications with names which are reserved."""
-        url = '/v2/apps'
         reserved_names = ['foo', 'bar']
         with self.settings(DEIS_RESERVED_NAMES=reserved_names):
             for name in reserved_names:
-                body = {'id': name}
-                response = self.client.post(url, body)
+                response = self.client.post('/v2/apps', {'id': name})
                 self.assertContains(
                     response,
                     '{} is a reserved name.'.format(name),
@@ -184,17 +166,17 @@ class AppTest(APITestCase):
 
     def test_app_structure_is_valid_json(self, mock_requests):
         """Application structures should be valid JSON objects."""
-        url = '/v2/apps'
-        response = self.client.post(url)
+        response = self.client.post('/v2/apps')
         self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        self.assertIn('id', response.data)
         self.assertIn('structure', response.data)
         self.assertEqual(response.data['structure'], {})
+        app_id = response.data['id']
         app = App.objects.get(id=app_id)
         app.structure = {'web': 1}
         app.save()
-        url = '/v2/apps/{}'.format(app_id)
-        response = self.client.get(url)
+
+        response = self.client.get('/v2/apps/{}'.format(app_id))
         self.assertIn('structure', response.data)
         self.assertEqual(response.data['structure'], {"web": 1})
 
@@ -205,11 +187,8 @@ class AppTest(APITestCase):
         # log in as non-admin user and create an app
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
-        app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
-        response = self.client.post(url, body)
+        app_id = self.create_app()
 
         # log in as admin, check to see if they have access
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
@@ -234,26 +213,21 @@ class AppTest(APITestCase):
         # log in as non-admin user and create an app
         user = User.objects.get(username='autotest2')
         token = Token.objects.get(user=user).key
-        app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
-        response = self.client.post(url, body)
+        self.create_app()
 
         # log in as admin
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
-        response = self.client.get(url)
-        self.assertEqual(response.data['count'], 1)
+        response = self.client.get('/v2/apps')
+        self.assertIn('count', response.data)
+        self.assertEqual(response.data['count'], 1, response.data)
 
     def test_run_without_release_should_error(self, mock_requests):
         """
         A user should not be able to run a one-off command unless a release
         is present.
         """
-        app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(url, body)
+        app_id = self.create_app()
         url = '/v2/apps/{}/run'.format(app_id)
         body = {'command': 'ls -al'}
         response = self.client.post(url, body)
@@ -268,8 +242,7 @@ class AppTest(APITestCase):
         """
         A user should be able to run a one off command
         """
-        app_id = 'autotest'
-        response = self.client.post('/v2/apps', {'id': app_id})
+        app_id = self.create_app()
 
         # create build
         body = {'image': 'autotest/example'}
@@ -287,8 +260,7 @@ class AppTest(APITestCase):
 
     def test_run_failure(self, mock_requests):
         """Raise a KubeException via scheduler.run"""
-        app_id = 'autotest'
-        response = self.client.post('/v2/apps', {'id': app_id})
+        app_id = self.create_app()
 
         # create build
         body = {'image': 'autotest/example'}
@@ -311,24 +283,21 @@ class AppTest(APITestCase):
         Since an unauthorized user can't access the application, these
         tests should return a 403, but currently return a 404. FIXME!
         """
-        app_id = 'autotest'
-        base_url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(base_url, body)
+        app_id = self.create_app()
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
 
-        url = '{}/{}/run'.format(base_url, app_id)
+        url = '/v2/apps/{}/run'.format(app_id)
         body = {'command': 'foo'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
 
-        url = '{}/{}/logs'.format(base_url, app_id)
+        url = '/v2/apps/{}/logs'.format(app_id)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
 
-        url = '{}/{}'.format(base_url, app_id)
+        url = '/v2/apps/{}'.format(app_id)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 403)
 
@@ -336,12 +305,8 @@ class AppTest(APITestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_app_info_not_showing_wrong_app(self, mock_requests):
-        app_id = 'autotest'
-        base_url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(base_url, body)
-        url = '{}/foo'.format(base_url)
-        response = self.client.get(url)
+        self.create_app()
+        response = self.client.get('/v2/apps/foo')
         self.assertEqual(response.status_code, 404)
 
     def test_app_transfer(self, mock_requests):
@@ -349,13 +314,10 @@ class AppTest(APITestCase):
         owner_token = Token.objects.get(user=owner).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
 
-        app_id = 'autotest'
-        base_url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(base_url, body)
+        app_id = self.create_app()
 
         # Transfer App
-        url = '{}/{}'.format(base_url, app_id)
+        url = '/v2/apps/{}'.format(app_id)
         new_owner = User.objects.get(username='autotest3')
         new_owner_token = Token.objects.get(user=new_owner).key
         body = {'owner': new_owner.username}
@@ -410,7 +372,7 @@ class AppTest(APITestCase):
         """
         with mock.patch('scheduler.KubeHTTPClient.create_service') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
-            response = self.client.post('/v2/apps', {'id': 'test-kube'})
+            response = self.client.post('/v2/apps')
             self.assertEqual(response.status_code, 503, response.data)
 
     def test_app_delete_failure_kubernetes_destroy(self, mock_requests):
@@ -419,13 +381,12 @@ class AppTest(APITestCase):
         fail with an exception
         """
         # create
-        response = self.client.post('/v2/apps', {'id': 'test'})
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
 
         with mock.patch('scheduler.KubeHTTPClient.delete_namespace') as mock_kube:
             # delete
             mock_kube.side_effect = KubeException('Boom!')
-            response = self.client.delete('/v2/apps/test')
+            response = self.client.delete('/v2/apps/{}'.format(app_id))
             self.assertEqual(response.status_code, 503, response.data)
 
     def test_app_verify_application_health_success(self, mock_requests):
@@ -445,12 +406,10 @@ class AppTest(APITestCase):
         mr = mock_requests.register_uri('GET', hostname, responses)
 
         # create app
-        body = {'id': 'myid'}
-        response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
 
         # deploy app to get verification
-        url = "/v2/apps/myid/builds"
+        url = "/v2/apps/{}/builds".format(app_id)
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -481,12 +440,10 @@ class AppTest(APITestCase):
         mr = mock_requests.register_uri('GET', hostname, responses)
 
         # create app
-        body = {'id': 'myid'}
-        response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
 
         # deploy app to get verification
-        url = "/v2/apps/myid/builds"
+        url = "/v2/apps/{}/builds".format(app_id)
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -508,12 +465,10 @@ class AppTest(APITestCase):
         mr = mock_requests.register_uri('GET', hostname, text=_raise_exception)
 
         # create app
-        body = {'id': 'myid'}
-        response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
 
         # deploy app to get verification
-        url = "/v2/apps/myid/builds"
+        url = "/v2/apps/{}/builds".format(app_id)
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)

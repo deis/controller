@@ -11,14 +11,12 @@ import uuid
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Release
 from scheduler import KubeHTTPException
-from api.tests import adapter
-from api.tests import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
@@ -26,7 +24,7 @@ import requests_mock
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class ReleaseTest(APITransactionTestCase):
+class ReleaseTest(DeisTransactionTestCase):
 
     """Tests push notification from build system"""
 
@@ -46,10 +44,7 @@ class ReleaseTest(APITransactionTestCase):
         Test that a release is created when an app is created, and
         that updating config or build or triggers a new release
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
@@ -134,10 +129,7 @@ class ReleaseTest(APITransactionTestCase):
         self.assertDictContainsSubset(expected, response.data)
 
     def test_release_rollback(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
         # try to rollback with only 1 release extant, expecting 400
         url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
@@ -320,10 +312,7 @@ class ReleaseTest(APITransactionTestCase):
         Test that a release is created when an app is created, a config can be
         set and then unset without causing a 409 (conflict)
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -337,10 +326,7 @@ class ReleaseTest(APITransactionTestCase):
         then has 2 identical config set, causing a 409 as there was
         no change
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # check that updating config rolls a new release
         url = '/v2/apps/{app_id}/config'.format(**locals())
@@ -359,10 +345,7 @@ class ReleaseTest(APITransactionTestCase):
         """
         Test that get_port always returns the proper value.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         app = App.objects.get(id=app_id)
 
         url = '/v2/apps/{app_id}/builds'.format(**locals())

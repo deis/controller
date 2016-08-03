@@ -1,14 +1,13 @@
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 from django.core.exceptions import SuspiciousOperation
 
-from api.models import App, Certificate
-from api.tests import TEST_ROOT
+from api.models import Certificate
+from api.tests import TEST_ROOT, DeisTestCase
 
 
-class CertificateTest(APITestCase):
+class CertificateTest(DeisTestCase):
 
     """Tests creation of domain SSL certificates"""
 
@@ -20,7 +19,6 @@ class CertificateTest(APITestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
 
         self.url = '/v2/certs'
-        self.app = App.objects.create(owner=self.user, id='test-app')
         self.domain = 'autotest.example.com'
 
         with open('{}/certs/{}.key'.format(TEST_ROOT, self.domain)) as f:

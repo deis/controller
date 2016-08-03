@@ -1,11 +1,9 @@
-
-
 from django.contrib.auth.models import User
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
+from api.tests import DeisTestCase
 
 
-class TestUsers(APITestCase):
+class TestUsers(DeisTestCase):
     """ Tests users endpoint"""
 
     fixtures = ['tests.json']

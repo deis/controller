@@ -7,16 +7,16 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import Domain
+from api.tests import DeisTestCase
 from scheduler import KubeException
 
 import idna
 
 
-class DomainTest(APITestCase):
+class DomainTest(DeisTestCase):
 
     """Tests creation of domains"""
 
@@ -26,11 +26,7 @@ class DomainTest(APITestCase):
         self.user = User.objects.get(username='autotest')
         self.token = Token.objects.get(user=self.user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
-
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        self.app_id = response.data['id']  # noqa
+        self.app_id = self.create_app()
 
     def tearDown(self):
         # make sure every test has a clean slate for k8s mocking
@@ -38,22 +34,20 @@ class DomainTest(APITestCase):
 
     def test_response_data(self):
         """Test that the serialized response contains only relevant data."""
-        response = self.client.post(
-            '/v2/apps',
-            {'id': 'test'}
-        )
+        app_id = self.create_app()
 
         response = self.client.post(
-            '/v2/apps/test/domains',
+            '/v2/apps/{}/domains'.format(app_id),
             {'domain': 'test-domain.example.com'}
         )
+        self.assertEqual(response.status_code, 201, response.data)
 
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'domain'])
 
         expected = {
             'owner': self.user.username,
-            'app': 'test',
+            'app': app_id,
             'domain': 'test-domain.example.com'
         }
         self.assertDictContainsSubset(expected, response.data)
@@ -301,12 +295,10 @@ class DomainTest(APITestCase):
         token = Token.objects.get(user=user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
 
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
-        url = '/v2/apps/{}/domains'.format(self.app_id)
+        url = '/v2/apps/{}/domains'.format(app_id)
         response = self.client.post(url, {'domain': 'example.deis.example.com'})
         self.assertEqual(response.status_code, 201, response.data)
 
@@ -317,15 +309,13 @@ class DomainTest(APITestCase):
         Since an unauthorized user should not know about the application at all, these
         requests should return a 404.
         """
-        app_id = 'autotest'
-        url = '/v2/apps'
-        response = self.client.post(url, {'id': app_id})
+        app_id = self.create_app()
 
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
 
-        url = '{}/{}/domains'.format(url, app_id)
+        url = '/v2/apps/{}/domains'.format(app_id)
         response = self.client.post(url, {'domain': 'example.com'})
         self.assertEqual(response.status_code, 403)
 
@@ -333,24 +323,24 @@ class DomainTest(APITestCase):
         """
         Cause an Exception in kubernetes services
         """
-        self.client.post('/v2/apps', {'id': 'test'})
+        app_id = self.create_app()
 
         # scheduler.get_service exception
         with mock.patch('scheduler.KubeHTTPClient.get_service') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             domain = 'foo.com'
-            url = '/v2/apps/test/domains'
+            url = '/v2/apps/{}/domains'.format(app_id)
             response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 503, response.data)
 
         # scheduler.update_service exception
         with mock.patch('scheduler.KubeHTTPClient.update_service') as mock_kube:
             domain = 'foo.com'
-            url = '/v2/apps/test/domains'
+            url = '/v2/apps/{}/domains'.format(app_id)
             response = self.client.post(url, {'domain': domain})
             self.assertEqual(response.status_code, 201, response.data)
 
             mock_kube.side_effect = KubeException('Boom!')
-            url = '/v2/apps/test/domains/{domain}'.format(domain=domain)
+            url = '/v2/apps/{}/domains/{}'.format(app_id, domain)
             response = self.client.delete(url)
             self.assertEqual(response.status_code, 503, response.data)

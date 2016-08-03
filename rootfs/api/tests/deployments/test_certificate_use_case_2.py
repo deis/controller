@@ -1,15 +1,14 @@
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
-from api.tests import TEST_ROOT
+from api.tests import TEST_ROOT, DeisTestCase
 
 
 @override_settings(DEIS_KUBERNETES_DEPLOYMENTS='1')
-class CertificateUseCase2Test(APITestCase):
+class CertificateUseCase2Test(DeisTestCase):
 
     """
     Tests creation of 2 domains and SSL certificate.

@@ -1,13 +1,12 @@
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Certificate, Domain
-from api.tests import TEST_ROOT
+from api.tests import TEST_ROOT, DeisTestCase
 
 
-class CertificateUseCase3Test(APITestCase):
+class CertificateUseCase3Test(DeisTestCase):
 
     """
     Tests creation of 2 domains and 2 SSL certificate.

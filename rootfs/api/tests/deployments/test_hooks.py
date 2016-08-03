@@ -7,12 +7,10 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import override_settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from api.tests import adapter
-from api.tests import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 RSA_PUBKEY = (
@@ -38,7 +36,7 @@ RSA_PUBKEY2 = (
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class HookTest(APITransactionTestCase):
+class HookTest(DeisTransactionTestCase):
 
     """Tests API hooks used to trigger actions from external components"""
 
@@ -57,10 +55,7 @@ class HookTest(APITransactionTestCase):
         """Test fetching keys for an app and a user"""
 
         # Create app to use
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # give user permission to app
         url = "/v2/apps/{}/perms".format(app_id)
@@ -133,10 +128,7 @@ class HookTest(APITransactionTestCase):
 
     def test_push_hook(self, mock_requests):
         """Test creating a Push via the API"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # prepare a push body
         body = {
@@ -162,10 +154,7 @@ class HookTest(APITransactionTestCase):
     def test_push_abuse(self, mock_requests):
         """Test a user pushing to an unauthorized application"""
         # create a legit app as "autotest"
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # register an evil user
         username, password = 'eviluser', 'password'
         first_name, last_name = 'Evil', 'User'
@@ -197,10 +186,7 @@ class HookTest(APITransactionTestCase):
 
     def test_build_hook(self, mock_requests):
         """Test creating a Build via an API Hook"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
         body = {'receive_user': 'autotest',
@@ -219,10 +205,7 @@ class HookTest(APITransactionTestCase):
 
     def test_build_hook_slug_url(self, mock_requests):
         """Test creating a slug_url build via an API Hook"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
         body = {'receive_user': 'autotest',
@@ -243,10 +226,7 @@ class HookTest(APITransactionTestCase):
 
     def test_build_hook_procfile(self, mock_requests):
         """Test creating a Procfile build via an API Hook"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
         PROCFILE = {'web': 'node server.js', 'worker': 'node worker.js'}
@@ -292,10 +272,7 @@ class HookTest(APITransactionTestCase):
 
     def test_build_hook_dockerfile(self, mock_requests):
         """Test creating a Dockerfile build via an API Hook"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
         url = '/v2/hooks/builds'.format(**locals())
         SHA = 'ecdff91c57a0b9ab82e89634df87e293d259a3aa'
@@ -342,10 +319,7 @@ class HookTest(APITransactionTestCase):
 
     def test_config_hook(self, mock_requests):
         """Test reading Config via an API Hook"""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         url = '/v2/apps/{app_id}/config'.format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
@@ -375,10 +349,7 @@ class HookTest(APITransactionTestCase):
         token = Token.objects.get(user=user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # prepare a push body
         DOCKERFILE = """
         FROM busybox

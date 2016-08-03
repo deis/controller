@@ -8,7 +8,6 @@ import json
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.conf import settings
-from rest_framework.test import APITransactionTestCase
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
@@ -16,15 +15,14 @@ from api.models import Build
 from registry.dockerclient import RegistryException
 from scheduler import KubeException
 
-from . import adapter
-from . import mock_port
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
 @mock.patch('api.models.release.docker_get_port', mock_port)
-class BuildTest(APITransactionTestCase):
+class BuildTest(DeisTransactionTestCase):
 
     """Tests build notification from build system"""
 
@@ -43,15 +41,14 @@ class BuildTest(APITransactionTestCase):
         """
         Test that a null build is created and that users can post new builds
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
+
         # check to see that no initial build was created
         url = "/v2/apps/{app_id}/builds".format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['count'], 0)
+
         # post a new build
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
@@ -59,12 +56,14 @@ class BuildTest(APITransactionTestCase):
         build_id = str(response.data['uuid'])
         build1 = response.data
         self.assertEqual(response.data['image'], body['image'])
+
         # read the build
         url = "/v2/apps/{app_id}/builds/{build_id}".format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
         build2 = response.data
         self.assertEqual(build1, build2)
+
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
@@ -73,6 +72,7 @@ class BuildTest(APITransactionTestCase):
         build3 = response.data
         self.assertEqual(response.data['image'], body['image'])
         self.assertNotEqual(build2['uuid'], build3['uuid'])
+
         # disallow put/patch/delete
         response = self.client.put(url)
         self.assertEqual(response.status_code, 405, response.content)
@@ -83,11 +83,10 @@ class BuildTest(APITransactionTestCase):
 
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
-        body = {'id': 'test'}
-        url = '/v2/apps'
-        response = self.client.post(url, body)
+        app_id = self.create_app()
+
         # post an image as a build
-        url = "/v2/apps/test/builds".format(**locals())
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
 
@@ -96,7 +95,7 @@ class BuildTest(APITransactionTestCase):
                                 'image', 'procfile', 'sha'])
         expected = {
             'owner': self.user.username,
-            'app': 'test',
+            'app': app_id,
             'dockerfile': '',
             'image': 'autotest/example',
             'procfile': {},
@@ -105,10 +104,8 @@ class BuildTest(APITransactionTestCase):
         self.assertDictContainsSubset(expected, response.data)
 
     def test_build_default_containers(self, mock_requests):
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
+
         # post an image as a build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
@@ -129,10 +126,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {
@@ -157,10 +151,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build with procfile
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -189,10 +180,7 @@ class BuildTest(APITransactionTestCase):
             self.assertRegex(container['name'], app_id + '-v2-cmd-[a-z0-9]{5}')
 
         # start with a new app
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
         # post a new build with procfile
 
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -222,10 +210,8 @@ class BuildTest(APITransactionTestCase):
 
     def test_build_str(self, mock_requests):
         """Test the text representation of a build."""
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
+
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
@@ -244,10 +230,7 @@ class BuildTest(APITransactionTestCase):
         token = Token.objects.get(user=user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
 
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build as admin
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token)
@@ -267,15 +250,12 @@ class BuildTest(APITransactionTestCase):
         Since an unauthorized user can't access the application, these
         requests should return a 403.
         """
-        app_id = 'autotest'
-        url = '/v2/apps'
-        body = {'id': app_id}
-        response = self.client.post(url, body)
+        app_id = self.create_app()
 
         unauthorized_user = User.objects.get(username='autotest2')
         unauthorized_token = Token.objects.get(user=unauthorized_user).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + unauthorized_token)
-        url = '{}/{}/builds'.format(url, app_id)
+        url = '/v2/apps/{}/builds'.format(app_id)
         body = {'image': 'foo'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
@@ -285,10 +265,7 @@ class BuildTest(APITransactionTestCase):
         After the first initial deploy, if the containers are scaled down to zero,
         they should stay that way on a new release.
         """
-        url = '/v2/apps'
-        response = self.client.post(url)
-        self.assertEqual(response.status_code, 201, response.data)
-        app_id = response.data['id']
+        app_id = self.create_app()
 
         # post a new build
         url = "/v2/apps/{app_id}/builds".format(**locals())
@@ -333,12 +310,10 @@ class BuildTest(APITransactionTestCase):
 
     def test_build_image_in_registry(self, mock_requests):
         """When the image is already in the deis registry no pull/tag/push happens"""
-        body = {'id': 'test'}
-        url = '/v2/apps'
-        response = self.client.post(url, body)
+        app_id = self.create_app()
 
         # post an image as a build using registry hostname
-        url = "/v2/apps/test/builds".format(**locals())
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         image = '{}/autotest/example'.format(settings.REGISTRY_HOST)
         body = {'image': image}
         response = self.client.post(url, body)
@@ -349,7 +324,7 @@ class BuildTest(APITransactionTestCase):
         self.assertEqual(release.image, image)
 
         # post an image as a build using registry hostname + port
-        url = "/v2/apps/test/builds".format(**locals())
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         image = '{}/autotest/example'.format(settings.REGISTRY_URL)
         body = {'image': image}
         response = self.client.post(url, body)
@@ -361,38 +336,38 @@ class BuildTest(APITransactionTestCase):
 
     def test_build_image_in_registry_with_auth(self, mock_requests):
         """add authentication to the build"""
-        self.client.post('/v2/apps', {'id': 'test'})
+        app_id = self.create_app()
 
         # post an image as a build using registry hostname
-        url = "/v2/apps/test/builds"
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         image = 'autotest/example'
         response = self.client.post(url, {'image': image})
         self.assertEqual(response.status_code, 201, response.data)
 
         # add the required PORT information
-        url = '/v2/apps/test/config'
+        url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'values': json.dumps({'PORT': '80'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
         # set some registry information
-        url = '/v2/apps/test/config'
+        url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
     def test_build_image_in_registry_with_auth_no_port(self, mock_requests):
         """add authentication to the build but with no PORT config"""
-        self.client.post('/v2/apps', {'id': 'test'})
+        app_id = self.create_app()
 
         # post an image as a build using registry hostname
-        url = "/v2/apps/test/builds"
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         image = 'autotest/example'
         response = self.client.post(url, {'image': image})
         self.assertEqual(response.status_code, 201, response.data)
 
         # set some registry information
-        url = '/v2/apps/test/config'
+        url = '/v2/apps/{app_id}/config'.format(**locals())
         body = {'registry': json.dumps({'username': 'bob', 'password': 'zoomzoom'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
@@ -401,11 +376,10 @@ class BuildTest(APITransactionTestCase):
         """
         Cause an Exception in app.deploy to cause a release.delete in build.create
         """
-        body = {'id': 'test'}
-        self.client.post('/v2/apps', body)
+        app_id = self.create_app()
 
         # deploy app to get a build
-        url = "/v2/apps/test/builds"
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -414,7 +388,7 @@ class BuildTest(APITransactionTestCase):
         with mock.patch('api.models.App.deploy') as mock_deploy:
             mock_deploy.side_effect = Exception('Boom!')
 
-            url = "/v2/apps/test/builds"
+            url = "/v2/apps/{app_id}/builds".format(**locals())
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)
@@ -423,11 +397,10 @@ class BuildTest(APITransactionTestCase):
         """
         Cause a RegistryException in app.deploy to cause a release.delete in build.create
         """
-        body = {'id': 'test'}
-        self.client.post('/v2/apps', body)
+        app_id = self.create_app()
 
         # deploy app to get a build
-        url = "/v2/apps/test/builds"
+        url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {'image': 'autotest/example'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -436,7 +409,7 @@ class BuildTest(APITransactionTestCase):
         with mock.patch('api.models.Release.publish') as mock_registry:
             mock_registry.side_effect = RegistryException('Boom!')
 
-            url = "/v2/apps/test/builds"
+            url = "/v2/apps/{app_id}/builds".format(**locals())
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)
@@ -445,13 +418,12 @@ class BuildTest(APITransactionTestCase):
         """
         Cause an Exception in scheduler.deploy
         """
-        body = {'id': 'test'}
-        self.client.post('/v2/apps', body)
+        app_id = self.create_app()
 
         with mock.patch('scheduler.KubeHTTPClient.deploy') as mock_deploy:
             mock_deploy.side_effect = KubeException('Boom!')
 
-            url = "/v2/apps/test/builds"
+            url = "/v2/apps/{app_id}/builds".format(**locals())
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)

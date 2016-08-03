@@ -389,7 +389,9 @@ class App(UuidAuditedModel):
 
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
-        envs = release.config.values
+        version = "v{}".format(release.version)
+        image = release.image
+        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
 
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
@@ -413,7 +415,7 @@ class App(UuidAuditedModel):
                 'tags': release.config.tags,
                 'envs': envs,
                 'registry': release.config.registry,
-                'version': "v{}".format(release.version),
+                'version': version,
                 'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': release.build.type,
@@ -429,7 +431,7 @@ class App(UuidAuditedModel):
                     self._scheduler.scale,
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=release.image,
+                    image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
                     **kwargs
@@ -437,6 +439,9 @@ class App(UuidAuditedModel):
             )
 
         try:
+            # create the application config in k8s (secret in this case) for all deploy objects
+            self._scheduler.set_application_config(self.id, envs, version)
+
             async_run(tasks)
         except Exception as e:
             err = '(scale): {}'.format(e)
@@ -469,7 +474,10 @@ class App(UuidAuditedModel):
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
-        envs = release.config.values
+        image = release.image
+        version = "v{}".format(release.version)
+        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+
         for scale_type, replicas in self.structure.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
@@ -487,7 +495,7 @@ class App(UuidAuditedModel):
                 'registry': release.config.registry,
                 # only used if there is no previous RC
                 'replicas': replicas,
-                'version': "v{}".format(release.version),
+                'version': version,
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
@@ -509,13 +517,16 @@ class App(UuidAuditedModel):
                 raise AlreadyExists('Deployment for {} is already in progress'.format(name))
 
         try:
+            # create the application config in k8s (secret in this case) for all deploy objects
+            self._scheduler.set_application_config(self.id, envs, version)
+
             # gather all proc types to be deployed
             tasks = [
                 functools.partial(
                     self._scheduler.deploy,
                     namespace=self.id,
                     name=self._get_job_id(scale_type),
-                    image=release.image,
+                    image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
                     **kwargs
@@ -682,13 +693,16 @@ class App(UuidAuditedModel):
         name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
 
+        image = release.image
+        version = "v{}".format(release.version)
+        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
         kwargs = {
             'memory': release.config.memory,
             'cpu': release.config.cpu,
             'tags': release.config.tags,
-            'envs': release.config.values,
+            'envs': envs,
             'registry': release.config.registry,
-            'version': "v{}".format(release.version),
+            'version': version,
             'build_type': release.build.type,
             'deploy_timeout': deploy_timeout
         }
@@ -697,7 +711,7 @@ class App(UuidAuditedModel):
             exit_code, output = self._scheduler.run(
                 self.id,
                 name,
-                release.image,
+                image,
                 self._get_entrypoint(scale_type),
                 [command],
                 **kwargs
@@ -775,3 +789,27 @@ class App(UuidAuditedModel):
             labels.update({'type': kwargs['type']})
 
         return labels
+
+    def _build_env_vars(self, build_type, version, image, envs):
+        """
+        Build a dict of env vars, setting default vars based on app type
+        and then combining with the user set ones
+        """
+
+        # mix in default environment information deis may require
+        default_env = {
+            'DEIS_APP': self.id,
+            'WORKFLOW_RELEASE': version
+        }
+
+        # Check if it is a slug builder image.
+        if build_type == 'buildpack':
+            # overwrite image so slugrunner image is used in the container
+            default_env['SLUG_URL'] = image
+            default_env['BUILDER_STORAGE'] = settings.APP_STORAGE
+            default_env['DEIS_MINIO_SERVICE_HOST'] = settings.MINIO_HOST
+            default_env['DEIS_MINIO_SERVICE_PORT'] = settings.MINIO_PORT
+
+        # merge envs on top of default to make envs win
+        default_env.update(envs)
+        return default_env

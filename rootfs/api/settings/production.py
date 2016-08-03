@@ -290,6 +290,11 @@ LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 ROUTER_HOST = os.environ.get('DEIS_ROUTER_SERVICE_HOST', '127.0.0.1')
 ROUTER_PORT = os.environ.get('DEIS_ROUTER_SERVICE_PORT', 80)
 
+# minio information
+MINIO_HOST = os.environ.get('DEIS_MINIO_SERVICE_HOST', '127.0.0.1')
+MINIO_PORT = os.environ.get('DEIS_MINIO_SERVICE_PORT', 80)
+APP_STORAGE = os.environ.get('APP_STORAGE')
+
 # check if we can register users with `deis register`
 REGISTRATION_MODE = os.environ.get('REGISTRATION_MODE', 'enabled')
 

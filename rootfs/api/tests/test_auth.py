@@ -258,10 +258,20 @@ class AuthTest(DeisTestCase):
         url = '/v2/auth/register'
         response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 201, response.data)
-        # change password
+        # change password without new password
         url = '/v2/auth/passwd'
         user = User.objects.get(username=username)
         token = Token.objects.get(user=user).key
+        response = self.client.post(url, {},
+                                    HTTP_AUTHORIZATION='token {}'.format(token))
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data, {'detail': 'new_password is a required field'})
+        # change password without password field
+        response = self.client.post(url, {'new_password': 'test'},
+                                    HTTP_AUTHORIZATION='token {}'.format(token))
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data, {'detail': 'password is a required field'})
+        # change password
         submit = {
             'password': 'password2',
             'new_password': password,

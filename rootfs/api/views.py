@@ -93,6 +93,9 @@ class UserManagementViewSet(GenericViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def passwd(self, request, **kwargs):
+        if not request.data.get('new_password'):
+            raise DeisException("new_password is a required field")
+
         caller_obj = self.get_object()
         target_obj = self.get_object()
         if request.data.get('username'):
@@ -102,7 +105,9 @@ class UserManagementViewSet(GenericViewSet):
             else:
                 raise PermissionDenied()
 
-        if request.data.get('password') or not caller_obj.is_superuser:
+        if not caller_obj.is_superuser:
+            if not request.data.get('password'):
+                raise DeisException("password is a required field")
             if not target_obj.check_password(request.data['password']):
                 raise AuthenticationFailed('Current password does not match')
 

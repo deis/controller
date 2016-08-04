@@ -123,17 +123,7 @@ class App(UuidAuditedModel):
 
     def _get_job_id(self, container_type):
         app = self.id
-        release = self.release_set.latest()
-
-        # see if there is a global or app specific setting to specify Deployments usage
-        deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
-
-        # deployments does not need version in the job
-        if deployments:
-            return "{app}-{container_type}".format(**locals())
-
-        version = "v{}".format(release.version)
-        return "{app}-{version}-{container_type}".format(**locals())
+        return "{app}-{container_type}".format(**locals())
 
     def _get_command(self, container_type):
         """
@@ -259,34 +249,17 @@ class App(UuidAuditedModel):
         Wait until they are all drained away and RC / Deployment has gotten to a good state
         """
         try:
-            if kwargs.get('release', None) is None:
-                release = self.release_set.latest()
-            else:
-                release = self.release_set.get(version=kwargs['release'])
-
-            # see if there is a global or app specific setting to specify Deployments usage
-            deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
-
-            if deployments:
-                # Resolve single pod name if short form (cmd-1269180282-1nyfz) is passed
-                if 'name' in kwargs and kwargs['name'].count('-') == 2:
-                    kwargs['name'] = '{}-{}'.format(kwargs['id'], kwargs['name'])
-            else:
-                # Resolve single pod name if short form (worker-asdfg) is passed
-                if 'name' in kwargs and kwargs['name'].count('-') == 1:
-                    version = "v{}".format(release.version)
-                    kwargs['name'] = '{}-{}-{}'.format(kwargs['id'], version, kwargs['name'])
+            # Resolve single pod name if short form (cmd-1269180282-1nyfz) is passed
+            if 'name' in kwargs and kwargs['name'].count('-') == 2:
+                kwargs['name'] = '{}-{}'.format(kwargs['id'], kwargs['name'])
 
             # Iterate over RCs / RSs to get total desired count if not a single item
             desired = 1
             if 'name' not in kwargs:
                 desired = 0
                 labels = self._scheduler_filter(**kwargs)
-                # fetch RS (which represent Deployments) / RCs
-                if deployments:
-                    controllers = self._scheduler.get_replicasets(kwargs['id'], labels=labels)
-                else:
-                    controllers = self._scheduler.get_rcs(kwargs['id'], labels=labels)
+                # fetch RS (which represent Deployments)
+                controllers = self._scheduler.get_replicasets(kwargs['id'], labels=labels)
 
                 for controller in controllers.json()['items']:
                     desired += controller['spec']['replicas']
@@ -424,9 +397,6 @@ class App(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
-        # see if there is a global or app specific setting to specify Deployments usage
-        deployments = bool(envs.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
-
         tasks = []
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
@@ -449,7 +419,6 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': release.config.healthcheck,
                 'routable': routable,
-                'deployments': deployments,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
             }
@@ -493,9 +462,6 @@ class App(UuidAuditedModel):
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
 
-        # see if there is a global or app specific setting to specify Deployments usage
-        deployments = bool(release.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
-
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
@@ -529,7 +495,6 @@ class App(UuidAuditedModel):
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
-                'deployments': deployments,
                 'release_summary': release.summary
             }
 
@@ -570,7 +535,7 @@ class App(UuidAuditedModel):
             self.verify_application_health(**kwargs)
 
         # cleanup old release objects from kubernetes
-        release.cleanup_old(deployments)
+        release.cleanup_old()
 
     def _default_structure(self, release):
         """Scale to default structure based on release type"""

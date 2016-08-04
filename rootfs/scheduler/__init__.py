@@ -108,14 +108,9 @@ class KubeHTTPClient(object):
         logger.log(level, "[{}]: {}".format(namespace, message))
 
     def deploy(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
-        """Scale RC or Deployment depending on what's requested"""
+        """Scale Deployment depending on what's requested"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
-        if kwargs.get('deployments', False):
-            self.deploy_deployment(namespace, name, image, entrypoint, command, **kwargs)
-        else:
-            self.deploy_rc(namespace, name, image, entrypoint, command, **kwargs)
 
-    def deploy_deployment(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         envs = kwargs.get('envs', {})
@@ -326,12 +321,7 @@ class KubeHTTPClient(object):
     def scale(self, namespace, name, image, entrypoint, command, **kwargs):
         """Scale RC or Deployment depending on what's requested"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
-        if kwargs.get('deployments', False):
-            self.scale_deployment(namespace, name, image, entrypoint, command, **kwargs)
-        else:
-            self.scale_rc(namespace, name, image, entrypoint, command, **kwargs)
 
-    def scale_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
         try:
             self.get_deployment(namespace, name)
         except KubeHTTPException as e:

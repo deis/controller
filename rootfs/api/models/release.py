@@ -246,7 +246,7 @@ class Release(UuidAuditedModel):
         finally:
             super(Release, self).delete(*args, **kwargs)
 
-    def cleanup_old(self, deployment=False):
+    def cleanup_old(self):
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
         self.app.log(
@@ -307,8 +307,7 @@ class Release(UuidAuditedModel):
 
             self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
 
-        if deployment:
-            self._cleanup_deployment_secrets_and_configs(self.app.id)
+        self._cleanup_deployment_secrets_and_configs(self.app.id)
 
     def _cleanup_deployment_secrets_and_configs(self, namespace):
         """
@@ -374,11 +373,6 @@ class Release(UuidAuditedModel):
             pass
 
     def deployment_in_progress(self, namespace, name):
-        # see if there is a global or app specific setting to specify Deployments usage
-        deployments = bool(self.config.values.get('DEIS_KUBERNETES_DEPLOYMENTS', settings.DEIS_KUBERNETES_DEPLOYMENTS))  # noqa
-        if not deployments:
-            return False
-
         try:
             ready, _ = self._scheduler.are_deployment_replicas_ready(namespace, name)
             return not ready

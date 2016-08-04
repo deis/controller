@@ -48,6 +48,20 @@ helmc generate -x manifests workflow-dev
 helmc install workflow-dev
 ```
 
+### Postgresql
+
+Postgresql can be installed via `homebrew`:
+
+```
+brew install postgresql
+```
+
+Or via your package manager. For example, on Debian Jessie:
+
+```
+apt-get install postgresql libpq-dev
+```
+
 ### Python
 
 Python 3.5 is a minimum requirement and can be installed via `homebrew`:

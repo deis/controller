@@ -3,9 +3,13 @@ Helper functions used by the Deis server.
 """
 import asyncio
 import base64
+import concurrent
 import hashlib
+import logging
 import random
 from copy import deepcopy
+
+logger = logging.getLogger(__name__)
 
 
 def generate_app_name():
@@ -144,21 +148,39 @@ def dict_merge(origin, merge):
 def async_run(tasks):
     """
     run a group of tasks async
-    Requires the tasks arg to be a list of function.partial
+    Requires the tasks arg to be a list of functools.partial()
     """
-    # start a new async event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    if not tasks:
+        return
 
-    async_tasks = [loop.run_in_executor(None, task) for task in tasks]
-    if async_tasks:
-        # run deploys in parallel
-        loop.run_until_complete(asyncio.wait(async_tasks))
-        # deal with errors (exceptions, etc)
-        for task in async_tasks:
-            error = task.exception()
-            if error is not None:
-                raise error
+    # start a new async event loop
+    loop = asyncio.get_event_loop()
+    # https://github.com/python/asyncio/issues/258
+    executor = concurrent.futures.ThreadPoolExecutor(5)
+    loop.set_default_executor(executor)
+
+    async_tasks = [asyncio.ensure_future(async_task(task, loop)) for task in tasks]
+    # run tasks in parallel
+    loop.run_until_complete(asyncio.wait(async_tasks))
+    # deal with errors (exceptions, etc)
+    for task in async_tasks:
+        error = task.exception()
+        if error is not None:
+            raise error
+
+    executor.shutdown(wait=True)
+
+
+@asyncio.coroutine
+def async_task(params, loop):
+    """
+    performs an async task
+    """
+    # get the calling function
+    logger.debug('Running {}'.format(params))
+    # This executes a task in its own thread (in parallel)
+    yield from loop.run_in_executor(None, params)
+    logger.debug('Finished running {}'.format(params))
 
 
 if __name__ == "__main__":

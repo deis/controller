@@ -270,9 +270,6 @@ DEIS_DEPLOY_BATCHES = os.environ.get('DEIS_DEPLOY_BATCHES', None)
 # where it roughly goes BATCHES * TIMEOUT = global timeout
 DEIS_DEPLOY_TIMEOUT = os.environ.get('DEIS_DEPLOY_TIMEOUT', 120)
 
-# If the k8s Deployments object should be used instead of ReplicationController
-DEIS_KUBERNETES_DEPLOYMENTS = bool(os.environ.get('DEIS_KUBERNETES_DEPLOYMENTS', False))
-
 KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', None)  # noqa
 
 # How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL

@@ -250,8 +250,13 @@ class AppTest(DeisTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
-        # run command
+        # cannot run command without body
         url = '/v2/apps/{}/run'.format(app_id)
+        response = self.client.post(url, {})
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data, {'detail': 'command is a required field'})
+
+        # run command
         body = {'command': 'ls -al'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 200, response.data)

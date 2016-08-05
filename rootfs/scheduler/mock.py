@@ -18,6 +18,61 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class LockNotAcquiredError(Exception):
+    pass
+
+
+class CacheLock(object):
+    def __init__(self, key=None, timeout=60, block=True):
+        """
+        :param key: unique key for lock (unique through Django cache)
+        :param timeout: timeout of lock, in seconds
+        :param block: if a lock is blocking
+        """
+        self.key = key
+        self.timeout = timeout
+        self.block = block
+
+    # for use with decorator
+    def __call__(self, f):
+        if not self.key:
+            self.key = "%s:%s" % (f.__module__, f.__name__)
+
+        def wrapped(*args, **kargs):
+            with self:
+                return f(*args, **kargs)
+
+        return wrapped
+
+    def __enter__(self):
+        if not type(self.key) == str and self.key == '':
+            raise RuntimeError("Key not specified!")
+
+        if not self.acquire(self.block):
+            raise LockNotAcquiredError()
+
+        logger.debug("locking with key %s" % self.key)
+
+    def __exit__(self, type, value, traceback):
+        logger.debug('releasing lock {}'.format(self.key))
+        self.release()
+
+    def acquire(self, block=True):
+        while not self._acquire():
+            if not block:
+                return False
+
+            time.sleep(0.1)
+
+        return True
+
+    def release(self):
+        cache.delete(self.key)
+
+    def _acquire(self):
+        return cache.add(self.key, 'true', self.timeout)
+
+
 resources = [
     'namespaces', 'nodes', 'pods', 'replicationcontrollers',
     'secrets', 'services', 'events', 'deployments', 'replicasets',
@@ -53,6 +108,7 @@ def get_type(key, pos=-1):
     return 'unknown'
 
 
+@CacheLock()
 def pod_state_transitions(pod_url=None):
     """
     Move pods through the various states while maintaining
@@ -110,6 +166,7 @@ def pod_state_transitions(pod_url=None):
     cache.set('pods_states', pods)
 
 
+@CacheLock()
 def cleanup_pods():
     """Can be called during any sort of access, it will cleanup pods as needed"""
     pods = cache.get('cleanup_pods', {})
@@ -119,10 +176,10 @@ def cleanup_pods():
 
         del pods[pod]
         remove_cache_item(pod, 'pods')
-        cache.delete(pod + '_log')
     cache.set('cleanup_pods', pods)
 
 
+@CacheLock()
 def add_cleanup_pod(url):
     """populate the cleanup pod list"""
     # variance allows a pod to stay alive past grace period
@@ -278,6 +335,7 @@ def upsert_pods(controller, url):
     create_pods(url, data['metadata']['labels'], data, delta)
 
 
+@CacheLock()
 def manage_replicasets(deployment, url):
     """
     Creates a new ReplicaSet, scales up the pods and
@@ -618,6 +676,7 @@ def delete(request, context):
     return {}
 
 
+@CacheLock()
 def add_cache_item(url, resource_type, data):
     cache.set(url, data, None)
 
@@ -636,9 +695,13 @@ def add_cache_item(url, resource_type, data):
         cache.set(cache_url, items, None)
 
 
+@CacheLock()
 def remove_cache_item(url, resource_type):
     # remove data object from individual cache
     cache.delete(url)
+    # get rid of log element as well for pods
+    if resource_type == 'pod':
+        cache.delete(url + '_log')
 
     # remove from the resource type global scope
     items = cache.get(resource_type, [])

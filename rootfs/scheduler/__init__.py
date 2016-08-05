@@ -392,12 +392,6 @@ class KubeHTTPClient(object):
         # set the image pull policy that is associated with the application container
         kwargs['image_pull_policy'] = settings.DOCKER_BUILDER_IMAGE_PULL_POLICY
 
-        # mix in default environment information deis may require
-        default_env = {
-            'DEIS_APP': namespace,
-            'WORKFLOW_RELEASE': kwargs.get("version")
-        }
-
         # Check if it is a slug builder image.
         if build_type == "buildpack":
             # only buildpack apps need access to object storage
@@ -422,19 +416,10 @@ class KubeHTTPClient(object):
                 'readOnly': True
             }]
 
-            default_env['SLUG_URL'] = image
-            default_env['BUILDER_STORAGE'] = os.getenv("APP_STORAGE")
-            default_env['DEIS_MINIO_SERVICE_HOST'] = os.getenv("DEIS_MINIO_SERVICE_HOST")
-            default_env['DEIS_MINIO_SERVICE_PORT'] = os.getenv("DEIS_MINIO_SERVICE_PORT")
-
             # overwrite image so slugrunner image is used in the container
             image = settings.SLUGRUNNER_IMAGE
             # slugrunner pull policy
             kwargs['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
-
-        envs = kwargs.get('envs', {})
-        default_env.update(envs)
-        kwargs['envs'] = default_env
 
         # create the base container
         container = {}
@@ -469,6 +454,8 @@ class KubeHTTPClient(object):
         kwargs['command'] = entrypoint
         kwargs['args'] = command
 
+        # create application config and build the pod manifest
+        self.set_application_config(namespace, kwargs.get('envs', {}), kwargs.get('version'))
         manifest = self._build_pod_manifest(namespace, name, image, **kwargs)
 
         url = self._api("/namespaces/{}/pods", namespace)
@@ -530,7 +517,7 @@ class KubeHTTPClient(object):
             # cleanup
             self.delete_pod(namespace, name)
 
-    def set_application_config(self, namespace, env, version):
+    def set_application_config(self, namespace, envs, version):
         # env vars are stored in secrets and mapped to env in k8s
         try:
             labels = {
@@ -540,7 +527,7 @@ class KubeHTTPClient(object):
 
             # secrets use dns labels for keys, map those properly here
             secrets_env = {}
-            for key, value in env.items():
+            for key, value in envs.items():
                 secrets_env[key.lower().replace('_', '-')] = str(value)
 
             # dictionary sorted by key
@@ -574,8 +561,6 @@ class KubeHTTPClient(object):
             data['env'] = []
 
         if env:
-            self.set_application_config(namespace, env, kwargs.get('version'))
-
             # map application configuration (env secret) to env vars
             secret_name = "{}-{}-env".format(namespace, kwargs.get('version'))
             for key in env.keys():

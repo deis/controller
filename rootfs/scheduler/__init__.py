@@ -4,7 +4,6 @@ import json
 import logging
 import operator
 import os
-import string
 import time
 from urllib.parse import urljoin
 import base64
@@ -12,7 +11,6 @@ import base64
 from django.conf import settings
 from docker.auth import auth as docker_auth
 from .states import PodState
-import ruamel.yaml
 import requests
 from requests_toolbelt import user_agent
 from .utils import dict_merge
@@ -21,27 +19,6 @@ from api import __version__ as deis_version
 
 
 logger = logging.getLogger(__name__)
-
-# Ports and app type will be overwritten as required
-SERVICE_TEMPLATE = """\
-kind: Service
-apiVersion: v1
-metadata:
-  name: $name
-  labels:
-    app: $name
-    heritage: deis
-  annotations: {}
-spec:
-  ports:
-    - name: http
-      port: 80
-      targetPort: 5000
-      protocol: TCP
-  selector:
-    app: $name
-    heritage: deis
-"""
 
 
 class KubeException(Exception):
@@ -1054,7 +1031,7 @@ class KubeHTTPClient(object):
                 resp,
                 'create ReplicationController "{}" in Namespace "{}"', name, namespace
             )
-            self.log(namespace, 'manifest used: {}'.format(ruamel.yaml.dump(manifest)), logging.DEBUG)  # noqa
+            self.log(namespace, 'manifest used: {}'.format(json.dumps(manifest, indent=4)), logging.DEBUG)  # noqa
 
         self._wait_until_rc_is_updated(namespace, name)
 
@@ -1292,10 +1269,32 @@ class KubeHTTPClient(object):
         return response
 
     def create_service(self, namespace, name, data={}, **kwargs):
-        l = {"name": namespace}
+        # Ports and app type will be overwritten as required
+        manifest = {
+            'kind': 'Service',
+            'apiVersion': 'v1',
+            'metadata': {
+                'name': namespace,
+                'labels': {
+                    'app': namespace,
+                    'heritage': 'deis'
+                },
+                'annotations': {}
+            },
+            'spec': {
+                'ports': [{
+                    'name': 'http',
+                    'port': 80,
+                    'targetPort': 5000,
+                    'protocol': 'TCP'
+                }],
+                'selector': {
+                    'app': namespace,
+                    'heritage': 'deis'
+                }
+            }
+        }
 
-        # Merge external data on to the prefined manifest
-        manifest = ruamel.yaml.load(string.Template(SERVICE_TEMPLATE).substitute(l))
         data = dict_merge(manifest, data)
         url = self._api("/namespaces/{}/services", namespace)
         response = self.session.post(url, json=data)

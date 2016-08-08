@@ -28,3 +28,6 @@ class TestSchedulerStates(unittest.TestCase):
         self.assertTrue(PodState.starting <= PodState.up)
         with self.assertRaises(TypeError):
             self.assertTrue(PodState.up <= 'crashed')
+
+    def test_str(self):
+        self.assertEqual(str(PodState.up), 'up')

@@ -31,11 +31,10 @@ class KubeHTTPException(KubeException):
         self.response = response
 
         msg = errmsg.format(*args)
-        msg = "failed to {}: {} {}\n{}".format(
+        msg = "failed to {}: {} {}".format(
             msg,
             response.status_code,
-            response.reason,
-            response.json()
+            response.reason
         )
         KubeException.__init__(self, msg, *args, **kwargs)
 
@@ -110,30 +109,21 @@ class KubeHTTPClient(object):
                 return
         except KubeException:
             # create the initial deployment object (and the first revision)
-            self.create_deployment(namespace,
-                                   name,
-                                   image,
-                                   entrypoint,
-                                   command,
-                                   **kwargs)
+            self.create_deployment(
+                namespace, name, image, entrypoint, command, **kwargs
+            )
         else:
             try:
                 # kick off a new revision of the deployment
-                self.update_deployment(namespace,
-                                       name,
-                                       image,
-                                       entrypoint,
-                                       command,
-                                       **kwargs)
+                self.update_deployment(
+                    namespace, name, image, entrypoint, command, **kwargs
+                )
             except KubeException as e:
                 # rollback to the previous Deployment
                 kwargs['rollback'] = True
-                self.update_deployment(namespace,
-                                       name,
-                                       image,
-                                       entrypoint,
-                                       command,
-                                       **kwargs)
+                self.update_deployment(
+                    namespace, name, image, entrypoint, command, **kwargs
+                )
 
                 raise KubeException(
                     'There was a problem while deploying {} of {}-{}. '
@@ -307,7 +297,13 @@ class KubeHTTPClient(object):
                 try:
                     self.create_deployment(namespace, name, image, entrypoint, command, **kwargs)
                 except KubeException:
-                    self.delete_deployment(namespace, name)
+                    # see if the deployment got created
+                    try:
+                        self.get_deployment(namespace, name)
+                    except KubeHTTPException as e:
+                        if e.response.status_code != 404:
+                            self.delete_deployment(namespace, name)
+
                     raise
 
         # let the scale failure bubble up
@@ -819,9 +815,7 @@ class KubeHTTPClient(object):
     def delete_namespace(self, namespace):
         url = self._api("/namespaces/{}", namespace)
         response = self.session.delete(url)
-        if response.status_code == 404:
-            logger.warn('delete Namespace "{}": not found'.format(namespace))
-        elif response.status_code != 200:
+        if unhealthy(response.status_code):
             raise KubeHTTPException(response, 'delete Namespace "{}"', namespace)
 
         return response
@@ -1176,7 +1170,7 @@ class KubeHTTPClient(object):
                 secrets['data'][key] = ""
                 continue
             value = base64.b64decode(value)
-            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            value = value if isinstance(value, bytes) else bytes(str(value), 'UTF-8')
             secrets['data'][key] = value.decode(encoding='UTF-8')
 
         # tell python-requests it actually hasn't consumed the data
@@ -1216,7 +1210,11 @@ class KubeHTTPClient(object):
         manifest['metadata']['labels'].update(labels)
 
         for key, value in data.items():
-            value = value if isinstance(value, bytes) else bytes(value, 'UTF-8')
+            if value is None:
+                manifest['data'].update({key: ''})
+                continue
+
+            value = value if isinstance(value, bytes) else bytes(str(value), 'UTF-8')
             item = base64.b64encode(value).decode(encoding='UTF-8')
             manifest['data'].update({key: item})
 
@@ -1279,13 +1277,13 @@ class KubeHTTPClient(object):
 
         return response
 
-    def create_service(self, namespace, name, data={}, **kwargs):
+    def create_service(self, namespace, name, **kwargs):
         # Ports and app type will be overwritten as required
         manifest = {
             'kind': 'Service',
             'apiVersion': 'v1',
             'metadata': {
-                'name': namespace,
+                'name': name,
                 'labels': {
                     'app': namespace,
                     'heritage': 'deis'
@@ -1306,7 +1304,7 @@ class KubeHTTPClient(object):
             }
         }
 
-        data = dict_merge(manifest, data)
+        data = dict_merge(manifest, kwargs.get('data', {}))
         url = self._api("/namespaces/{}/services", namespace)
         response = self.session.post(url, json=data)
         if unhealthy(response.status_code):
@@ -1841,6 +1839,10 @@ class KubeHTTPClient(object):
         return manifest
 
     def _scale_deployment(self, namespace, name, image, entrypoint, command, **kwargs):
+        """
+        A convenience wrapper around Deployment update that does a little bit of introspection
+        to determine if scale level is already where it needs to be
+        """
         deployment = self.get_deployment(namespace, name).json()
         desired = int(kwargs.get('replicas'))
         current = int(deployment['spec']['replicas'])

@@ -482,7 +482,7 @@ class KubeHTTPClient(object):
             # check if it is possible to get logs
             state = self.pod_state(self.get_pod(namespace, name).json())
             # States below up do not have logs
-            if state < PodState.up:
+            if not isinstance(state, PodState) or state < PodState.up:
                 return exit_code, 'Could not get logs. Pod is in state {}'.format(str(state))
 
             # grab log information
@@ -666,6 +666,13 @@ class KubeHTTPClient(object):
         data['imagePullSecrets'] = [{'name': secret_name}]
 
     def pod_state(self, pod):
+        """
+        Resolve Pod state to an internally understandable format and returns a
+        PodState object that can be used for comparison or name can get gotten
+        via .name
+
+        However if no match is found then a text representation is returned
+        """
         # See "Pod Phase" at http://kubernetes.io/docs/user-guide/pod-states/
         if pod is None:
             return PodState.destroyed

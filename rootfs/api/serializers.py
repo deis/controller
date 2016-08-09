@@ -200,6 +200,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)
     healthcheck = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
+    routable = serializers.BooleanField(required=False)
 
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""

@@ -403,7 +403,7 @@ class App(UuidAuditedModel):
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] else False
+            routable = True if scale_type in ['web', 'cmd'] and release.config.routable else False
             # fetch application port and inject into ENV Vars as needed
             port = release.get_port()
             if port:
@@ -481,7 +481,7 @@ class App(UuidAuditedModel):
         for scale_type, replicas in self.structure.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] else False
+            routable = True if scale_type in ['web', 'cmd'] and release.config.routable else False
             # fetch application port and inject into ENV vars as needed
             port = release.get_port()
             if port:
@@ -580,7 +580,8 @@ class App(UuidAuditedModel):
         only run after kubernetes has reported all pods as healthy
         """
         # Bail out early if the application is not routable
-        if not kwargs.get('routable', False):
+        release = self.release_set.latest()
+        if not kwargs.get('routable', False) and release.config.routable:
             return
 
         app_type = kwargs.get('app_type')

@@ -21,6 +21,7 @@ class Config(UuidAuditedModel):
     tags = JSONField(default={}, blank=True)
     registry = JSONField(default={}, blank=True)
     healthcheck = JSONField(default={}, blank=True)
+    routable = models.BooleanField(default=True)
 
     class Meta:
         get_latest_by = 'created'

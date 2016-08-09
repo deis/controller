@@ -131,7 +131,7 @@ class ConfigTest(DeisTransactionTestCase):
         response = self.client.post(url, body)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry', 'healthcheck'])
+                                'cpu', 'tags', 'registry', 'healthcheck', 'routable'])
         expected = {
             'owner': self.user.username,
             'app': app_id,
@@ -154,7 +154,7 @@ class ConfigTest(DeisTransactionTestCase):
         self.assertEqual(response.status_code, 201, response.data)
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'values', 'memory',
-                                'cpu', 'tags', 'registry', 'healthcheck'])
+                                'cpu', 'tags', 'registry', 'healthcheck', 'routable'])
         expected = {
             'owner': self.user.username,
             'app': app_id,
@@ -325,3 +325,21 @@ class ConfigTest(DeisTransactionTestCase):
         body = {'values': {'FOO': 'bar'}}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
+
+    def test_config_routable(self, mock_requests):
+        """
+        Create an application with the routable flag turned on or off
+        """
+        # create app, expecting routable to be true
+        body = {'id': 'myid'}
+        response = self.client.post('/v2/apps', body)
+        self.assertEqual(response.status_code, 201, response.data)
+        app = App.objects.get(id='myid')
+        self.assertTrue(app.config_set.latest().routable)
+        # Set routable to false
+        response = self.client.post(
+            '/v2/apps/{app.id}/config'.format(**locals()),
+            {'routable': False}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertFalse(app.config_set.latest().routable)

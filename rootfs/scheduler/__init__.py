@@ -585,19 +585,23 @@ class KubeHTTPClient(object):
             data["resources"]["limits"]["cpu"] = cpu.lower()
 
         # add in healthchecks
-        healthchecks = kwargs.get('healthcheck', None)
-        if healthchecks and kwargs.get('routable', False):
-            # check if a port is present. if not, auto-populate it
-            # TODO: rip this out when we stop supporting deis config:set HEALTHCHECK_URL
-            if (
-                healthchecks.get('livenessProbe') is not None and
-                healthchecks['livenessProbe'].get('httpGet') is not None and
-                healthchecks['livenessProbe']['httpGet'].get('port') is None
-            ):
-                healthchecks['livenessProbe']['httpGet']['port'] = env['PORT']
-            data.update(healthchecks)
-        else:
-            self._default_readiness_probe(data, kwargs.get('build_type'), env.get('PORT', None))
+        self._set_health_checks(data, env, kwargs)
+
+    def _set_health_checks(self, container, env, kwargs):
+        if kwargs.get('routable', False):
+            healthchecks = kwargs.get('healthcheck', None)
+            if healthchecks:
+                # check if a port is present. if not, auto-populate it
+                # TODO: rip this out when we stop supporting deis config:set HEALTHCHECK_URL
+                if (
+                    healthchecks.get('livenessProbe') is not None and
+                    healthchecks['livenessProbe'].get('httpGet') is not None and
+                    healthchecks['livenessProbe']['httpGet'].get('port') is None
+                ):
+                    healthchecks['livenessProbe']['httpGet']['port'] = env['PORT']
+                container.update(healthchecks)
+            else:
+                self._default_readiness_probe(container, kwargs.get('build_type'), env.get('PORT', None))  # noqa
 
     def _get_private_registry_config(self, registry, image):
         secret_name = settings.REGISTRY_SECRET_PREFIX

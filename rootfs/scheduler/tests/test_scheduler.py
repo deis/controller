@@ -35,12 +35,39 @@ class SchedulerTest(TestCase):
                 }
             }
         }
+        readinessHealthCheck = {
+                # an exec probe
+                'exec': {
+                    "command": [
+                        "bash",
+                        "-c",
+                        "[[ '$(ps -p 1 -o args)' != *'bash /runner/init'* ]]"
+                    ]
+                },
+                # length of time to wait for a pod to initialize
+                # after pod startup, before applying health checking
+                'initialDelaySeconds': 30,
+                'timeoutSeconds': 5,
+                'periodSeconds': 5,
+                'successThreshold': 1,
+                'failureThreshold': 1,
+            }
+
         self.scheduler_client._set_container('foo',
                                              'bar',
                                              data,
                                              routable=True,
                                              healthcheck=healthcheck)
         self.assertDictContainsSubset(healthcheck, data)
+        data = {}
+        self.scheduler_client._set_container('foo',
+                                             'bar',
+                                             data,
+                                             routable=True,
+                                             build_type="buildpack",
+                                             healthcheck={})
+        self.assertEqual(data.get('livenessProbe'), None)
+        self.assertEqual(data.get('readinessProbe'), readinessHealthCheck)
         # clear the dict to call again with routable as false
         data = {}
         self.scheduler_client._set_container('foo',
@@ -49,6 +76,7 @@ class SchedulerTest(TestCase):
                                              routable=False,
                                              healthcheck=healthcheck)
         self.assertEqual(data.get('livenessProbe'), None)
+        self.assertEqual(data.get('readinessProbe'), None)
         # now call without setting 'routable', should default to False
         data = {}
         self.scheduler_client._set_container('foo',
@@ -56,6 +84,7 @@ class SchedulerTest(TestCase):
                                              data,
                                              healthcheck=healthcheck)
         self.assertEqual(data.get('livenessProbe'), None)
+        self.assertEqual(data.get('readinessProbe'), None)
 
     def test_set_container_limits(self):
         """

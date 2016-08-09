@@ -23,6 +23,7 @@ from api.utils import generate_app_name, async_run
 from api.models.release import Release
 from api.models.config import Config
 from api.models.domain import Domain
+from api.models.appsettings import AppSettings
 
 from scheduler import KubeHTTPException, KubeException
 
@@ -178,7 +179,7 @@ class App(UuidAuditedModel):
 
     def create(self, *args, **kwargs):  # noqa
         """
-        Create a application with an initial config, release, domain
+        Create a application with an initial config, settings, release, domain
         and k8s resource if needed
         """
         try:
@@ -220,6 +221,10 @@ class App(UuidAuditedModel):
 
             raise ServiceUnavailable('Kubernetes resources could not be created') from e
 
+        try:
+            self.appsettings_set.latest()
+        except AppSettings.DoesNotExist:
+            AppSettings.objects.create(owner=self.owner, app=self)
         # Attach the platform specific application sub domain to the k8s service
         # Only attach it on first release in case a customer has remove the app domain
         if rel.version == 1 and not Domain.objects.filter(domain=self.id).exists():
@@ -389,6 +394,7 @@ class App(UuidAuditedModel):
 
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
+        app_settings = self.appsettings_set.latest()
         version = "v{}".format(release.version)
         image = release.image
         envs = self._build_env_vars(release.build.type, version, image, release.config.values)
@@ -424,6 +430,7 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
+                'annotations': {'maintenance': app_settings.maintenance},
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
@@ -460,6 +467,8 @@ class App(UuidAuditedModel):
         """
         if release.build is None:
             raise DeisException('No build associated with this release')
+
+        app_settings = self.appsettings_set.latest()
 
         # use create to make sure minimum resources are created
         self.create()
@@ -509,6 +518,7 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
                 'routable': routable,
+                'annotations': {'maintenance': app_settings.maintenance},
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,

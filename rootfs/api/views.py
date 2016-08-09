@@ -296,6 +296,11 @@ class PodViewSet(AppResourceViewSet):
         return Response(pagination, status=status.HTTP_200_OK)
 
 
+class AppSettingsViewSet(AppResourceViewSet):
+    model = models.AppSettings
+    serializer_class = serializers.AppSettingsSerializer
+
+
 class DomainViewSet(AppResourceViewSet):
     """A viewset for interacting with Domain objects."""
     model = models.Domain

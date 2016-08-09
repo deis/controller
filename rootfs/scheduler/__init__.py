@@ -89,6 +89,7 @@ class KubeHTTPClient(object):
 
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
+        annotations = kwargs.get('annotations', {})
         envs = kwargs.get('envs', {})
         port = envs.get('PORT', None)
 
@@ -134,7 +135,7 @@ class KubeHTTPClient(object):
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
-        self._update_application_service(namespace, name, app_type, port, routable)
+        self._update_application_service(namespace, name, app_type, port, routable, annotations)
 
     def cleanup_release(self, namespace, controller, timeout):
         """
@@ -176,13 +177,15 @@ class KubeHTTPClient(object):
 
         return batches
 
-    def _update_application_service(self, namespace, name, app_type, port, routable=False):
+    def _update_application_service(self, namespace, name, app_type, port, routable=False, annotations={}):  # noqa
         """Update application service with all the various required information"""
         service = self.get_service(namespace, namespace).json()
         old_service = service.copy()  # in case anything fails for rollback
 
         try:
             # Update service information
+            for key, value in annotations.items():
+                service['metadata']['annotations']['router.deis.io/%s' % key] = str(value)
             if routable:
                 service['metadata']['labels']['router.deis.io/routable'] = 'true'
             else:

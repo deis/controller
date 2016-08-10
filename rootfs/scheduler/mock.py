@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timedelta
 import json
 import random
@@ -360,7 +361,7 @@ def manage_replicasets(deployment, url):
     rs_url = url.replace('_deployments_', '_replicasets_')
 
     # create new RS
-    rs = deployment.copy()
+    rs = copy.deepcopy(deployment)
     rs['kind'] = 'ReplicaSet'
     # fix up the name
     rs['metadata']['name'] = rs['metadata']['name'] + '-' + pod_hash
@@ -553,12 +554,20 @@ def post(request, context):
     """Process a POST request to the kubernetes API"""
     data = request.json()
     url = cache_key(request.url + '/' + data['metadata']['name'] + '/')
+    resource_type = get_type(request.url)
+    # check if the namespace being posted to exists
+    if resource_type != 'namespaces':
+        namespace, _ = url.split('_{}_'.format(resource_type))
+        namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
+        if cache.get(namespace) is None:
+            context.status_code = 404
+            context.reason = 'Not Found'
+            return {}
+
     if cache.get(url) is not None:
         context.status_code = 409
         context.reason = 'Conflict'
         return {}
-
-    resource_type = get_type(request.url)
 
     # fill in generic data
     timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
@@ -598,6 +607,17 @@ def post(request, context):
 def put(request, context):
     """Process a PUT request to the kubernetes API"""
     url = cache_key(request.url)
+    # type is the second last element
+    resource_type = get_type(request.url, -2)
+    # check if the namespace being posted to exists
+    if resource_type != 'namespaces':
+        namespace, _ = url.split('_{}_'.format(resource_type))
+        namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
+        if cache.get(namespace) is None:
+            context.status_code = 404
+            context.reason = 'Not Found'
+            return {}
+
     item = cache.get(url)
     if item is None:
         context.status_code = 404
@@ -605,9 +625,6 @@ def put(request, context):
         return {}
 
     data = request.json()
-
-    # type is the second last element
-    resource_type = get_type(request.url, -2)
 
     # merge new data into old but keep labels separate in case they changed
     labels = data['metadata'].pop('labels')

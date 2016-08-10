@@ -30,7 +30,7 @@ docker-build: check-docker
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
 deploy: check-kubectl docker-build docker-push
-	kubectl patch deployment deis-$(COMPONENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(IMAGE)"}]'
+	kubectl --namespace=deis patch deployment deis-$(COMPONENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(IMAGE)"}]'
 
 clean: check-docker
 	docker rmi $(IMAGE)

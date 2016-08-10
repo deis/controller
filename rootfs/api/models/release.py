@@ -484,9 +484,8 @@ class Release(UuidAuditedModel):
                 # if the routable flag changed, log that too
                 changes = []
                 old_routable = old_config.routable if old_config else True
-                enabled = "enabled routing" if self.config.routable and not old_routable else ''
-                disabled = "disabled routing" if not self.config.routable and old_routable else ''
-                changes = ', '.join(i for i in (enabled, disabled) if i)
+                if old_routable != self.config.routable:
+                    changes = "enabled routing" if self.config.routable else "disabled routing"
                 if changes:
                     if self.summary:
                         self.summary += ' and '

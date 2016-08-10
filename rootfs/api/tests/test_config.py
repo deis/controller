@@ -343,3 +343,4 @@ class ConfigTest(DeisTransactionTestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(app.config_set.latest().routable)
+        self.assertFalse(app.release_set.latest().config.routable)

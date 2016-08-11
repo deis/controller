@@ -267,6 +267,9 @@ class KubeHTTPClient(object):
             # Update service information
             if routable:
                 service['metadata']['labels']['router.deis.io/routable'] = 'true'
+            else:
+                # delete the annotation
+                service['metadata']['labels'].pop('router.deis.io/routable', None)
 
             # Set app type if there is not one available
             if 'type' not in service['spec']['selector']:

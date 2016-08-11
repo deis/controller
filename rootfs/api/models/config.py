@@ -46,7 +46,8 @@ class Config(UuidAuditedModel):
         success_threshold = int(self.values.get('HEALTHCHECK_SUCCESS_THRESHOLD', 1))
         failure_threshold = int(self.values.get('HEALTHCHECK_FAILURE_THRESHOLD', 3))
 
-        self.healthcheck['livenessProbe'] = {
+        self.healthcheck['web/cmd'] = {}
+        self.healthcheck['web/cmd']['livenessProbe'] = {
             'initialDelaySeconds': delay,
             'timeoutSeconds': timeout,
             'periodSeconds': period_seconds,
@@ -57,7 +58,7 @@ class Config(UuidAuditedModel):
             }
         }
 
-        self.healthcheck['readinessProbe'] = {
+        self.healthcheck['web/cmd']['readinessProbe'] = {
             'initialDelaySeconds': delay,
             'timeoutSeconds': timeout,
             'periodSeconds': period_seconds,
@@ -70,6 +71,12 @@ class Config(UuidAuditedModel):
 
         # Unset all the old values
         self.values = {k: v for k, v in self.values.items() if not k.startswith('HEALTHCHECK_')}
+
+    def get_healthcheck(self):
+        if('livenessProbe' in self.healthcheck.keys() or
+           'readinessProbe' in self.healthcheck.keys()):
+            return {'web/cmd': self.healthcheck}
+        return self.healthcheck
 
     def set_registry(self):
         # lower case all registry options for consistency
@@ -105,6 +112,38 @@ class Config(UuidAuditedModel):
 
         raise DeisException(message)
 
+    def set_healthcheck(self, previous_config):
+        data = getattr(previous_config, 'healthcheck', {}).copy()
+        new_data = getattr(self, 'healthcheck', {}).copy()
+        # update the config data for healthcheck if they are not
+        # present for per proctype
+        # TODO: This is required for backward compatibility and can be
+        # removed in next major version change.
+        if 'livenessProbe' in data.keys() or 'readinessProbe' in data.keys():
+            data = {'web/cmd': data.copy()}
+        if 'livenessProbe' in new_data.keys() or 'readinessProbe' in new_data.keys():  # noqa
+            new_data = {'web/cmd': new_data.copy()}
+
+        # remove config keys if a null value is provided
+        for key, value in new_data.items():
+            if value is None:
+                # error if unsetting non-existing key
+                if key not in data:
+                    raise UnprocessableEntity('{} does not exist under {}'.format(key, 'healthcheck'))  # noqa
+                data.pop(key)
+            else:
+                for probeType, probe in value.items():
+                    if probe is None:
+                        # error if unsetting non-existing key
+                        if key not in data or probeType not in data[key].keys():
+                            raise UnprocessableEntity('{} does not exist under {}'.format(key, 'healthcheck'))  # noqa
+                        data[key].pop(probeType)
+                    else:
+                        if key not in data:
+                            data[key] = {}
+                        data[key][probeType] = probe
+        setattr(self, 'healthcheck', data)
+
     def save(self, **kwargs):
         """merge the old config with the new"""
         try:
@@ -116,7 +155,7 @@ class Config(UuidAuditedModel):
                 # usually means a totally new app
                 previous_config = self.app.config_set.latest()
 
-            for attr in ['cpu', 'memory', 'tags', 'registry', 'values', 'healthcheck']:
+            for attr in ['cpu', 'memory', 'tags', 'registry', 'values']:
                 data = getattr(previous_config, attr, {}).copy()
                 new_data = getattr(self, attr, {}).copy()
 
@@ -131,6 +170,7 @@ class Config(UuidAuditedModel):
                         data[key] = value
                 setattr(self, attr, data)
 
+            self.set_healthcheck(previous_config)
             self._migrate_legacy_healthcheck()
             self.set_registry()
             self.set_tags(previous_config)

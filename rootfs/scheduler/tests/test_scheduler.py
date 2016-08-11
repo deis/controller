@@ -65,13 +65,20 @@ class SchedulerTest(TestCase):
         self.assertEqual(data.get('livenessProbe'), None)
         self.assertEqual(data.get('readinessProbe'), readinessHealthCheck)
 
+        data = {}
+        self.scheduler._set_container(
+            'foo', 'bar', data, routable=False, healthcheck={}
+        )
+        self.assertEqual(data.get('livenessProbe'), None)
+        self.assertEqual(data.get('readinessProbe'), None)
+
         # clear the dict to call again with routable as false
         data = {}
         self.scheduler._set_container(
             'foo', 'bar', data,
             routable=False, healthcheck=healthcheck
         )
-        self.assertEqual(data.get('livenessProbe'), None)
+        self.assertDictContainsSubset(healthcheck, data)
         self.assertEqual(data.get('readinessProbe'), None)
 
         # now call without setting 'routable', should default to False
@@ -79,7 +86,21 @@ class SchedulerTest(TestCase):
         self.scheduler._set_container(
             'foo', 'bar', data, healthcheck=healthcheck
         )
-        self.assertEqual(data.get('livenessProbe'), None)
+        self.assertDictContainsSubset(healthcheck, data)
+        self.assertEqual(data.get('readinessProbe'), None)
+
+        data = {}
+        livenessProbe = {
+            'livenessProbe': {
+                'httpGet': {
+                    'port': None,
+                }
+            }
+        }
+        self.scheduler._set_health_checks(
+            data, {'PORT': 80}, healthcheck=livenessProbe
+        )
+        self.assertDictContainsSubset(healthcheck, data)
         self.assertEqual(data.get('readinessProbe'), None)
 
     def test_set_container_limits(self):

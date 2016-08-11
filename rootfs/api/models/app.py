@@ -409,6 +409,10 @@ class App(UuidAuditedModel):
             if port:
                 envs['PORT'] = port
 
+            healthcheck = release.config.get_healthcheck().get('scale_type', {})
+            if not healthcheck and scale_type in ['web', 'cmd']:
+                healthcheck = release.config.get_healthcheck().get('web/cmd', {})
+
             kwargs = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
@@ -419,7 +423,7 @@ class App(UuidAuditedModel):
                 'replicas': replicas,
                 'app_type': scale_type,
                 'build_type': release.build.type,
-                'healthcheck': release.config.healthcheck,
+                'healthcheck': healthcheck,
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
@@ -487,6 +491,10 @@ class App(UuidAuditedModel):
             if port:
                 envs['PORT'] = port
 
+            healthcheck = release.config.get_healthcheck().get('scale_type', {})
+            if not healthcheck and scale_type in ['web', 'cmd']:
+                healthcheck = release.config.get_healthcheck().get('web/cmd', {})
+
             deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
@@ -498,7 +506,7 @@ class App(UuidAuditedModel):
                 'version': version,
                 'app_type': scale_type,
                 'build_type': release.build.type,
-                'healthcheck': release.config.healthcheck,
+                'healthcheck': healthcheck,
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,

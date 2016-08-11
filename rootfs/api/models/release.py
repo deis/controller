@@ -464,17 +464,17 @@ class Release(UuidAuditedModel):
                         self.summary += ' and '
                     self.summary += "{} {}".format(self.config.owner, changes)
 
-                # if the registry information changed, log the dict diff
+                # if the healthcheck information changed, log the dict diff
                 changes = []
                 old_healthcheck = old_config.healthcheck if old_config else {}
                 diff = dict_diff(self.config.healthcheck, old_healthcheck)
                 # try to be as succinct as possible
-                added = ', '.join(k for k in diff.get('added', {}))
-                added = 'added healthcheck info ' + added if added else ''
-                changed = ', '.join(k for k in diff.get('changed', {}))
-                changed = 'changed healthcheck info ' + changed if changed else ''
-                deleted = ', '.join(k for k in diff.get('deleted', {}))
-                deleted = 'deleted healthcheck info ' + deleted if deleted else ''
+                added = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('added', {})])))  # noqa
+                added = 'added healthcheck info for proc type ' + added if added else ''
+                changed = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('changed', {})])))  # noqa
+                changed = 'changed healthcheck info for proc type ' + changed if changed else ''
+                deleted = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('deleted', {})])))  # noqa
+                deleted = 'deleted healthcheck info for proc type ' + deleted if deleted else ''
                 changes = ', '.join(i for i in (added, changed, deleted) if i)
                 if changes:
                     if self.summary:

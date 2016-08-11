@@ -8,6 +8,7 @@ import requests_mock
 import string
 import time
 from urllib.parse import urlparse, parse_qs
+import uuid
 from zlib import adler32
 
 from . import KubeHTTPClient, KubeHTTPException
@@ -253,6 +254,7 @@ def create_pods(url, labels, base, new_pods):
         # creation time
         timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
         data['metadata']['creationTimestamp'] = timestamp
+        data['metadata']['uid'] = str(uuid.uuid4())
 
         # generate the pod name and combine with RC name
         if 'generateName' in data['metadata']:
@@ -573,6 +575,7 @@ def post(request, context):
     timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
     data['metadata']['creationTimestamp'] = timestamp
     data['metadata']['resourceVersion'] = 1
+    data['metadata']['uid'] = str(uuid.uuid4())
 
     # don't bother adding it to those two resources since they live outside namespace
     if resource_type not in ['nodes', 'namespaces']:

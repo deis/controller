@@ -127,7 +127,8 @@ class KubeHTTPClient(object):
 
                 raise KubeException(
                     'There was a problem while deploying {} of {}-{}. '
-                    'Going back to the previous release'.format(version, namespace, app_type)
+                    'Going back to the previous release. '
+                    "Additional information:\n{}".format(version, namespace, app_type, str(e))
                 ) from e
 
         # Make sure the application is routable and uses the correct port
@@ -942,7 +943,7 @@ class KubeHTTPClient(object):
                     timeout += self._handle_pod_long_image_pulling(pod, reason)
 
                     # handle errors and bubble up if need be
-                    self._handle_pod_image_errors(pod, reason, message)
+                    self._handle_pod_errors(pod, reason, message)
 
                 # now that state is running time to see if probes are passing
                 if self._pod_ready(pod):
@@ -1498,39 +1499,49 @@ class KubeHTTPClient(object):
 
         return False
 
-    def _handle_pod_image_errors(self, pod, reason, message):
+    def _handle_pod_errors(self, pod, reason, message):
         """
-        Handle potential pod image errors based on the Pending
+        Handle potential pod errors based on the Pending
         reason passed into the function
+
+        Images, FailedScheduling and others are needed
         """
         # image error reported on the container level
-        image_container_errors = [
+        container_errors = [
+            'Pending',  # often an indication of deeper inspection is needed
             'ErrImagePull',
             'ImagePullBackOff',
             'RegistryUnavailable',
             'ErrImageInspect',
         ]
         # Image event reason mapping
-        image_event_errors = {
+        event_errors = {
             "Failed": "FailedToPullImage",
             "InspectFailed": "FailedToInspectImage",
             "ErrImageNeverPull": "ErrImageNeverPullPolicy",
             # Not including this one for now as the message is not useful
             # "BackOff": "BackOffPullImage",
+            # FailedScheduling relates limits
+            "FailedScheduling": "FailedScheduling",
         }
-        if reason in image_container_errors:
-            # Nicer error than from the event
-            # Often this gets to ImageBullBackOff before we can introspect tho
-            if reason == 'ErrImagePull':
-                raise KubeException(message)
 
-            # collect all error messages relevant to images
-            messages = []
+        # Nicer error than from the event
+        # Often this gets to ImageBullBackOff before we can introspect tho
+        if reason == 'ErrImagePull':
+            raise KubeException(message)
+
+        # collect all error messages of worth
+        messages = []
+        if reason in container_errors:
             for event in self._pod_events(pod):
-                if event['reason'] in image_event_errors.keys():
-                    # remove new lines and any extra white space
-                    message = ' '.join(event['message'].split())
+                if event['reason'] in event_errors.keys():
+                    # only show a given error once
+                    event_errors.pop(event['reason'])
+                    # strip out whitespaces on either side
+                    message = "\n".join([x.strip() for x in event['message'].split("\n")])
                     messages.append(message)
+
+        if messages:
             raise KubeException("\n".join(messages))
 
     def _handle_pod_long_image_pulling(self, reason, pod):
@@ -1757,7 +1768,7 @@ class KubeHTTPClient(object):
                         timeout += self._handle_pod_long_image_pulling(pod, reason)
 
                         # handle errors and bubble up if need be
-                        self._handle_pod_image_errors(pod, reason, message)
+                        self._handle_pod_errors(pod, reason, message)
 
                 self.log(namespace, "waited {}s and {} pods are in service".format(waited, availablePods))  # noqa
 

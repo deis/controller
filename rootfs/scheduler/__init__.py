@@ -933,21 +933,21 @@ class KubeHTTPClient(object):
         # Ensure the minimum desired number of pods are available
         waited = 0
         while waited < timeout:
+            # figure out if there are any pending pod issues
+            additional_timeout = self._handle_pending_pods(namespace, labels)
+            if additional_timeout:
+                timeout += additional_timeout
+                # add 10 minutes to timeout to allow a pull image operation to finish
+                self.log(namespace, 'Kubernetes has been pulling the image for {}s'.format(seconds))  # noqa
+                self.log(namespace, 'Increasing timeout by {}s to allow a pull image operation to finish for pods'.format(additional_timeout))  # noqa
+
             count = 0  # ready pods
             pods = self.get_pods(namespace, labels=labels).json()
             for pod in pods['items']:
-                # Get more information on why a pod is pending
-                if pod['status']['phase'] in ['Pending', 'ContainerCreating']:
-                    reason, message = self._pod_pending_status(pod)
-                    # If pulling an image is taking long then increase the timeout
-                    timeout += self._handle_pod_long_image_pulling(pod, reason)
-
-                    # handle errors and bubble up if need be
-                    self._handle_pod_errors(pod, reason, message)
-
                 # now that state is running time to see if probes are passing
                 if self._pod_ready(pod):
                     count += 1
+                    continue
 
                 # Find out if any pod goes beyond the Running (up) state
                 # Allow that to happen to account for very fast `deis run` as
@@ -955,6 +955,7 @@ class KubeHTTPClient(object):
                 state = self.pod_state(pod)
                 if isinstance(state, PodState) and state > PodState.up:
                     count += 1
+                    continue
 
             if count == desired:
                 break
@@ -1568,15 +1569,34 @@ class KubeHTTPClient(object):
 
         seconds = 60  # time threshold before padding timeout
         if (start + timedelta(seconds=seconds)) < datetime.utcnow():
-            # add 10 minutes to timeout to allow a pull image operation to finish
-            self.log(namespace, 'Kubernetes has been pulling the image for {} seconds'.format(seconds))  # noqa
-            self.log(namespace, 'Increasing timeout by 10 minutes to allow a pull image operation to finish for pods')  # noqa
-
             # make it so function doesn't do processing again
             setattr(self, '_handle_pod_long_image_pulling_applied', True)
             return 600
 
         return 0
+
+    def _handle_pending_pods(self, namespace, labels):
+        """
+        Detects if any pod is in the starting phases and handles
+        any potential issues around that, and increases timeouts
+        or throws errors as needed
+        """
+        timeout = 0
+        pods = self.get_pods(namespace, labels=labels).json()
+        for pod in pods['items']:
+            # only care about pods that are not starting or in the starting phases
+            if pod['status']['phase'] not in ['Pending', 'ContainerCreating']:
+                continue
+
+            # Get more information on why a pod is pending
+            reason, message = self._pod_pending_status(pod)
+            # If pulling an image is taking long then increase the timeout
+            timeout += self._handle_pod_long_image_pulling(pod, reason)
+
+            # handle errors and bubble up if need be
+            self._handle_pod_errors(pod, reason, message)
+
+        return timeout
 
     # NODES #
 
@@ -1720,6 +1740,78 @@ class KubeHTTPClient(object):
 
         return response
 
+    def deployment_in_progress(self, namespace, name, deploy_timeout, batches, replicas, tags):
+        """
+        Determine if a Deployment has a deploy in progress
+
+        First is a very basic check to see if replicas are ready.
+
+        If they are not ready then it is time to see if there are problems with any of the pods
+        such as image pull issues or similar.
+
+        And then if that is still all okay then it is time to see if the deploy has
+        been in progress for longer than the allocated deploy time. Reason to do this
+        check is if a client has had a dropped connection.
+
+        Returns 2 booleans, first one is for if the Deployment is in progress or not, second
+        one is or if a rollback action is advised while leaving the rollback up to the caller
+        """
+        self.log(namespace, 'Checking if Deployment {} is in progress'.format(name), level=logging.DEBUG)  # noqa
+        try:
+            ready, _ = self.are_deployment_replicas_ready(namespace, name)
+            if ready:
+                # nothing more to do - False since it is not in progress
+                self.log(namespace, 'All replicas for Deployment {} are ready'.format(name), level=logging.DEBUG)  # noqa
+                return False, False
+        except KubeHTTPException as e:
+            # Deployment doesn't exist
+            if e.response.status_code == 404:
+                self.log(namespace, 'Deployment {} does not exist yet'.format(name), level=logging.DEBUG)  # noqa
+                return False, False
+
+        # get deployment information
+        deployment = self.get_deployment(namespace, name).json()
+        # get pod template labels since they include the release version
+        labels = deployment['spec']['template']['metadata']['labels']
+        containers = deployment['spec']['template']['spec']['containers']
+
+        # calculate base deploy timeout
+        deploy_timeout = self._deploy_probe_timeout(deploy_timeout, namespace, labels, containers)
+
+        # a rough calculation that figures out an overall timeout
+        steps = self._get_deploy_steps(batches, tags)
+        batches = self._get_deploy_batches(steps, replicas)
+        timeout = len(batches) * deploy_timeout
+
+        # is there a slow image pull or image issues
+        try:
+            timeout += self._handle_pending_pods(namespace, labels)
+        except KubeException as e:
+            self.log(namespace, 'Deployment {} had stalled due an error and will be rolled back. {}'.format(name, str(e)), level=logging.DEBUG)  # noqa
+            return False, True
+
+        # fetch the latest RS for Deployment and use the start time to compare to deploy timeout
+        replicasets = self.get_replicasets(namespace, labels=labels).json()['items']
+        # the labels should ensure that only 1 replicaset due to the version label
+        if len(replicasets) != 1:
+            # if more than one then sort by start time to newest is first
+            replicasets.sort(key=lambda x: x['metadata']['creationTimestamp'], reverse=True)
+
+        # work with the latest copy
+        replica = replicasets.pop()
+
+        # throw an exception if over TTL so error is bubbled up
+        start = datetime.strptime(
+            replica['metadata']['creationTimestamp'],
+            settings.DEIS_DATETIME_FORMAT
+        )
+
+        if (start + timedelta(seconds=timeout)) < datetime.utcnow():
+            self.log(namespace, 'Deploy operation for Deployment {} in has expired. Rolling back to last good known release'.format(name), level=logging.DEBUG)  # noqa
+            return False, True
+
+        return True, False
+
     def _wait_until_deployment_is_ready(self, namespace, name, **kwargs):
         replicas = int(kwargs.get('replicas', 0))
         # If desired is 0 then there is no ready state to check on
@@ -1743,7 +1835,7 @@ class KubeHTTPClient(object):
             self._wait_until_pods_terminate(namespace, labels, current, replicas)
             return
 
-        # get health info from container
+        # calculate base deploy timeout
         deploy_timeout = self._deploy_probe_timeout(deploy_timeout, namespace, labels, containers)
 
         # a rough calculation that figures out an overall timeout
@@ -1759,16 +1851,12 @@ class KubeHTTPClient(object):
             # check every 10 seconds for pod failures.
             # Depend on Deployment checks for ready pods
             if waited > 0 and (waited % 10) == 0:
-                pods = self.get_pods(namespace, labels=labels).json()
-                for pod in pods['items']:
-                    # Get more information on why a pod is pending
-                    if pod['status']['phase'] in ['Pending', 'ContainerCreating']:
-                        reason, message = self._pod_pending_status(pod)
-                        # If pulling an image is taking long then increase the timeout
-                        timeout += self._handle_pod_long_image_pulling(pod, reason)
-
-                        # handle errors and bubble up if need be
-                        self._handle_pod_errors(pod, reason, message)
+                additional_timeout = self._handle_pending_pods(namespace, labels)
+                if additional_timeout:
+                    timeout += additional_timeout
+                    # add 10 minutes to timeout to allow a pull image operation to finish
+                    self.log(namespace, 'Kubernetes has been pulling the image for {}s'.format(seconds))  # noqa
+                    self.log(namespace, 'Increasing timeout by {}s to allow a pull image operation to finish for pods'.format(additional_timeout))  # noqa
 
                 self.log(namespace, "waited {}s and {} pods are in service".format(waited, availablePods))  # noqa
 

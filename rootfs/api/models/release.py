@@ -372,15 +372,6 @@ class Release(UuidAuditedModel):
         except KubeHTTPException:
             pass
 
-    def deployment_in_progress(self, namespace, name):
-        try:
-            ready, _ = self._scheduler.are_deployment_replicas_ready(namespace, name)
-            return not ready
-        except KubeHTTPException as e:
-            # Deployment doesn't exist
-            if e.response.status_code == 404:
-                return False
-
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:
             self.summary = ''

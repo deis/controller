@@ -970,7 +970,11 @@ class KubeHTTPClient(object):
         if waited > timeout:
             self.log(namespace, 'timed out ({}s) waiting for pods to come up in namespace {}'.format(timeout, namespace))  # noqa
 
-        self.log(namespace, "{} out of {} pods are in service".format(count, desired))  # noqa
+        self.log(namespace, "{} out of {} pods are in service".format(count, desired))
+        if count != desired:
+            # raising to allow operations to rollback
+            raise KubeException('Not enough pods in namespace {} came into service. '
+                                '{} out of {}'.format(namespace, count, desired))
 
     def _scale_rc(self, namespace, name, desired, timeout):
         rc = self.get_rc(namespace, name).json()

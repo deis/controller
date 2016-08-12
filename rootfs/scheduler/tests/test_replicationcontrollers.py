@@ -126,23 +126,3 @@ class ReplicationControllersTest(TestCase):
             },
             data['metadata']['labels']
         )
-
-    def test_scale(self):
-        name = self.scale_rc()
-        data = self.scheduler.get_rc(self.namespace, name).json()
-        self.assertEqual(data['kind'], 'ReplicationController')
-        self.assertEqual(data['metadata']['name'], name)
-
-        labels = {'app': self.namespace, 'version': 'v99', 'type': 'web'}
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
-        self.assertEqual(len(pods['items']), 4)
-
-        # scale to 8
-        name = self.scale_rc(replicas=8)
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
-        self.assertEqual(len(pods['items']), 8)
-
-        # scale to 3
-        name = self.scale_rc(replicas=3)
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
-        self.assertEqual(len(pods['items']), 3)

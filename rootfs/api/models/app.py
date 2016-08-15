@@ -481,6 +481,7 @@ class App(UuidAuditedModel):
         image = release.image
         version = "v{}".format(release.version)
         envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+        tags = release.config.tags
 
         for scale_type, replicas in self.structure.items():
             # only web / cmd are routable
@@ -498,7 +499,7 @@ class App(UuidAuditedModel):
             deploys[scale_type] = {
                 'memory': release.config.memory,
                 'cpu': release.config.cpu,
-                'tags': release.config.tags,
+                'tags': tags,
                 'envs': envs,
                 'registry': release.config.registry,
                 # only used if there is no previous RC
@@ -519,9 +520,16 @@ class App(UuidAuditedModel):
 
         # Check if any proc type has a Deployment in progress
         for scale_type, kwargs in deploys.items():
+            if force_deploy:
+                continue
+
             # Is there an existing deployment in progress?
             name = self._get_job_id(scale_type)
-            if not force_deploy and release.deployment_in_progress(self.id, name):
+            in_progress, deploy_okay = self._scheduler.deployment_in_progress(
+                self.id, name, deploy_timeout, batches, replicas, tags
+            )
+            # throw a 409 if things are in progress but we do not want to let through the deploy
+            if in_progress and not deploy_okay:
                 raise AlreadyExists('Deployment for {} is already in progress'.format(name))
 
         try:

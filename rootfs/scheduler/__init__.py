@@ -136,89 +136,6 @@ class KubeHTTPClient(object):
         # traffic to the application
         self._update_application_service(namespace, name, app_type, port, routable)
 
-    def deploy_rc(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
-        app_type = kwargs.get('app_type')
-        routable = kwargs.get('routable', False)
-        envs = kwargs.get('envs', {})
-        port = envs.get('PORT', None)
-        timeout = kwargs.get('deploy_timeout')
-
-        # Fetch old RC and create the new one for a release
-        old_rc = self.get_old_rc(namespace, app_type)
-
-        # If an RC already exists then stop processing of the deploy
-        try:
-            self.get_rc(namespace, name)
-            self.log(namespace, 'RC {} already exists. Stopping deploy'.format(name))  # noqa
-            return
-        except KubeHTTPException:
-            # make replicas 0 so scaling handles the work
-            replicas = kwargs.pop('replicas')
-            new_rc = self.create_rc(
-                namespace,
-                name,
-                image,
-                entrypoint,
-                command,
-                replicas=0,
-                **kwargs).json()
-            kwargs['replicas'] = replicas
-
-        # Get the desired number to scale to
-        if old_rc:
-            desired = int(old_rc["spec"]["replicas"])
-        else:
-            desired = kwargs['replicas']
-            self.log(namespace, 'No prior RC could be found for {}'.format(app_type))
-
-        # see if application or global deploy batches are defined
-        batches = kwargs.get('deploy_batches', None)
-        tags = kwargs.get('tags', {})
-        steps = self._get_deploy_steps(batches, tags)
-        batches = self._get_deploy_batches(steps, desired)
-
-        try:
-            count = 0
-            new_name = new_rc["metadata"]["name"]
-            for batch in batches:
-                count += batch
-                self.log(namespace, 'scaling release {} to {} out of final {}'.format(
-                    new_name, count, desired
-                ))
-                self._scale_rc(namespace, new_name, count, timeout)
-
-                if old_rc:
-                    old_name = old_rc["metadata"]["name"]
-                    self.log(namespace, 'scaling old release {} from original {} to {}'.format(
-                        old_name, desired, (desired-count))
-                    )
-                    self._scale_rc(namespace, old_name, (desired-count), timeout)
-        except Exception as e:
-            # New release is broken. Clean up
-
-            # Remove new release of the RC
-            self.cleanup_release(namespace, new_rc, timeout)
-
-            # If there was a previous release then bring that back
-            if old_rc:
-                self._scale_rc(namespace, old_rc["metadata"]["name"], desired, timeout)
-
-            raise KubeException(
-                'Could not scale {} to {}. '
-                'Deleting and going back to old release'.format(
-                    new_rc["metadata"]["name"], desired
-                )
-            ) from e
-
-        # New release is live and kicking. Clean up old release
-        if old_rc:
-            self.cleanup_release(namespace, old_rc, timeout)
-
-        # Make sure the application is routable and uses the correct port
-        # Done after the fact to let initial deploy settle before routing
-        # traffic to the application
-        self._update_application_service(namespace, name, app_type, port, routable)
-
     def cleanup_release(self, namespace, controller, timeout):
         """
         Cleans up resources related to an application deployment
@@ -290,7 +207,7 @@ class KubeHTTPClient(object):
             raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, entrypoint, command, **kwargs):
-        """Scale RC or Deployment depending on what's requested"""
+        """Scale Deployment"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
 
         try:
@@ -312,24 +229,6 @@ class KubeHTTPClient(object):
 
         # let the scale failure bubble up
         self._scale_deployment(namespace, name, image, entrypoint, command, **kwargs)
-
-    def scale_rc(self, namespace, name, image, entrypoint, command, **kwargs):
-        replicas = kwargs.pop('replicas')
-        try:
-            self.get_rc(namespace, name)
-        except KubeHTTPException as e:
-            if e.response.status_code == 404:
-                # add RC if it is missing for the namespace
-                try:
-                    # Create RC with scale as 0 and then scale to get pod monitoring
-                    kwargs['replicas'] = 0
-                    self.create_rc(namespace, name, image, entrypoint, command, **kwargs)
-                except KubeException:
-                    logger.exception("Creating RC {} failed".format(name))
-                    raise
-
-        # let the scale failure bubble up
-        self._scale_rc(namespace, name, replicas, kwargs.get('deploy_timeout'))
 
     def _build_pod_manifest(self, namespace, name, image, **kwargs):
         app_type = kwargs.get('app_type')
@@ -824,17 +723,6 @@ class KubeHTTPClient(object):
         return response
 
     # REPLICATION CONTROLLER #
-
-    def get_old_rc(self, namespace, app_type):
-        labels = {
-            'app': namespace,
-            'type': app_type
-        }
-        controllers = self.get_rcs(namespace, labels=labels).json()
-        if len(controllers['items']) == 0:
-            return False
-
-        return controllers['items'][0]
 
     def get_rc(self, namespace, name):
         url = self._api("/namespaces/{}/replicationcontrollers/{}", namespace, name)

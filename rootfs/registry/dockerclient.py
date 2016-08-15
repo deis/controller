@@ -118,6 +118,7 @@ class DockerClient(object):
         except APIError as e:
             raise RegistryException(str(e))
 
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def pull(self, repo, tag):
         """Pull a Docker image into the local storage graph."""
         check_blacklist(repo)
@@ -126,12 +127,14 @@ class DockerClient(object):
             stream = self.client.pull(repo, tag=tag, stream=True, decode=True)
             log_output(stream, 'pull', repo, tag)
 
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def push(self, repo, tag):
         """Push a local Docker image to a registry."""
         logger.info("Pushing Docker image {}:{}".format(repo, tag))
         stream = self.client.push(repo, tag=tag, stream=True, decode=True)
         log_output(stream, 'push', repo, tag)
 
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def tag(self, image, repo, tag):
         """Tag a local Docker image with a new name and tag."""
         check_blacklist(repo)

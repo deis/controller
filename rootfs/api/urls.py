@@ -82,8 +82,6 @@ urlpatterns = [
         views.KeyHookViewSet.as_view({'get': 'app'})),
     url(r'^hooks/key/(?P<fingerprint>.+)/?',
         views.KeyHookViewSet.as_view({'get': 'public_key'})),
-    url(r'^hooks/push/?',
-        views.PushHookViewSet.as_view({'post': 'create'})),
     url(r'^hooks/build/?',
         views.BuildHookViewSet.as_view({'post': 'create'})),
     url(r'^hooks/config/?',

@@ -114,7 +114,6 @@ class UuidAuditedModel(AuditedModel):
 
 
 from .app import App, validate_id_is_docker_compatible, validate_reserved_names, validate_app_structure  # noqa
-from .push import Push  # noqa
 from .key import Key, validate_base64  # noqa
 from .certificate import Certificate, validate_certificate  # noqa
 from .domain import Domain  # noqa

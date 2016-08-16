@@ -457,19 +457,6 @@ class CertificateSerializer(serializers.ModelSerializer):
         read_only_fields = ['common_name', 'fingerprint', 'san', 'domains', 'subject', 'issuer']
 
 
-class PushSerializer(serializers.ModelSerializer):
-    """Serialize a :class:`~api.models.Push` model."""
-
-    app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
-    owner = serializers.ReadOnlyField(source='owner.username')
-
-    class Meta:
-        """Metadata options for a :class:`PushSerializer`."""
-        model = models.Push
-        fields = ['owner', 'app', 'sha', 'fingerprint', 'receive_user', 'receive_repo',
-                  'ssh_connection', 'ssh_original_command', 'created', 'updated']
-
-
 class PodSerializer(serializers.BaseSerializer):
     name = serializers.CharField()
     state = serializers.CharField()

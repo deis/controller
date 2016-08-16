@@ -122,65 +122,6 @@ class HookTest(DeisTransactionTestCase):
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 404)
 
-    def test_push_hook(self, mock_requests):
-        """Test creating a Push via the API"""
-        app_id = self.create_app()
-
-        # prepare a push body
-        body = {
-            'sha': 'df1e628f2244b73f9cdf944f880a2b3470a122f4',
-            'fingerprint': '88:25:ed:67:56:91:3d:c6:1b:7f:42:c6:9b:41:24:80',
-            'receive_user': 'autotest',
-            'receive_repo': '{app_id}'.format(**locals()),
-            'ssh_connection': '10.0.1.10 50337 172.17.0.143 22',
-            'ssh_original_command': "git-receive-pack '{app_id}.git'".format(**locals()),
-        }
-        # post a request without the auth header
-        url = "/v2/hooks/push".format(**locals())
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 403)
-        # now try with the builder key in the special auth header
-        response = self.client.post(url, body,
-                                    HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 201, response.data)
-        for k in ('owner', 'app', 'sha', 'fingerprint', 'receive_repo', 'receive_user',
-                  'ssh_connection', 'ssh_original_command'):
-            self.assertIn(k, response.data)
-
-    def test_push_abuse(self, mock_requests):
-        """Test a user pushing to an unauthorized application"""
-        # create a legit app as "autotest"
-        app_id = self.create_app()
-
-        # register an evil user
-        username, password = 'eviluser', 'password'
-        first_name, last_name = 'Evil', 'User'
-        email = 'evil@deis.io'
-        submit = {
-            'username': username,
-            'password': password,
-            'first_name': first_name,
-            'last_name': last_name,
-            'email': email,
-        }
-        url = '/v2/auth/register'
-        response = self.client.post(url, submit)
-        self.assertEqual(response.status_code, 201, response.data)
-        # prepare a push body that simulates a git push
-        body = {
-            'sha': 'df1e628f2244b73f9cdf944f880a2b3470a122f4',
-            'fingerprint': '88:25:ed:67:56:91:3d:c6:1b:7f:42:c6:9b:41:24:99',
-            'receive_user': 'eviluser',
-            'receive_repo': '{app_id}'.format(**locals()),
-            'ssh_connection': '10.0.1.10 50337 172.17.0.143 22',
-            'ssh_original_command': "git-receive-pack '{app_id}.git'".format(**locals()),
-        }
-        # try to push as "eviluser"
-        url = "/v2/hooks/push".format(**locals())
-        response = self.client.post(url, body,
-                                    HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
-        self.assertEqual(response.status_code, 403)
-
     def test_build_hook(self, mock_requests):
         """Test creating a Build via an API Hook"""
         app_id = self.create_app()

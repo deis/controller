@@ -61,6 +61,10 @@ class AuditedModel(models.Model):
             default = {'metadata': {'annotations': {}}}
             svc = dict_merge(svc, default)
 
+        if 'labels' not in svc['metadata']:
+            default = {'metadata': {'labels': {}}}
+            svc = dict_merge(svc, default)
+
         return svc
 
     def _load_service_config(self, app, component):
@@ -117,6 +121,7 @@ from .domain import Domain  # noqa
 from .release import Release  # noqa
 from .config import Config  # noqa
 from .build import Build  # noqa
+from .appsettings import AppSettings  # noqa
 
 # define update/delete callbacks for synchronizing
 # models with the configuration management backend
@@ -140,6 +145,12 @@ def _log_config_updated(**kwargs):
     config = kwargs['instance']
     # log only to the controller; this event will be logged in the release summary
     config.app.log("config {} updated".format(config))
+
+
+def _log_app_settings_updated(**kwargs):
+    appSettings = kwargs['instance']
+    # log only to the controller; this event will be logged in the release summary
+    appSettings.app.log("application settings {} updated".format(appSettings))
 
 
 def _log_domain_added(**kwargs):
@@ -170,6 +181,7 @@ post_save.connect(_log_release_created, sender=Release, dispatch_uid='api.models
 post_save.connect(_log_config_updated, sender=Config, dispatch_uid='api.models.log')
 post_save.connect(_log_domain_added, sender=Domain, dispatch_uid='api.models.log')
 post_save.connect(_log_cert_added, sender=Certificate, dispatch_uid='api.models.log')
+post_save.connect(_log_app_settings_updated, sender=AppSettings, dispatch_uid='api.models.log')
 post_delete.connect(_log_domain_removed, sender=Domain, dispatch_uid='api.models.log')
 post_delete.connect(_log_cert_removed, sender=Certificate, dispatch_uid='api.models.log')
 

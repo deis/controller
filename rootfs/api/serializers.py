@@ -479,3 +479,15 @@ class PodSerializer(serializers.BaseSerializer):
 
     def to_representation(self, obj):
         return obj
+
+
+class AppSettingsSerializer(serializers.ModelSerializer):
+    """Serialize a :class:`~api.models.AppSettings` model."""
+
+    app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
+    owner = serializers.ReadOnlyField(source='owner.username')
+
+    class Meta:
+        """Metadata options for a :class:`AppSettingsSerializer`."""
+        model = models.AppSettings
+        fields = '__all__'

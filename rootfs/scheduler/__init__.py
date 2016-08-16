@@ -89,7 +89,7 @@ class KubeHTTPClient(object):
 
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
-        annotations = kwargs.get('annotations', {})
+        service_annotations = kwargs.get('service_annotations', {})
         envs = kwargs.get('envs', {})
         port = envs.get('PORT', None)
 
@@ -135,7 +135,7 @@ class KubeHTTPClient(object):
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
-        self._update_application_service(namespace, name, app_type, port, routable, annotations)
+        self._update_application_service(namespace, name, app_type, port, routable, service_annotations)  # noqa
 
     def cleanup_release(self, namespace, controller, timeout):
         """

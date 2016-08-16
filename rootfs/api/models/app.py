@@ -409,7 +409,7 @@ class App(UuidAuditedModel):
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] and release.config.routable else False
+            routable = True if scale_type in ['web', 'cmd'] and app_settings.routable else False
             # fetch application port and inject into ENV Vars as needed
             port = release.get_port()
             if port:
@@ -430,7 +430,7 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
-                'annotations': {'maintenance': app_settings.maintenance},
+                'service_annotations': {'maintenance': app_settings.maintenance},
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
@@ -495,7 +495,7 @@ class App(UuidAuditedModel):
         for scale_type, replicas in self.structure.items():
             # only web / cmd are routable
             # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] and release.config.routable else False
+            routable = True if scale_type in ['web', 'cmd'] and app_settings.routable else False
             # fetch application port and inject into ENV vars as needed
             port = release.get_port()
             if port:
@@ -518,7 +518,7 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
                 'routable': routable,
-                'annotations': {'maintenance': app_settings.maintenance},
+                'service_annotations': {'maintenance': app_settings.maintenance},
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
@@ -607,7 +607,8 @@ class App(UuidAuditedModel):
         """
         # Bail out early if the application is not routable
         release = self.release_set.latest()
-        if not kwargs.get('routable', False) and release.config.routable:
+        app_settings = self.appsettings_set.latest()
+        if not kwargs.get('routable', False) and app_settings.routable:
             return
 
         app_type = kwargs.get('app_type')

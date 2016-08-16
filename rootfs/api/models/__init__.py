@@ -61,6 +61,10 @@ class AuditedModel(models.Model):
             default = {'metadata': {'annotations': {}}}
             svc = dict_merge(svc, default)
 
+        if 'labels' not in svc['metadata']:
+            default = {'metadata': {'labels': {}}}
+            svc = dict_merge(svc, default)
+
         return svc
 
     def _load_service_config(self, app, component):

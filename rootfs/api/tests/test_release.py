@@ -199,17 +199,15 @@ class ReleaseTest(DeisTransactionTestCase):
         release = app.release_set.latest()
         # check that the release has push and env change messages
         self.assertIn('autotest deployed ', release.summary)
-        # add config and routable flags, confirm that routable
-        # and config objects are in the summary
+        # add config, confirm that config objects are in the summary
         url = '/v2/apps/{app.id}/config'.format(**locals())
         body = {
             'values': json.dumps({'FOO': 'bar'}),
-            'routable': False,
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(
-            'autotest added FOO and autotest disabled routing',
+            'autotest added FOO',
             app.release_set.latest().summary)
 
     def test_admin_can_create_release(self, mock_requests):

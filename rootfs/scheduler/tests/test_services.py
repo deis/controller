@@ -16,7 +16,7 @@ class ServicesTest(TestCase):
         Helper function to create and verify a service on the namespace
         """
         name = generate_random_name()
-        service = self.scheduler.create_service(self.namespace, name, data=data)
+        service = self.scheduler.svc.create(self.namespace, name, data=data)
         data = service.json()
         self.assertEqual(service.status_code, 201, data)
         self.assertEqual(data['metadata']['name'], name)
@@ -28,7 +28,7 @@ class ServicesTest(TestCase):
             KubeHTTPException,
             msg='failed to create Service doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.create_service('doesnotexist', 'doesnotexist')
+            self.scheduler.svc.create('doesnotexist', 'doesnotexist')
 
     def test_create(self):
         # helper method takes care of the verification
@@ -46,7 +46,7 @@ class ServicesTest(TestCase):
             }
         })
 
-        service = self.scheduler.get_service(self.namespace, name).json()
+        service = self.scheduler.svc.get(self.namespace, name).json()
         self.assertEqual(service['spec']['ports'][0]['targetPort'], 5000, service)
         self.assertEqual(service['spec']['ports'][1]['targetPort'], 5001, service)
 
@@ -56,19 +56,19 @@ class ServicesTest(TestCase):
             KubeHTTPException,
             msg='failed to update Service foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.update_service(self.namespace, 'foo', {})
+            self.scheduler.svc.update(self.namespace, 'foo', {})
 
     def test_update(self):
         # test success
         name = self.create()
-        service = self.scheduler.get_service(self.namespace, name).json()
+        service = self.scheduler.svc.get(self.namespace, name).json()
         self.assertEqual(service['spec']['ports'][0]['targetPort'], 5000, service)
 
         service['spec']['ports'][0]['targetPort'] = 5001
-        response = self.scheduler.update_service(self.namespace, name, service)
+        response = self.scheduler.svc.update(self.namespace, name, service)
         self.assertEqual(response.status_code, 200, response.json())
 
-        service = self.scheduler.get_service(self.namespace, name).json()
+        service = self.scheduler.svc.get(self.namespace, name).json()
         self.assertEqual(service['spec']['ports'][0]['targetPort'], 5001, service)
 
     def test_delete_failure(self):
@@ -77,19 +77,19 @@ class ServicesTest(TestCase):
             KubeHTTPException,
             msg='failed to delete Service foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.delete_service(self.namespace, 'foo')
+            self.scheduler.svc.delete(self.namespace, 'foo')
 
     def test_delete(self):
         # test success
         name = self.create()
-        response = self.scheduler.delete_service(self.namespace, name)
+        response = self.scheduler.svc.delete(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
 
     def test_get_services(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_services(self.namespace)
+        response = self.scheduler.svc.get(self.namespace)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -103,12 +103,12 @@ class ServicesTest(TestCase):
             KubeHTTPException,
             msg='failed to get Service doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.get_service(self.namespace, 'doesnotexist')
+            self.scheduler.svc.get(self.namespace, 'doesnotexist')
 
     def test_get_service(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_service(self.namespace, name)
+        response = self.scheduler.svc.get(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertEqual(data['apiVersion'], 'v1')

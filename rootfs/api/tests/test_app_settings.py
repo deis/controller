@@ -72,10 +72,8 @@ class TestAppSettings(DeisTransactionTestCase):
         Create an application with the routable flag turned on or off
         """
         # create app, expecting routable to be true
-        body = {'id': 'myid'}
-        response = self.client.post('/v2/apps', body)
-        self.assertEqual(response.status_code, 201, response.data)
-        app = App.objects.get(id='myid')
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
         self.assertTrue(app.appsettings_set.latest().routable)
         # Set routable to false
         response = self.client.post(
@@ -163,8 +161,8 @@ class TestAppSettings(DeisTransactionTestCase):
         """
         app_id = self.create_app()
 
-        # scheduler.update_service exception
-        with mock.patch('scheduler.KubeHTTPClient.update_service') as mock_kube:
+        # scheduler.svc.update exception
+        with mock.patch('scheduler.resources.service.Service.update') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             addresses = ["2.3.4.5"]
             url = '/v2/apps/{}/whitelist'.format(app_id)

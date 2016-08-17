@@ -94,7 +94,7 @@ class Config(UuidAuditedModel):
             return
 
         # Get all nodes with label selectors
-        nodes = self._scheduler.get_nodes(labels=self.tags).json()
+        nodes = self._scheduler.node.get(labels=self.tags).json()
         if nodes['items']:
             return
 

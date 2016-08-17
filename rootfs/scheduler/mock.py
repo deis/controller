@@ -79,6 +79,7 @@ class CacheLock(object):
 resources = [
     'namespaces', 'nodes', 'pods', 'replicationcontrollers',
     'secrets', 'services', 'events', 'deployments', 'replicasets',
+    'horizontalpodautoscalers'
 ]
 
 
@@ -109,6 +110,55 @@ def get_type(key, pos=-1):
 
     # bad if it gets there
     return 'unknown'
+
+
+@CacheLock()
+def process_hpa():
+    """
+    Process HPA. Add / remove replicas in target resources
+    as required.
+
+    This function can obviously not react to CPU / stats
+    """
+    for row in cache.get('horizontalpodautoscalers', []):
+        hpa = cache.get(row)
+
+        # check if the resource referenced actually exists
+        kind = hpa['spec']['scaleRef']['kind'].lower() + 's'  # make plural
+        name = hpa['spec']['scaleRef']['name'].lower()
+        deployment = None
+        for deploy in cache.get(kind, []):
+            item = cache.get(deploy)
+            if item['metadata']['name'] == name:
+                deployment = item
+                break
+
+        if deployment is None:
+            return  # nothing found
+
+        # verify if the deployment is ready to messed with
+        # scaling up / down via HPA in the middle of a deploy can
+        # cause havoc in the scheduler code
+        desired = deployment['spec']['replicas']
+        status = deployment['status']
+
+        if (
+            'unavailableReplicas' in status or
+            ('replicas' not in status or status['replicas'] is not desired) or
+            ('updatedReplicas' not in status or status['updatedReplicas'] is not desired) or
+            ('availableReplicas' not in status or status['availableReplicas'] is not desired)
+        ):
+            return
+
+        min_replicas = hpa['spec']['minReplicas']
+        max_replicas = hpa['spec']['maxReplicas']
+
+        if deployment['spec']['replicas'] < min_replicas:
+            deployment['spec']['replicas'] = min_replicas
+        elif deployment['spec']['replicas'] > max_replicas:
+            deployment['spec']['replicas'] = max_replicas
+
+        manage_replicasets(deployment, deploy)
 
 
 @CacheLock()
@@ -198,7 +248,7 @@ def add_cleanup_pod(url):
     pod = cache.get(url)
     grace = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
     pd = datetime.utcnow() + timedelta(seconds=grace)
-    timestamp = str(pd.strftime(settings.DEIS_DATETIME_FORMAT))
+    timestamp = str(pd.strftime(MockSchedulerClient.DATETIME_FORMAT))
     pod['metadata']['deletionTimestamp'] = timestamp
     cache.set(url, pod)
 
@@ -253,7 +303,7 @@ def create_pods(url, labels, base, new_pods):
     for _ in range(new_pods):
         data = base.copy()
         # creation time
-        timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
+        timestamp = str(datetime.utcnow().strftime(MockSchedulerClient.DATETIME_FORMAT))
         data['metadata']['creationTimestamp'] = timestamp
         data['metadata']['uid'] = str(uuid.uuid4())
 
@@ -261,7 +311,7 @@ def create_pods(url, labels, base, new_pods):
         if 'generateName' in data['metadata']:
             data['metadata']['name'] = data['metadata']['generateName'] + pod_name()
 
-        timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
+        timestamp = str(datetime.utcnow().strftime(MockSchedulerClient.DATETIME_FORMAT))
         data['status'] = {
             'startTime': timestamp,
             'conditions': [
@@ -348,6 +398,9 @@ def manage_replicasets(deployment, url):
 
     The input data is going to be a Deployment object
     """
+    # hash deployment.spec.template with adler32 to get pod hash
+    pod_hash = str(adler32(bytes(json.dumps(deployment['spec']['template'], sort_keys=True), 'UTF-8')))  # noqa
+
     # reset Deployments status
     deployment['status']['replicas'] = deployment['spec']['replicas']
     deployment['status']['unavailableReplicas'] = deployment['spec']['replicas']
@@ -357,18 +410,27 @@ def manage_replicasets(deployment, url):
         del deployment['status']['availableReplicas']
     cache.set(url, deployment, None)
 
-    # hash deployment.spec.template with adler32 to get pod hash
-    pod_hash = str(adler32(bytes(json.dumps(deployment['spec']['template'], sort_keys=True), 'UTF-8')))  # noqa
-
-    # fix up url
+    # get RS url
     rs_url = url.replace('_deployments_', '_replicasets_')
+    rs_url += '_' + pod_hash
+    namespaced_url = rs_url[0:(rs_url.find("_replicasets") + 12)]
+
+    # get latest RS for deployment to see if a new RS is needed
+    old_rs = cache.get(rs_url, None)
+    if old_rs is not None:
+        # found an RS, template has not changed. Only update Deployment.
+        old_rs['spec']['replicas'] = deployment['spec']['replicas']
+        cache.set(url, deployment, None)  # save Deployment
+        cache.set(rs_url, old_rs, None)  # save RS
+        upsert_pods(old_rs, rs_url)
+        update_deployment_status(namespaced_url, url, deployment, old_rs)
+        return
 
     # create new RS
     rs = copy.deepcopy(deployment)
     rs['kind'] = 'ReplicaSet'
-    # fix up the name
+    # fix up the name by adding pod hash to it
     rs['metadata']['name'] = rs['metadata']['name'] + '-' + pod_hash
-    rs_url += '_' + pod_hash
 
     # add the pod-template-hash label
     rs['metadata']['labels'] = rs['spec']['template']['metadata']['labels'].copy()
@@ -381,7 +443,6 @@ def manage_replicasets(deployment, url):
     # save new ReplicaSet to cache
     add_cache_item(rs_url, 'replicasets', rs)
 
-    namespaced_url = rs_url[0:(rs_url.find("_replicasets") + 12)]
     data = cache.get(namespaced_url, [])
 
     # spin up/down pods for RS
@@ -408,6 +469,10 @@ def manage_replicasets(deployment, url):
 
         upsert_pods(old_rs, item)
 
+    update_deployment_status(namespaced_url, url, deployment, rs)
+
+
+def update_deployment_status(namespaced_url, url, deployment, rs):
     # Fill out deployment.status for success as pods transition to running state
     pod_url = namespaced_url.replace('_replicasets', '_pods').replace('apis_extensions_v1beta1', 'api_v1')  # noqa
     while True:
@@ -561,6 +626,7 @@ def post(request, context):
     # check if the namespace being posted to exists
     if resource_type != 'namespaces':
         namespace, _ = url.split('_{}_'.format(resource_type))
+        namespace = namespace.replace('apis_autoscaling_v1', 'api_v1')
         namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
         if cache.get(namespace) is None:
             context.status_code = 404
@@ -573,7 +639,7 @@ def post(request, context):
         return {}
 
     # fill in generic data
-    timestamp = str(datetime.utcnow().strftime(settings.DEIS_DATETIME_FORMAT))
+    timestamp = str(datetime.utcnow().strftime(MockSchedulerClient.DATETIME_FORMAT))
     data['metadata']['creationTimestamp'] = timestamp
     data['metadata']['resourceVersion'] = 1
     data['metadata']['uid'] = str(uuid.uuid4())
@@ -616,6 +682,7 @@ def put(request, context):
     # check if the namespace being posted to exists
     if resource_type != 'namespaces':
         namespace, _ = url.split('_{}_'.format(resource_type))
+        namespace = namespace.replace('apis_autoscaling_v1', 'api_v1')
         namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
         if cache.get(namespace) is None:
             context.status_code = 404
@@ -646,13 +713,17 @@ def put(request, context):
         data['metadata']['resourceVersion'] += 1
         data['metadata']['generation'] += 1
         data['status']['observedGeneration'] += 1
+
+        # Update the individual resource
+        cache.set(url, data, None)
+
         if resource_type in ['replicationcontrollers', 'replicasets']:
             upsert_pods(data, url)
         elif resource_type == 'deployments':
             manage_replicasets(data, url)
-
-    # Update the individual resource
-    cache.set(url, data, None)
+    else:
+        # Update the individual resource
+        cache.set(url, data, None)
 
     context.status_code = 200
     context.reason = 'OK'
@@ -746,14 +817,21 @@ def mock_kubernetes(request, context):
     pod_state_transitions()
 
     # What to do about context
+    response = None
     if request.method == 'POST':
-        return post(request, context)
+        response = post(request, context)
     elif request.method == 'GET':
-        return get(request, context)
+        response = get(request, context)
     elif request.method == 'PUT':
-        return put(request, context)
+        response = put(request, context)
     elif request.method == 'DELETE':
-        return delete(request, context)
+        response = delete(request, context)
+
+    # autoscaling
+    process_hpa()
+
+    if response is not None:
+        return response
 
     # Log if any operation slips through that hasn't been accounted for
     logger.critical('COULD NOT FIND WHAT I AM')
@@ -776,41 +854,44 @@ def session():
 
 
 class MockSchedulerClient(KubeHTTPClient):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, url):
+        super().__init__(url)
+
+        # set version data
+        cache.set('version', {'major': '1', 'minor': '3'}, None)
 
         # Pre-seed data that is assumed to otherwise be there
         try:
-            self.get_namespace('deis')
+            self.ns.get('deis')
         except KubeHTTPException:
-            self.create_namespace('deis')
+            self.ns.create('deis')
 
         try:
-            self.get_secret('deis', 'objectstorage-keyfile')
+            self.secret.get('deis', 'objectstorage-keyfile')
         except KubeHTTPException:
             secrets = {
                 'access-key-id': 'i am a key',
                 'access-secret-key': 'i am a secret'
             }
-            self.create_secret('deis', 'objectstorage-keyfile', secrets)
+            self.secret.create('deis', 'objectstorage-keyfile', secrets)
 
         try:
-            self.get_secret('deis', 'registry-secret')
+            self.secret.get('deis', 'registry-secret')
         except KubeHTTPException:
             secrets = {
                 'username': 'test',
                 'password': 'test',
                 'hostname': ''
             }
-            self.create_secret('deis', 'registry-secret', secrets)
+            self.secret.create('deis', 'registry-secret', secrets)
 
         try:
-            self.get_namespace('duplicate')
+            self.ns.get('duplicate')
         except KubeHTTPException:
-            self.create_namespace('duplicate')
+            self.ns.create('duplicate')
 
         try:
-            self.get_node('172.17.8.100')
+            self.node.get('172.17.8.100')
         except KubeHTTPException:
             data = {
                 "kind": "Node",
@@ -891,6 +972,7 @@ class MockSchedulerClient(KubeHTTPClient):
             cache.set('api_v1_nodes', [name], None)
         except Exception as e:
             logger.critical(e)
+
 
 scheduler.session = session()
 SchedulerClient = MockSchedulerClient

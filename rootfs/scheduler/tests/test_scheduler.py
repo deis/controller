@@ -3,24 +3,15 @@ Unit tests for the Deis scheduler module.
 
 Run the tests with "./manage.py test scheduler"
 """
-from django.core.cache import cache
-from django.test import TestCase
+from scheduler.tests import TestCase
 from django.test.utils import override_settings
 
-from scheduler import mock
 import base64
 import json
 
 
 class SchedulerTest(TestCase):
     """Tests scheduler calls"""
-
-    def setUp(self):
-        self.scheduler = mock.MockSchedulerClient()
-
-    def tearDown(self):
-        # make sure every test has a clean slate for k8s mocking
-        cache.clear()
 
     def test_set_container_applies_healthcheck_with_routable(self):
         """
@@ -54,19 +45,19 @@ class SchedulerTest(TestCase):
                 'failureThreshold': 1,
             }
 
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data, routable=True, healthcheck=healthcheck
         )
         self.assertDictContainsSubset(healthcheck, data)
         data = {}
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data, routable=True, build_type="buildpack", healthcheck={}
         )
         self.assertEqual(data.get('livenessProbe'), None)
         self.assertEqual(data.get('readinessProbe'), readinessHealthCheck)
 
         data = {}
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data, routable=False, healthcheck={}
         )
         self.assertEqual(data.get('livenessProbe'), None)
@@ -74,7 +65,7 @@ class SchedulerTest(TestCase):
 
         # clear the dict to call again with routable as false
         data = {}
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data,
             routable=False, healthcheck=healthcheck
         )
@@ -83,7 +74,7 @@ class SchedulerTest(TestCase):
 
         # now call without setting 'routable', should default to False
         data = {}
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data, healthcheck=healthcheck
         )
         self.assertDictContainsSubset(healthcheck, data)
@@ -97,7 +88,7 @@ class SchedulerTest(TestCase):
                 }
             }
         }
-        self.scheduler._set_health_checks(
+        self.scheduler.pod._set_health_checks(
             data, {'PORT': 80}, healthcheck=livenessProbe
         )
         self.assertDictContainsSubset(healthcheck, data)
@@ -108,7 +99,7 @@ class SchedulerTest(TestCase):
         Test that when _set_container has limits that is sets them properly
         """
         data = {}
-        self.scheduler._set_container(
+        self.scheduler.pod._set_container(
             'foo', 'bar', data, app_type='fake',
             cpu={'fake': '500M'}, memory={'fake': '1024m'}
         )
@@ -123,7 +114,7 @@ class SchedulerTest(TestCase):
         encAuth = base64.b64encode(auth).decode(encoding='UTF-8')
         image = 'test/test'
 
-        docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
+        docker_config, secret_name, secret_create = self.scheduler.pod._get_private_registry_config(registry, image)  # noqa
         dockerConfig = json.loads(docker_config)
         expected = {"https://index.docker.io/v1/": {
             "auth": encAuth
@@ -134,7 +125,7 @@ class SchedulerTest(TestCase):
 
         image = "quay.io/test/test"
 
-        docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
+        docker_config, secret_name, secret_create = self.scheduler.pod._get_private_registry_config(registry, image)  # noqa
         dockerConfig = json.loads(docker_config)
         expected = {"quay.io": {
             "auth": encAuth
@@ -147,7 +138,7 @@ class SchedulerTest(TestCase):
     def test_get_private_registry_config_ecr(self):
         registry = {}
         image = "test.com/test/test"
-        docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
+        docker_config, secret_name, secret_create = self.scheduler.pod._get_private_registry_config(registry, image)  # noqa
         self.assertEqual(docker_config, None)
         self.assertEqual(secret_name, "private-registry-ecr")
         self.assertEqual(secret_create, False)
@@ -158,7 +149,7 @@ class SchedulerTest(TestCase):
         auth = bytes('{}:{}'.format("test", "test"), 'UTF-8')
         encAuth = base64.b64encode(auth).decode(encoding='UTF-8')
         image = "test.com/test/test"
-        docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
+        docker_config, secret_name, secret_create = self.scheduler.pod._get_private_registry_config(registry, image)  # noqa
         dockerConfig = json.loads(docker_config)
         expected = {"https://index.docker.io/v1/": {
             "auth": encAuth
@@ -171,7 +162,7 @@ class SchedulerTest(TestCase):
     def test_get_private_registry_config_bad_registry_location(self):
         registry = {}
         image = "test.com/test/test"
-        docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
+        docker_config, secret_name, secret_create = self.scheduler.pod._get_private_registry_config(registry, image)  # noqa
         self.assertEqual(docker_config, None)
         self.assertEqual(secret_name, None)
         self.assertEqual(secret_create, None)

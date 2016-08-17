@@ -1,5 +1,6 @@
 from django.core.cache import cache
 from django.test import TestCase as DjangoTestCase
+from django.conf import settings
 
 from scheduler import mock
 from scheduler.utils import generate_random_name
@@ -7,7 +8,7 @@ from scheduler.utils import generate_random_name
 
 class TestCase(DjangoTestCase):
     def setUp(self):
-        self.scheduler = mock.MockSchedulerClient()
+        self.scheduler = mock.MockSchedulerClient(settings.SCHEDULER_URL)
         # have a namespace available at all times
         self.namespace = self.create_namespace()
 
@@ -17,7 +18,7 @@ class TestCase(DjangoTestCase):
 
     def create_namespace(self):
         namespace = generate_random_name()
-        response = self.scheduler.create_namespace(namespace)
+        response = self.scheduler.ns.create(namespace)
         self.assertEqual(response.status_code, 201, response.json())
         # assert minimal amount data
         data = response.json()

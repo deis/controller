@@ -23,10 +23,9 @@ class DeploymentsTest(TestCase):
             'replicas': kwargs.get('replicas', 4),
         }
 
-        deployment = self.scheduler.create_deployment(namespace, name, 'quay.io/fake/image',
+        deployment = self.scheduler.deployment.create(namespace, name, 'quay.io/fake/image',
                                                       'sh', 'start', **kwargs)
-        data = deployment.json()
-        self.assertEqual(deployment.status_code, 201, data)
+        self.assertEqual(deployment.status_code, 201, deployment.json())
         return name
 
     def update(self, namespace=None, name=generate_random_name(), **kwargs):
@@ -41,7 +40,7 @@ class DeploymentsTest(TestCase):
             'replicas': kwargs.get('replicas', 4),
         }
 
-        deployment = self.scheduler.update_deployment(namespace, name, 'quay.io/fake/image',
+        deployment = self.scheduler.deployment.update(namespace, name, 'quay.io/fake/image',
                                                       'sh', 'start', **kwargs)
         data = deployment.json()
         self.assertEqual(deployment.status_code, 200, data)
@@ -83,13 +82,13 @@ class DeploymentsTest(TestCase):
     def test_update(self):
         # test success
         name = self.create()
-        deployment = self.scheduler.get_deployment(self.namespace, name).json()
+        deployment = self.scheduler.deployment.get(self.namespace, name).json()
         self.assertEqual(deployment['spec']['replicas'], 4, deployment)
 
         # emulate scale without calling scale
         self.update(self.namespace, name, replicas=2)
 
-        deployment = self.scheduler.get_deployment(self.namespace, name).json()
+        deployment = self.scheduler.deployment.get(self.namespace, name).json()
         self.assertEqual(deployment['spec']['replicas'], 2, deployment)
 
     def test_delete_failure(self):
@@ -98,19 +97,19 @@ class DeploymentsTest(TestCase):
             KubeHTTPException,
             msg='failed to delete Deployment foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.delete_deployment(self.namespace, 'foo')
+            self.scheduler.deployment.delete(self.namespace, 'foo')
 
     def test_delete(self):
         # test success
         name = self.create()
-        response = self.scheduler.delete_deployment(self.namespace, name)
+        response = self.scheduler.deployment.delete(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
 
     def test_get_deployments(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_deployments(self.namespace)
+        response = self.scheduler.deployment.get(self.namespace)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -124,12 +123,12 @@ class DeploymentsTest(TestCase):
             KubeHTTPException,
             msg='failed to get Deployment doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.get_deployment(self.namespace, 'doesnotexist')
+            self.scheduler.deployment.get(self.namespace, 'doesnotexist')
 
     def test_get_deployment(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_deployment(self.namespace, name)
+        response = self.scheduler.deployment.get(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertEqual(data['apiVersion'], 'extensions/v1beta1')
@@ -145,22 +144,22 @@ class DeploymentsTest(TestCase):
 
     def test_scale(self):
         name = self.scale()
-        data = self.scheduler.get_deployment(self.namespace, name).json()
+        data = self.scheduler.deployment.get(self.namespace, name).json()
         self.assertEqual(data['kind'], 'Deployment')
         self.assertEqual(data['metadata']['name'], name)
 
         labels = {'app': self.namespace, 'version': 'v99', 'type': 'web'}
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
+        pods = self.scheduler.pod.get(self.namespace, labels=labels).json()
         self.assertEqual(len(pods['items']), 4)
 
         # scale to 8
         name = self.scale(replicas=8)
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
+        pods = self.scheduler.pod.get(self.namespace, labels=labels).json()
         self.assertEqual(len(pods['items']), 8)
 
         # scale to 3
         name = self.scale(replicas=3)
-        pods = self.scheduler.get_pods(self.namespace, labels=labels).json()
+        pods = self.scheduler.pod.get(self.namespace, labels=labels).json()
         self.assertEqual(len(pods['items']), 3)
 
     def test_get_deployment_replicasets(self):
@@ -169,10 +168,9 @@ class DeploymentsTest(TestCase):
         """
         # test success
         deployment = self.create()
-        data = self.scheduler.get_deployment(self.namespace, deployment).json()
+        data = self.scheduler.deployment.get(self.namespace, deployment).json()
 
-        response = self.scheduler.get_replicasets(self.namespace,
-                                                  labels=data['metadata']['labels'])
+        response = self.scheduler.rs.get(self.namespace, labels=data['metadata']['labels'])
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -189,7 +187,7 @@ class DeploymentsTest(TestCase):
             KubeHTTPException,
             msg='failed to get ReplicaSet doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.get_replicaset(self.namespace, 'doesnotexist')
+            self.scheduler.rs.get(self.namespace, 'doesnotexist')
 
     def test_get_deployment_replicaset(self):
         """
@@ -197,15 +195,14 @@ class DeploymentsTest(TestCase):
         """
         # test success
         deployment = self.create()
-        data = self.scheduler.get_deployment(self.namespace, deployment).json()
+        data = self.scheduler.deployment.get(self.namespace, deployment).json()
 
         # get all replicasets and fish out the first one to match on
-        response = self.scheduler.get_replicasets(self.namespace,
-                                                  labels=data['metadata']['labels'])
+        response = self.scheduler.rs.get(self.namespace, labels=data['metadata']['labels'])
         data = response.json()
 
         replica_name = data['items'][0]['metadata']['name']
-        response = self.scheduler.get_replicaset(self.namespace, replica_name)
+        response = self.scheduler.rs.get(self.namespace, replica_name)
         data = response.json()
 
         self.assertEqual(response.status_code, 200, data)

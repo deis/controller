@@ -23,7 +23,7 @@ class ReplicationControllersTest(TestCase):
             'replicas': kwargs.get('replicas', 4),
         }
 
-        rc = self.scheduler.create_rc(namespace, name, 'quay.io/fake/image',
+        rc = self.scheduler.rc.create(namespace, name, 'quay.io/fake/image',
                                       'sh', 'start', **kwargs)
         data = rc.json()
         self.assertEqual(rc.status_code, 201, data)
@@ -61,19 +61,19 @@ class ReplicationControllersTest(TestCase):
             KubeHTTPException,
             msg='failed to update ReplicationController foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.update_rc(self.namespace, 'foo', {})
+            self.scheduler.rc.update(self.namespace, 'foo', {})
 
     def test_update(self):
         # test success
         name = self.create()
-        rc = self.scheduler.get_rc(self.namespace, name).json()
+        rc = self.scheduler.rc.get(self.namespace, name).json()
         self.assertEqual(rc['spec']['replicas'], 4, rc)
 
         rc['spec']['replicas'] = 2
-        response = self.scheduler.update_rc(self.namespace, name, rc)
+        response = self.scheduler.rc.update(self.namespace, name, rc)
         self.assertEqual(response.status_code, 200, response.json())
 
-        rc = self.scheduler.get_rc(self.namespace, name).json()
+        rc = self.scheduler.rc.get(self.namespace, name).json()
         self.assertEqual(rc['spec']['replicas'], 2, rc)
 
     def test_delete_failure(self):
@@ -82,19 +82,19 @@ class ReplicationControllersTest(TestCase):
             KubeHTTPException,
             msg='failed to delete ReplicationController foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.delete_rc(self.namespace, 'foo')
+            self.scheduler.rc.delete(self.namespace, 'foo')
 
     def test_delete(self):
         # test success
         name = self.create()
-        response = self.scheduler.delete_rc(self.namespace, name)
+        response = self.scheduler.rc.delete(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
 
     def test_get_rcs(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_rcs(self.namespace)
+        response = self.scheduler.rc.get(self.namespace)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -108,12 +108,12 @@ class ReplicationControllersTest(TestCase):
             KubeHTTPException,
             msg='failed to get ReplicationController doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.get_rc(self.namespace, 'doesnotexist')
+            self.scheduler.rc.get(self.namespace, 'doesnotexist')
 
     def test_get_rc(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_rc(self.namespace, name)
+        response = self.scheduler.rc.get(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertEqual(data['apiVersion'], 'v1')

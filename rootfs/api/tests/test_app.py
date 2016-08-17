@@ -373,22 +373,22 @@ class AppTest(DeisTestCase):
 
     def test_app_create_failure_kubernetes_create(self, mock_requests):
         """
-        Create an app but have scheduler.create_service fail with an exception
+        Create an app but have scheduler.svc.create fail with an exception
         """
-        with mock.patch('scheduler.KubeHTTPClient.create_service') as mock_kube:
+        with mock.patch('scheduler.resources.service.Service.create') as mock_kube:
             mock_kube.side_effect = KubeException('Boom!')
             response = self.client.post('/v2/apps')
             self.assertEqual(response.status_code, 503, response.data)
 
     def test_app_delete_failure_kubernetes_destroy(self, mock_requests):
         """
-        Create an app and then delete but have scheduler.delete_namespace
+        Create an app and then delete but have scheduler.ns.delete
         fail with an exception
         """
         # create
         app_id = self.create_app()
 
-        with mock.patch('scheduler.KubeHTTPClient.delete_namespace') as mock_kube:
+        with mock.patch('scheduler.resources.namespace.Namespace.delete') as mock_kube:
             # delete
             mock_kube.side_effect = KubeException('Boom!')
             response = self.client.delete('/v2/apps/{}'.format(app_id))

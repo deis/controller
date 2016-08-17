@@ -104,7 +104,7 @@ class App(UuidAuditedModel):
             self.release_set.latest()
         except Release.DoesNotExist:
             try:
-                if self._scheduler.get_namespace(self.id).status_code == 200:
+                if self._scheduler.ns.get(self.id).status_code == 200:
                     # Namespace already exists
                     err = "{} already exists as a namespace in this kuberenetes setup".format(self.id)  # noqa
                     self.log(err, logging.INFO)
@@ -203,18 +203,18 @@ class App(UuidAuditedModel):
             self.log('creating Namespace {} and services'.format(namespace), level=logging.DEBUG)
             # Create essential resources
             try:
-                self._scheduler.get_namespace(namespace)
+                self._scheduler.ns.get(namespace)
             except KubeException:
-                self._scheduler.create_namespace(namespace)
+                self._scheduler.ns.create(namespace)
 
             try:
-                self._scheduler.get_service(namespace, service)
+                self._scheduler.svc.get(namespace, service)
             except KubeException:
-                self._scheduler.create_service(namespace, service)
+                self._scheduler.svc.create(namespace, service)
         except KubeException as e:
             # Blow it all away only if something horrible happens
             try:
-                self._scheduler.delete_namespace(namespace)
+                self._scheduler.ns.delete(namespace)
             except KubeException as e:
                 # Just feed into the item below
                 raise ServiceUnavailable('Could not delete the Namespace in Kubernetes') from e
@@ -234,12 +234,12 @@ class App(UuidAuditedModel):
         """Delete this application including all containers"""
         self.log("deleting environment")
         try:
-            self._scheduler.delete_namespace(self.id)
+            self._scheduler.ns.delete(self.id)
 
             # wait 30 seconds for termination
             for _ in range(30):
                 try:
-                    self._scheduler.get_namespace(self.id)
+                    self._scheduler.ns.get(self.id)
                 except KubeException:
                     break
         except KubeException as e:
@@ -264,7 +264,7 @@ class App(UuidAuditedModel):
                 desired = 0
                 labels = self._scheduler_filter(**kwargs)
                 # fetch RS (which represent Deployments)
-                controllers = self._scheduler.get_replicasets(kwargs['id'], labels=labels)
+                controllers = self._scheduler.rs.get(kwargs['id'], labels=labels)
 
                 for controller in controllers.json()['items']:
                     desired += controller['spec']['replicas']
@@ -275,7 +275,7 @@ class App(UuidAuditedModel):
         try:
             tasks = [
                 functools.partial(
-                    self._scheduler.delete_pod,
+                    self._scheduler.pod.delete,
                     self.id,
                     pod['name']
                 ) for pod in self.list_pods(**kwargs)
@@ -577,7 +577,7 @@ class App(UuidAuditedModel):
         for scale_type, kwargs in deploys.items():
             # Is there an existing deployment in progress?
             name = self._get_job_id(scale_type)
-            in_progress, deploy_okay = self._scheduler.deployment_in_progress(
+            in_progress, deploy_okay = self._scheduler.deployment.in_progress(
                 self.id, name, kwargs.get("deploy_timeout"), kwargs.get("deploy_batches"),
                 kwargs.get("replicas"), kwargs.get("tags")
             )
@@ -768,9 +768,9 @@ class App(UuidAuditedModel):
 
             # in case a singular pod is requested
             if 'name' in kwargs:
-                pods = [self._scheduler.get_pod(self.id, kwargs['name']).json()]
+                pods = [self._scheduler.pod.get(self.id, kwargs['name']).json()]
             else:
-                pods = self._scheduler.get_pods(self.id, labels=labels).json()['items']
+                pods = self._scheduler.pod.get(self.id, labels=labels).json()['items']
 
             data = []
             for p in pods:
@@ -779,14 +779,14 @@ class App(UuidAuditedModel):
                 if labels['type'] == 'run':
                     continue
 
-                state = str(self._scheduler.pod_state(p))
+                state = str(self._scheduler.pod.state(p))
 
                 # follows kubelete convention - these are hidden unless show-all is set
                 if state in ['down', 'crashed']:
                     continue
 
                 # hide pod if it is passed the graceful termination period
-                if self._scheduler.pod_deleted(p):
+                if self._scheduler.pod.deleted(p):
                     continue
 
                 item = Pod()
@@ -862,9 +862,9 @@ class App(UuidAuditedModel):
 
         try:
             service['metadata']['annotations']['router.deis.io/maintenance'] = str(mode).lower()
-            self._scheduler.update_service(self.id, self.id, data=service)
+            self._scheduler.svc.update(self.id, self.id, data=service)
         except KubeException as e:
-            self._scheduler.update_service(self.id, self.id, data=old_service)
+            self._scheduler.svc.update(self.id, self.id, data=old_service)
             raise ServiceUnavailable(str(e)) from e
 
     def routable(self, routable):
@@ -876,9 +876,9 @@ class App(UuidAuditedModel):
 
         try:
             service['metadata']['labels']['router.deis.io/routable'] = str(routable).lower()
-            self._scheduler.update_service(self.id, self.id, data=service)
+            self._scheduler.svc.update(self.id, self.id, data=service)
         except KubeException as e:
-            self._scheduler.update_service(self.id, self.id, data=old_service)
+            self._scheduler.svc.update(self.id, self.id, data=old_service)
             raise ServiceUnavailable(str(e)) from e
 
     def _update_application_service(self, namespace, app_type, port, routable=False, annotations={}):  # noqa
@@ -907,10 +907,10 @@ class App(UuidAuditedModel):
                         # port 80 is the only one we care about right now
                         service['spec']['ports'][pos]['targetPort'] = int(port)
 
-            self._scheduler.update_service(namespace, namespace, data=service)
+            self._scheduler.svc.update(namespace, namespace, data=service)
         except Exception as e:
             # Fix service to old port and app type
-            self._scheduler.update_service(namespace, namespace, data=old_service)
+            self._scheduler.svc.update(namespace, namespace, data=old_service)
             raise KubeException(str(e)) from e
 
     def whitelist(self, whitelist):
@@ -922,6 +922,6 @@ class App(UuidAuditedModel):
         try:
             addresses = ",".join(address for address in whitelist)
             service['metadata']['annotations']['router.deis.io/whitelist'] = addresses
-            self._scheduler.update_service(self.id, self.id, data=service)
+            self._scheduler.svc.update(self.id, self.id, data=service)
         except KubeException as e:
             raise ServiceUnavailable(str(e)) from e

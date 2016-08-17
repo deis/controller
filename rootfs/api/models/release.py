@@ -152,8 +152,10 @@ class Release(UuidAuditedModel):
             # application has registry auth - $PORT is required
             if (creds is not None) or (settings.REGISTRY_LOCATION != 'on-cluster'):
                 if envs.get('PORT', None) is None:
-                    self.app.log('Private registry detected but no $PORT defined. Defaulting to $PORT 5000', logging.WARNING)  # noqa
-                    return 5000
+                    raise DeisException(
+                        'PORT needs to be set in the config '
+                        'when using a private registry'
+                    )
 
                 # User provided PORT
                 return int(envs.get('PORT'))

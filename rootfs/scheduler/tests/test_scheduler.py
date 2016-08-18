@@ -5,7 +5,7 @@ Run the tests with "./manage.py test scheduler"
 """
 from django.core.cache import cache
 from django.test import TestCase
-from django.conf import settings
+from django.test.utils import override_settings
 
 from scheduler import mock
 import base64
@@ -143,7 +143,8 @@ class SchedulerTest(TestCase):
         self.assertEqual(secret_name, "private-registry")
         self.assertEqual(secret_create, True)
 
-        settings.REGISTRY_LOCATION = "ecr"
+    @override_settings(REGISTRY_LOCATION="ecr")
+    def test_get_private_registry_config_ecr(self):
         registry = {}
         image = "test.com/test/test"
         docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
@@ -151,7 +152,12 @@ class SchedulerTest(TestCase):
         self.assertEqual(secret_name, "private-registry-ecr")
         self.assertEqual(secret_create, False)
 
-        settings.REGISTRY_LOCATION = "off-cluster"
+    @override_settings(REGISTRY_LOCATION="off-cluster")
+    def test_get_private_registry_config_off_cluster(self):
+        registry = {}
+        auth = bytes('{}:{}'.format("test", "test"), 'UTF-8')
+        encAuth = base64.b64encode(auth).decode(encoding='UTF-8')
+        image = "test.com/test/test"
         docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
         dockerConfig = json.loads(docker_config)
         expected = {"https://index.docker.io/v1/": {
@@ -161,7 +167,9 @@ class SchedulerTest(TestCase):
         self.assertEqual(secret_name, "private-registry-off-cluster")
         self.assertEqual(secret_create, True)
 
-        settings.REGISTRY_LOCATION = "ecra"
+    @override_settings(REGISTRY_LOCATION="ecra")
+    def test_get_private_registry_config_bad_registry_location(self):
+        registry = {}
         image = "test.com/test/test"
         docker_config, secret_name, secret_create = self.scheduler._get_private_registry_config(registry, image)  # noqa
         self.assertEqual(docker_config, None)

@@ -454,22 +454,6 @@ class KeyHookViewSet(BaseHookViewSet):
         return Response(data, status=status.HTTP_200_OK)
 
 
-class PushHookViewSet(BaseHookViewSet):
-    """API hook to create new :class:`~api.models.Push`"""
-    model = models.Push
-    serializer_class = serializers.PushSerializer
-
-    def create(self, request, *args, **kwargs):
-        app = get_object_or_404(models.App, id=request.data['receive_repo'])
-        request.user = get_object_or_404(User, username=request.data['receive_user'])
-        # check the user is authorized for this app
-        if not permissions.is_app_user(request, app):
-            raise PermissionDenied()
-        request.data['app'] = app
-        request.data['owner'] = request.user
-        return super(PushHookViewSet, self).create(request, *args, **kwargs)
-
-
 class BuildHookViewSet(BaseHookViewSet):
     """API hook to create new :class:`~api.models.Build`"""
     model = models.Build

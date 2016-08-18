@@ -10,12 +10,13 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
-from django.conf import settings
+from django.test.utils import override_settings
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Release
 from scheduler import KubeHTTPException
+from api.exceptions import DeisException
 from api.tests import adapter, mock_port, DeisTransactionTestCase
 import requests_mock
 
@@ -380,20 +381,19 @@ class ReleaseTest(DeisTransactionTestCase):
 
         # TODO(bacongobbler): test dockerfile ports
 
+    @override_settings(REGISTRY_LOCATION="off-cluster")
     def test_release_external_registry(self, mock_requests):
         """
         Test that get_port always returns the proper value.
         """
-        app_id = "test"
-        body = {'id': app_id}
-        response = self.client.post('/v2/apps', body,)
-        self.assertEqual(response.status_code, 201, response.data)
+        app_id = self.create_app()
+
+        # set the required port for external registries
         body = {'values': json.dumps({'PORT': '3000'})}
-        config_response = self.client.post('/v2/apps/test/config', body)
+        config_response = self.client.post('/v2/apps/{}/config'.format(app_id), body)
         self.assertEqual(config_response.status_code, 201, config_response.data)
 
         app = App.objects.get(id=app_id)
-        settings.REGISTRY_LOCATION = "off-cluster"
         url = '/v2/apps/{app_id}/builds'.format(**locals())
         body = {'image': 'test/autotest/example'}
         response = self.client.post(url, body)
@@ -403,3 +403,24 @@ class ReleaseTest(DeisTransactionTestCase):
         self.assertEqual(release.get_port(), 3000)
 
         self.assertEqual(release.image, 'test/autotest/example')
+
+    @override_settings(REGISTRY_LOCATION="off-cluster")
+    def test_release_external_registry_no_port(self, mock_requests):
+        """
+        Test that an exception is raised when registry if off-cluster but
+        no port is provided.
+        """
+        app_id = self.create_app()
+
+        app = App.objects.get(id=app_id)
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'test/autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+
+        with self.assertRaises(
+            DeisException,
+            msg='PORT needs to be set in the config when using a private registry'
+        ):
+            release = app.release_set.latest()
+            release.get_port()

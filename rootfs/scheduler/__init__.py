@@ -90,12 +90,10 @@ class KubeHTTPClient(object):
         app_type = kwargs.get('app_type')
         routable = kwargs.get('routable', False)
         service_annotations = kwargs.get('service_annotations', {})
-        envs = kwargs.get('envs', {})
-        port = envs.get('PORT', None)
+        port = kwargs.get('envs', {}).get('PORT', None)
 
         # create a deployment if missing, otherwise update to trigger a release
         try:
-            deployment = self.get_deployment(namespace, name).json()
             # labels that represent the pod(s)
             version = kwargs.get('version')
             labels = {
@@ -105,6 +103,7 @@ class KubeHTTPClient(object):
                 'heritage': 'deis',
             }
             # this depends on the deployment object having the latest information
+            deployment = self.get_deployment(namespace, name).json()
             if deployment['spec']['template']['metadata']['labels'] == labels:
                 self.log(namespace, 'Deployment {} with release {} already exists. Stopping deploy'.format(name, version))  # noqa
                 return
@@ -135,7 +134,7 @@ class KubeHTTPClient(object):
         # Make sure the application is routable and uses the correct port
         # Done after the fact to let initial deploy settle before routing
         # traffic to the application
-        self._update_application_service(namespace, name, app_type, port, routable, service_annotations)  # noqa
+        self._update_application_service(namespace, app_type, port, routable, service_annotations)  # noqa
 
     def cleanup_release(self, namespace, controller, timeout):
         """
@@ -177,7 +176,7 @@ class KubeHTTPClient(object):
 
         return batches
 
-    def _update_application_service(self, namespace, name, app_type, port, routable=False, annotations={}):  # noqa
+    def _update_application_service(self, namespace, app_type, port, routable=False, annotations={}):  # noqa
         """Update application service with all the various required information"""
         service = self.get_service(namespace, namespace).json()
         old_service = service.copy()  # in case anything fails for rollback

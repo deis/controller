@@ -841,3 +841,31 @@ class App(UuidAuditedModel):
         # merge envs on top of default to make envs win
         default_env.update(envs)
         return default_env
+
+    def maintenance_mode(self, mode):
+        """
+        Turn application maintenance mode on/off
+        """
+        service = self._fetch_service_config(self.id)
+        old_service = service.copy()  # in case anything fails for rollback
+
+        try:
+            service['metadata']['annotations']['router.deis.io/maintenance'] = str(mode).lower()
+            self._scheduler.update_service(self.id, self.id, data=service)
+        except KubeException as e:
+            self._scheduler.update_service(self.id, self.id, data=old_service)
+            raise ServiceUnavailable(str(e)) from e
+
+    def routable(self, routable):
+        """
+        Turn on/off if an application is publically routable
+        """
+        service = self._fetch_service_config(self.id)
+        old_service = service.copy()  # in case anything fails for rollback
+
+        try:
+            service['metadata']['labels']['router.deis.io/routable'] = str(routable).lower()
+            self._scheduler.update_service(self.id, self.id, data=service)
+        except KubeException as e:
+            self._scheduler.update_service(self.id, self.id, data=old_service)
+            raise ServiceUnavailable(str(e)) from e

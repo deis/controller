@@ -4,7 +4,6 @@ from django.db import models
 
 from api.models import UuidAuditedModel
 from api.exceptions import DeisException, AlreadyExists
-from scheduler import KubeException
 
 
 class AppSettings(UuidAuditedModel):
@@ -25,62 +24,36 @@ class AppSettings(UuidAuditedModel):
     def __str__(self):
         return "{}-{}".format(self.app.id, str(self.uuid)[:7])
 
-    def set_maintenance(self, maintenance):
-        namespace = self.app.id
-        service = self._fetch_service_config(namespace)
-        old_service = service.copy()  # in case anything fails for rollback
-
-        try:
-            service['metadata']['annotations']['router.deis.io/maintenance'] = str(maintenance)
-            self._scheduler.update_service(namespace, namespace, data=service)
-        except Exception as e:
-            self._scheduler.update_service(namespace, namespace, data=old_service)
-            raise KubeException(str(e)) from e
-
-    def set_routable(self, routable):
-        namespace = self.app.id
-        service = self._fetch_service_config(namespace)
-        old_service = service.copy()  # in case anything fails for rollback
-
-        try:
-            service['metadata']['labels']['router.deis.io/routable'] = str(routable).lower()
-            self._scheduler.update_service(namespace, namespace, data=service)
-        except Exception as e:
-            self._scheduler.update_service(namespace, namespace, data=old_service)
-            raise KubeException(str(e)) from e
-
     def update_maintenance(self, previous_settings):
-        prev_maintenance = getattr(previous_settings, 'maintenance', None)
-        new_maintenance = getattr(self, 'maintenance', None)
-        # If no previous settings, assume this is first timeout
-        # and set the default maintenance as false
+        old = getattr(previous_settings, 'maintenance', None)
+        new = getattr(self, 'maintenance', None)
+        # If no previous settings then assume it is the first record and default to true
         if not previous_settings:
             setattr(self, 'maintenance', False)
-            self.set_maintenance(False)
+            self.app.maintenance_mode(False)
         # if nothing changed copy the settings from previous
-        elif new_maintenance is None and prev_maintenance is not None:
-            setattr(self, 'maintenance', prev_maintenance)
-        elif prev_maintenance != new_maintenance:
-            self.set_maintenance(new_maintenance)
-            self.summary += "{} changed maintenance mode from {} to {}".format(self.owner, prev_maintenance, new_maintenance)  # noqa
+        elif new is None and old is not None:
+            setattr(self, 'maintenance', old)
+        elif old != new:
+            self.app.maintenance_mode(new)
+            self.summary += ["{} changed maintenance mode from {} to {}".format(self.owner, old, new)]  # noqa
 
     def update_routable(self, previous_settings):
-        old_routable = getattr(previous_settings, 'routable', None)
-        new_routable = getattr(self, 'routable', None)
-        # If no previous settings, assume this is first timeout
-        # and set the default maintenance as true
+        old = getattr(previous_settings, 'routable', None)
+        new = getattr(self, 'routable', None)
+        # If no previous settings then assume it is the first record and default to true
         if not previous_settings:
             setattr(self, 'routable', True)
-            self.set_routable(True)
+            self.app.routable(True)
         # if nothing changed copy the settings from previous
-        elif new_routable is None and old_routable is not None:
-            setattr(self, 'routable', old_routable)
-        elif old_routable != new_routable:
-            self.set_routable(new_routable)
-            self.summary += "{} changed routablity from {} to {}".format(self.owner, old_routable, new_routable)  # noqa
+        elif new is None and old is not None:
+            setattr(self, 'routable', old)
+        elif old != new:
+            self.app.routable(new)
+            self.summary += ["{} changed routablity from {} to {}".format(self.owner, old, new)]
 
     def save(self, *args, **kwargs):
-        self.summary = ''
+        self.summary = []
         previous_settings = None
         try:
             previous_settings = self.app.appsettings_set.latest()
@@ -97,6 +70,7 @@ class AppSettings(UuidAuditedModel):
         if not self.summary and previous_settings:
             self.delete()
             raise AlreadyExists("{} changed nothing".format(self.owner))
-        self.app.log('summary of app setting changes: {}'.format(self.summary), logging.DEBUG)
 
+        summary = ' '.join(self.summary)
+        self.app.log('summary of app setting changes: {}'.format(summary), logging.DEBUG)
         return super(AppSettings, self).save(**kwargs)

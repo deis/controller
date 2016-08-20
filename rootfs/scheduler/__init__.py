@@ -84,18 +84,28 @@ class KubeHTTPClient(object):
         logger.log(level, "[{}]: {}".format(namespace, message))
 
     def deploy(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
-        """Scale Deployment depending on what's requested"""
+        """Deploy Deployment depending on what's requested"""
         self.deploy_timeout = kwargs.get('deploy_timeout')
-
         app_type = kwargs.get('app_type')
+        version = kwargs.get('version')
         routable = kwargs.get('routable', False)
         service_annotations = kwargs.get('service_annotations', {})
         port = kwargs.get('envs', {}).get('PORT', None)
 
+        # If an RC already exists then stop processing of the deploy
+        try:
+            # construct old school RC name
+            rc_name = '{}-{}-{}'.format(namespace, version, app_type)
+            self.get_rc(namespace, rc_name)
+            self.log(namespace, 'RC {} already exists. Stopping deploy'.format(rc_name))
+            return
+        except KubeHTTPException:
+            # if RC doesn't exist then let the app continue
+            pass
+
         # create a deployment if missing, otherwise update to trigger a release
         try:
             # labels that represent the pod(s)
-            version = kwargs.get('version')
             labels = {
                 'app': namespace,
                 'version': version,

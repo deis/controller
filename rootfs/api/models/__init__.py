@@ -114,25 +114,48 @@ class UuidAuditedModel(AuditedModel):
 
 
 from .app import App, validate_id_is_docker_compatible, validate_reserved_names, validate_app_structure  # noqa
-from .key import Key, validate_base64  # noqa
-from .certificate import Certificate, validate_certificate  # noqa
-from .domain import Domain  # noqa
-from .release import Release  # noqa
-from .config import Config  # noqa
-from .build import Build  # noqa
 from .appsettings import AppSettings  # noqa
+from .build import Build  # noqa
+from .certificate import Certificate, validate_certificate  # noqa
+from .config import Config  # noqa
+from .domain import Domain  # noqa
+from .key import Key, validate_base64  # noqa
+from .release import Release  # noqa
+from .tls import TLS  # noqa
 
 # define update/delete callbacks for synchronizing
 # models with the configuration management backend
 
 
-def _log_build_created(**kwargs):
+def _log_instance_created(**kwargs):
     if kwargs.get('created'):
-        build = kwargs['instance']
-        # log only to the controller; this event will be logged in the release summary
-        build.app.log("build {} created".format(build))
+        instance = kwargs['instance']
+        message = '{} {} created'.format(instance.__class__.__name__, instance)
+        if hasattr(instance, 'app'):
+            instance.app.log(message)
+        else:
+            logger.info(message)
 
 
+def _log_instance_updated(**kwargs):
+    instance = kwargs['instance']
+    message = '{} {} updated'.format(instance.__class__.__name__, instance)
+    if hasattr(instance, 'app'):
+        instance.app.log(message)
+    else:
+        logger.info(message)
+
+
+def _log_instance_removed(**kwargs):
+    instance = kwargs['instance']
+    message = '{} {} removed'.format(instance.__class__.__name__, instance)
+    if hasattr(instance, 'app'):
+        instance.app.log(message)
+    else:
+        logger.info(message)
+
+
+# special case: log the release summary
 def _log_release_created(**kwargs):
     if kwargs.get('created'):
         release = kwargs['instance']
@@ -140,49 +163,19 @@ def _log_release_created(**kwargs):
         release.app.log(release.summary)
 
 
-def _log_config_updated(**kwargs):
-    config = kwargs['instance']
-    # log only to the controller; this event will be logged in the release summary
-    config.app.log("config {} updated".format(config))
-
-
-def _log_app_settings_updated(**kwargs):
-    appSettings = kwargs['instance']
-    # log only to the controller; this event will be logged in the release summary
-    appSettings.app.log("application settings {} updated".format(appSettings))
-
-
-def _log_domain_added(**kwargs):
-    if kwargs.get('created'):
-        domain = kwargs['instance']
-        domain.app.log("domain {} added".format(domain))
-
-
-def _log_domain_removed(**kwargs):
-    domain = kwargs['instance']
-    domain.app.log("domain {} removed".format(domain))
-
-
-def _log_cert_added(**kwargs):
-    if kwargs.get('created'):
-        cert = kwargs['instance']
-        logger.info("cert {} added".format(cert))
-
-
-def _log_cert_removed(**kwargs):
-    cert = kwargs['instance']
-    logger.info("cert {} removed".format(cert))
-
-
 # Log significant app-related events
-post_save.connect(_log_build_created, sender=Build, dispatch_uid='api.models.log')
 post_save.connect(_log_release_created, sender=Release, dispatch_uid='api.models.log')
-post_save.connect(_log_config_updated, sender=Config, dispatch_uid='api.models.log')
-post_save.connect(_log_domain_added, sender=Domain, dispatch_uid='api.models.log')
-post_save.connect(_log_cert_added, sender=Certificate, dispatch_uid='api.models.log')
-post_save.connect(_log_app_settings_updated, sender=AppSettings, dispatch_uid='api.models.log')
-post_delete.connect(_log_domain_removed, sender=Domain, dispatch_uid='api.models.log')
-post_delete.connect(_log_cert_removed, sender=Certificate, dispatch_uid='api.models.log')
+
+post_save.connect(_log_instance_created, sender=Build, dispatch_uid='api.models.log')
+post_save.connect(_log_instance_created, sender=Certificate, dispatch_uid='api.models.log')
+post_save.connect(_log_instance_created, sender=Domain, dispatch_uid='api.models.log')
+
+post_save.connect(_log_instance_updated, sender=AppSettings, dispatch_uid='api.models.log')
+post_save.connect(_log_instance_updated, sender=Config, dispatch_uid='api.models.log')
+
+post_delete.connect(_log_instance_removed, sender=Certificate, dispatch_uid='api.models.log')
+post_delete.connect(_log_instance_removed, sender=Domain, dispatch_uid='api.models.log')
+post_delete.connect(_log_instance_removed, sender=TLS, dispatch_uid='api.models.log')
 
 
 # automatically generate a new token on creation

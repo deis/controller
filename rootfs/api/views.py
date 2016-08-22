@@ -406,6 +406,11 @@ class ReleaseViewSet(AppResourceViewSet):
         return Response(response, status=status.HTTP_201_CREATED)
 
 
+class TLSViewSet(AppResourceViewSet):
+    model = models.TLS
+    serializer_class = serializers.TLSSerializer
+
+
 class BaseHookViewSet(BaseDeisViewSet):
     permission_classes = [permissions.HasBuilderAuth]
 

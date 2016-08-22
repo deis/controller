@@ -4,6 +4,7 @@ from pyasn1.type import univ, constraint
 from ndg.httpsclient.ssl_peer_verification import SUBJ_ALT_NAME_SUPPORT
 from ndg.httpsclient.subj_alt_name import SubjectAltName as BaseSubjectAltName
 from datetime import datetime
+from pytz import utc
 
 from django.shortcuts import get_object_or_404
 from django.db import models
@@ -122,7 +123,7 @@ class Certificate(AuditedModel):
             # Convert bytes to string
             timestamp = certificate.get_notAfter().decode(encoding='UTF-8')
             # convert openssl's expiry date format to Django's DateTimeField format
-            self.expires = datetime.strptime(timestamp, '%Y%m%d%H%M%SZ')
+            self.expires = datetime.strptime(timestamp, '%Y%m%d%H%M%SZ').replace(tzinfo=utc)
 
         # Grab the start date of the certificate
         if not self.starts:
@@ -130,7 +131,7 @@ class Certificate(AuditedModel):
             # Convert bytes to string
             timestamp = certificate.get_notBefore().decode(encoding='UTF-8')
             # convert openssl's starts date format to Django's DateTimeField format
-            self.starts = datetime.strptime(timestamp, '%Y%m%d%H%M%SZ')
+            self.starts = datetime.strptime(timestamp, '%Y%m%d%H%M%SZ').replace(tzinfo=utc)
 
         # process issuers - separate each key/value with a slash
         issuer = certificate.get_issuer().get_components()

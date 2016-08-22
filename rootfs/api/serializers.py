@@ -437,14 +437,10 @@ class CertificateSerializer(serializers.ModelSerializer):
     """Serialize a :class:`~api.models.Cert` model."""
 
     owner = serializers.ReadOnlyField(source='owner.username')
+    domains = serializers.ReadOnlyField()
     san = serializers.ListField(
         child=serializers.CharField(allow_blank=True, allow_null=True, required=False),
         required=False
-    )
-
-    domains = serializers.ListField(
-        child=serializers.CharField(allow_blank=True, allow_null=True, required=False),
-        required=False, default=[]
     )
 
     class Meta:

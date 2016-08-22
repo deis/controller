@@ -469,6 +469,7 @@ class App(UuidAuditedModel):
             raise DeisException('No build associated with this release')
 
         app_settings = self.appsettings_set.latest()
+        service_annotations = {'maintenance': app_settings.maintenance}
 
         # use create to make sure minimum resources are created
         self.create()
@@ -518,7 +519,6 @@ class App(UuidAuditedModel):
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
                 'routable': routable,
-                'service_annotations': {'maintenance': app_settings.maintenance},
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
@@ -529,18 +529,7 @@ class App(UuidAuditedModel):
         deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
 
         # Check if any proc type has a Deployment in progress
-        for scale_type, kwargs in deploys.items():
-            if force_deploy:
-                continue
-
-            # Is there an existing deployment in progress?
-            name = self._get_job_id(scale_type)
-            in_progress, deploy_okay = self._scheduler.deployment_in_progress(
-                self.id, name, deploy_timeout, batches, replicas, tags
-            )
-            # throw a 409 if things are in progress but we do not want to let through the deploy
-            if in_progress and not deploy_okay:
-                raise AlreadyExists('Deployment for {} is already in progress'.format(name))
+        self._check_deployment_in_progress(deploys, force_deploy)
 
         try:
             # create the application config in k8s (secret in this case) for all deploy objects
@@ -565,14 +554,36 @@ class App(UuidAuditedModel):
             self.log(err, logging.ERROR)
             raise ServiceUnavailable(err) from e
 
-        # Wait until application is available in the router
-        # Only run when there is no previous build / release
-        old = release.previous()
-        if old is None or old.build is None:
-            self.verify_application_health(**kwargs)
+        app_type = 'web' if 'web' in deploys else 'cmd' if 'cmd' in deploys else None
+        # Make sure the application is routable and uses the correct port Done after the fact to
+        # let initial deploy settle before routing traffic to the application
+        if deploys and app_type:
+            routable = deploys[app_type].get('routable')
+            port = deploys[app_type].get('envs', {}).get('PORT', None)
+            self._update_application_service(self.id, app_type, port, routable, service_annotations)  # noqa
+
+            # Wait until application is available in the router
+            # Only run when there is no previous build / release
+            old = release.previous()
+            if old is None or old.build is None:
+                self.verify_application_health(**deploys[app_type])
 
         # cleanup old release objects from kubernetes
         release.cleanup_old()
+
+    def _check_deployment_in_progress(self, deploys, force_deploy=False):
+        if force_deploy:
+            return
+        for scale_type, kwargs in deploys.items():
+            # Is there an existing deployment in progress?
+            name = self._get_job_id(scale_type)
+            in_progress, deploy_okay = self._scheduler.deployment_in_progress(
+                self.id, name, kwargs.get("deploy_timeout"), kwargs.get("deploy_batches"),
+                kwargs.get("replicas"), kwargs.get("tags")
+            )
+            # throw a 409 if things are in progress but we do not want to let through the deploy
+            if in_progress and not deploy_okay:
+                raise AlreadyExists('Deployment for {} is already in progress'.format(name))
 
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
@@ -869,3 +880,35 @@ class App(UuidAuditedModel):
         except KubeException as e:
             self._scheduler.update_service(self.id, self.id, data=old_service)
             raise ServiceUnavailable(str(e)) from e
+
+    def _update_application_service(self, namespace, app_type, port, routable=False, annotations={}):  # noqa
+        """Update application service with all the various required information"""
+        service = self._fetch_service_config(namespace)
+        old_service = service.copy()  # in case anything fails for rollback
+
+        try:
+            # Update service information
+            for key, value in annotations.items():
+                service['metadata']['annotations']['router.deis.io/%s' % key] = str(value)
+            if routable:
+                service['metadata']['labels']['router.deis.io/routable'] = 'true'
+            else:
+                # delete the annotation
+                service['metadata']['labels'].pop('router.deis.io/routable', None)
+
+            # Set app type if there is not one available
+            if 'type' not in service['spec']['selector']:
+                service['spec']['selector']['type'] = app_type
+
+            # Find if target port exists already, update / create as required
+            if routable:
+                for pos, item in enumerate(service['spec']['ports']):
+                    if item['port'] == 80 and port != item['targetPort']:
+                        # port 80 is the only one we care about right now
+                        service['spec']['ports'][pos]['targetPort'] = int(port)
+
+            self._scheduler.update_service(namespace, namespace, data=service)
+        except Exception as e:
+            # Fix service to old port and app type
+            self._scheduler.update_service(namespace, namespace, data=old_service)
+            raise KubeException(str(e)) from e

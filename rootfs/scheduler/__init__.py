@@ -88,9 +88,6 @@ class KubeHTTPClient(object):
         self.deploy_timeout = kwargs.get('deploy_timeout')
         app_type = kwargs.get('app_type')
         version = kwargs.get('version')
-        routable = kwargs.get('routable', False)
-        service_annotations = kwargs.get('service_annotations', {})
-        port = kwargs.get('envs', {}).get('PORT', None)
 
         # If an RC already exists then stop processing of the deploy
         try:
@@ -141,11 +138,6 @@ class KubeHTTPClient(object):
                     "Additional information:\n{}".format(version, namespace, app_type, str(e))
                 ) from e
 
-        # Make sure the application is routable and uses the correct port
-        # Done after the fact to let initial deploy settle before routing
-        # traffic to the application
-        self._update_application_service(namespace, app_type, port, routable, service_annotations)  # noqa
-
     def cleanup_release(self, namespace, controller, timeout):
         """
         Cleans up resources related to an application deployment
@@ -185,38 +177,6 @@ class KubeHTTPClient(object):
                 batches.append(desired - sum(batches))
 
         return batches
-
-    def _update_application_service(self, namespace, app_type, port, routable=False, annotations={}):  # noqa
-        """Update application service with all the various required information"""
-        service = self.get_service(namespace, namespace).json()
-        old_service = service.copy()  # in case anything fails for rollback
-
-        try:
-            # Update service information
-            for key, value in annotations.items():
-                service['metadata']['annotations']['router.deis.io/%s' % key] = str(value)
-            if routable:
-                service['metadata']['labels']['router.deis.io/routable'] = 'true'
-            else:
-                # delete the annotation
-                service['metadata']['labels'].pop('router.deis.io/routable', None)
-
-            # Set app type if there is not one available
-            if 'type' not in service['spec']['selector']:
-                service['spec']['selector']['type'] = app_type
-
-            # Find if target port exists already, update / create as required
-            if routable:
-                for pos, item in enumerate(service['spec']['ports']):
-                    if item['port'] == 80 and port != item['targetPort']:
-                        # port 80 is the only one we care about right now
-                        service['spec']['ports'][pos]['targetPort'] = int(port)
-
-            self.update_service(namespace, namespace, data=service)
-        except Exception as e:
-            # Fix service to old port and app type
-            self.update_service(namespace, namespace, data=old_service)
-            raise KubeException(str(e)) from e
 
     def scale(self, namespace, name, image, entrypoint, command, **kwargs):
         """Scale Deployment"""

@@ -196,6 +196,22 @@ class BuildTest(DeisTransactionTestCase):
         # pod name is auto generated so use regex
         self.assertRegex(container['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
 
+        # start with a new app
+        app_id = self.create_app()
+        # post a new build with procfile and no routable type
+
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': json.dumps({
+                'rake': 'node server.js',
+                'worker': 'node worker.js'
+            })
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
     def test_build_str(self, mock_requests):
         """Test the text representation of a build."""
         app_id = self.create_app()

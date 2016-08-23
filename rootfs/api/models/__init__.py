@@ -17,7 +17,7 @@ from django.dispatch import receiver
 from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
 
-from api.exceptions import DeisException, AlreadyExists, ServiceUnavailable  # noqa
+from api.exceptions import DeisException, AlreadyExists, ServiceUnavailable, UnprocessableEntity  # noqa
 from api.utils import dict_merge
 from scheduler import KubeException
 

@@ -7,6 +7,7 @@ import jmespath
 import re
 import jsonschema
 import idna
+import ipaddress
 from urllib.parse import urlparse
 
 from django.contrib.auth.models import User
@@ -474,3 +475,18 @@ class AppSettingsSerializer(serializers.ModelSerializer):
         """Metadata options for a :class:`AppSettingsSerializer`."""
         model = models.AppSettings
         fields = '__all__'
+
+    def validate_whitelist(self, data):
+        for address in data:
+            try:
+                ipaddress.ip_address(address)
+            except:
+                try:
+                    ipaddress.ip_network(address)
+                except:
+                    try:
+                        ipaddress.ip_interface(address)
+                    except:
+                        raise serializers.ValidationError(
+                           "The address {} is not valid".format(address))
+        return data

@@ -16,7 +16,7 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework.authtoken.models import Token
 
 from api import authentication, models, permissions, serializers, viewsets
-from api.models import AlreadyExists, ServiceUnavailable, DeisException
+from api.models import AlreadyExists, ServiceUnavailable, DeisException, UnprocessableEntity
 
 import logging
 
@@ -299,6 +299,34 @@ class PodViewSet(AppResourceViewSet):
 class AppSettingsViewSet(AppResourceViewSet):
     model = models.AppSettings
     serializer_class = serializers.AppSettingsSerializer
+
+
+class WhitelistViewSet(AppResourceViewSet):
+    model = models.AppSettings
+    serializer_class = serializers.AppSettingsSerializer
+
+    def list(self, *args, **kwargs):
+        appSettings = self.get_app().appsettings_set.latest()
+        data = {"addresses": appSettings.whitelist}
+        return Response(data, status=status.HTTP_200_OK)
+
+    def create(self, request, **kwargs):
+        appSettings = self.get_app().appsettings_set.latest()
+        addresses = self.get_serializer().validate_whitelist(request.data.get('addresses'))
+        addresses = list(set(appSettings.whitelist) | set(addresses))
+        new_appsettings = appSettings.new(self.request.user, whitelist=addresses)
+        return Response({"addresses": new_appsettings.whitelist}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, **kwargs):
+        appSettings = self.get_app().appsettings_set.latest()
+        addresses = self.get_serializer().validate_whitelist(request.data.get('addresses'))
+
+        unfound_addresses = set(addresses) - set(appSettings.whitelist)
+        if len(unfound_addresses) != 0:
+            raise UnprocessableEntity('addresses {} does not exist in whitelist'.format(unfound_addresses))  # noqa
+        addresses = list(set(appSettings.whitelist) - set(addresses))
+        appSettings.new(self.request.user, whitelist=addresses)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DomainViewSet(AppResourceViewSet):

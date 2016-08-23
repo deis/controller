@@ -153,7 +153,12 @@ class KubeHTTPClient(object):
             if self.pod_deleted(pod):
                 continue
 
-            self.delete_pod(namespace, pod['metadata']['name'])
+            try:
+                self.delete_pod(namespace, pod['metadata']['name'])
+            except KubeHTTPException as e:
+                # Sometimes k8s will manage to remove the pod from under us
+                if e.response.status_code == 404:
+                    continue
 
     def _get_deploy_steps(self, batches, tags):
         # if there is no batch information available default to available nodes for app

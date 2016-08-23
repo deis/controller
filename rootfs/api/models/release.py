@@ -248,7 +248,7 @@ class Release(UuidAuditedModel):
         finally:
             super(Release, self).delete(*args, **kwargs)
 
-    def cleanup_old(self):
+    def cleanup_old(self):  # noqa
         """Cleanup all but the latest release from Kubernetes"""
         latest_version = 'v{}'.format(self.version)
         self.app.log(
@@ -307,7 +307,12 @@ class Release(UuidAuditedModel):
             if current_version == latest_version:
                 continue
 
-            self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
+            try:
+                self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
+            except KubeHTTPException as e:
+                # Sometimes k8s will manage to remove the pod from under us
+                if e.response.status_code == 404:
+                    continue
 
         self._cleanup_deployment_secrets_and_configs(self.app.id)
 

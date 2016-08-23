@@ -498,6 +498,16 @@ class AppTest(DeisTestCase):
         self.assertEqual(apps[2]['id'], 'tango')
         self.assertEqual(apps[3]['id'], 'zulu')
 
+    def test_app_service_metadata(self, mock_requests):
+        """
+        Test that application service has annotations and labels in the metadata
+        """
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
+        svc = app._fetch_service_config(app_id)
+        self.assertIn('labels', svc['metadata'])
+        self.assertIn('annotations', svc['metadata'])
+
 
 FAKE_LOG_DATA = """
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

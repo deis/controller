@@ -11,7 +11,8 @@ from urllib.parse import urlparse, parse_qs
 import uuid
 from zlib import adler32
 
-from . import KubeHTTPClient, KubeHTTPException
+import scheduler
+from scheduler import KubeHTTPClient, KubeHTTPException
 
 from django.conf import settings
 from django.core.cache import cache
@@ -738,7 +739,7 @@ def remove_cache_item(url, resource_type):
     cache.set(cache_url, items, None)
 
 
-def mock(request, context):
+def mock_kubernetes(request, context):
     # always cleanup pods
     cleanup_pods()
     # always transition pods
@@ -760,20 +761,23 @@ def mock(request, context):
     logger.critical(request.method)
 
 
+def session():
+    adapter = requests_mock.Adapter()
+    session = requests.Session()
+    session.mount(settings.SCHEDULER_URL, adapter)
+
+    # Lets just listen to everything and sort it out ourselves
+    adapter.register_uri(
+        requests_mock.ANY, requests_mock.ANY,
+        json=mock_kubernetes
+    )
+
+    return session
+
+
 class MockSchedulerClient(KubeHTTPClient):
     def __init__(self):
-        self.url = settings.SCHEDULER_URL
-        self.registry = settings.REGISTRY_URL
-
-        adapter = requests_mock.Adapter()
-        self.session = requests.Session()
-        self.session.mount(self.url, adapter)
-
-        # Lets just listen to everything and sort it out ourselves
-        adapter.register_uri(
-            requests_mock.ANY, requests_mock.ANY,
-            json=mock
-        )
+        super().__init__()
 
         # Pre-seed data that is assumed to otherwise be there
         try:
@@ -888,6 +892,7 @@ class MockSchedulerClient(KubeHTTPClient):
         except Exception as e:
             logger.critical(e)
 
+scheduler.session = session()
 SchedulerClient = MockSchedulerClient
 
 

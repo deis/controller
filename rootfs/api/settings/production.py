@@ -264,6 +264,12 @@ DOCKER_BUILDER_IMAGE_PULL_POLICY = os.environ.get('DOCKER_BUILDER_IMAGE_PULL_POL
 # Can also be overwritten on per app basis if desired
 DEIS_DEPLOY_BATCHES = os.environ.get('DEIS_DEPLOY_BATCHES', None)
 
+# Define a global default Kubernetes Deployment Strategy
+# Valid inputs currently rollingupdate || recreate
+# Defaults to None, the default is to deploy to rollingupdate
+# Can also be overwritten on per app basis if desired
+KUBERNETES_DEPLOYMENT_STRATEGY = os.environ.get('KUBERNETES_DEPLOYMENT_STRATEGY', None)
+
 # For old style deploys (RCs) defines how long each batch
 # (as defined by DEIS_DEPLOY_BATCHES) can take before giving up
 # For Kubernetes Deployments it is part of the global timeout

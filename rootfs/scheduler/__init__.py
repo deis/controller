@@ -1781,15 +1781,19 @@ class KubeHTTPClient(object):
             maxSurge = replicas
 
         # http://kubernetes.io/docs/user-guide/deployments/#strategy
-        manifest['spec']['strategy'] = {
-            'rollingUpdate': {
-                'maxSurge': maxSurge,
-                # This is never updated
-                'maxUnavailable': 0
-            },
-            # RollingUpdate or Recreate
-            'type': 'RollingUpdate',
-        }
+        if kwargs.get('deployment_strategy'.lower(), None) == 'recreate':
+            manifest['spec']['strategy'] = {
+                'type': 'Recreate',
+            }
+        else:
+            manifest['spec']['strategy'] = {
+                'rollingUpdate': {
+                    'maxSurge': maxSurge,
+                    # This is never updated
+                    'maxUnavailable': 0
+                },
+                'type': 'RollingUpdate',
+            }
 
         # Add in how many deployment revisions to keep
         if kwargs.get('deployment_revision_history', None) is not None:

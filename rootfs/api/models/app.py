@@ -405,6 +405,8 @@ class App(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
+        deployment_strategy = release.config.values.get('KUBERNETES_DEPLOYMENT_STRATEGY', settings.KUBERNETES_DEPLOYMENT_STRATEGY)  # noqa
+
         tasks = []
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
@@ -434,6 +436,7 @@ class App(UuidAuditedModel):
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
+                'deployment_strategy': deployment_strategy
             }
 
             # gather all proc types to be deployed
@@ -486,6 +489,8 @@ class App(UuidAuditedModel):
 
         deployment_history = release.config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
 
+        deployment_strategy = release.config.values.get('KUBERNETES_DEPLOYMENT_STRATEGY', settings.KUBERNETES_DEPLOYMENT_STRATEGY)  # noqa
+
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
         image = release.image
@@ -522,7 +527,8 @@ class App(UuidAuditedModel):
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
-                'release_summary': release.summary
+                'release_summary': release.summary,
+                'deployment_strategy': deployment_strategy
             }
 
         # Sort deploys so routable comes first

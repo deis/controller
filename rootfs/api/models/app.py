@@ -922,7 +922,7 @@ class App(UuidAuditedModel):
         except Exception as e:
             # Fix service to old port and app type
             self._scheduler.svc.update(namespace, namespace, data=old_service)
-            raise KubeException(str(e)) from e
+            raise ServiceUnavailable(str(e)) from e
 
     def whitelist(self, whitelist):
         """
@@ -936,3 +936,29 @@ class App(UuidAuditedModel):
             self._scheduler.svc.update(self.id, self.id, data=service)
         except KubeException as e:
             raise ServiceUnavailable(str(e)) from e
+
+    def autoscale(self, proc_type, autoscale):
+        """
+        Set autoscale rules for the application
+        """
+        name = '{}-{}'.format(self.id, proc_type)
+        # basically fake out a Deployment object (only thing we use) to assign to the HPA
+        target = {'kind': 'Deployment', 'metadata': {'name': name}}
+
+        try:
+            # get the target for autoscaler, in this case Deployment
+            self._scheduler.hpa.get(self.id, name)
+            if autoscale is None:
+                self._scheduler.hpa.delete(self.id, name)
+            else:
+                self._scheduler.hpa.update(
+                    self.id, name, proc_type, target, **autoscale
+                )
+        except KubeHTTPException as e:
+            if e.response.status_code == 404:
+                self._scheduler.hpa.create(
+                    self.id, name, proc_type, target, **autoscale
+                )
+            else:
+                # let the user know about any other errors
+                raise ServiceUnavailable(str(e)) from e

@@ -124,8 +124,12 @@ def process_hpa():
         hpa = cache.get(row)
 
         # check if the resource referenced actually exists
-        kind = hpa['spec']['scaleRef']['kind'].lower() + 's'  # make plural
-        name = hpa['spec']['scaleRef']['name'].lower()
+        if 'scaleRef' in hpa['spec']:
+            kind = hpa['spec']['scaleRef']['kind'].lower() + 's'  # make plural
+            name = hpa['spec']['scaleRef']['name'].lower()
+        else:
+            kind = hpa['spec']['scaleTargetRef']['kind'].lower() + 's'  # make plural
+            name = hpa['spec']['scaleTargetRef']['name'].lower()
         deployment = None
         for deploy in cache.get(kind, []):
             item = cache.get(deploy)

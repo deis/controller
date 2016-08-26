@@ -60,6 +60,9 @@ urlpatterns = [
     # application settings
     url(r"^apps/(?P<id>{})/settings/?".format(settings.APP_URL_REGEX),
         views.AppSettingsViewSet.as_view({'get': 'retrieve', 'post': 'create'})),
+    # application ip whitelist
+    url(r"^apps/(?P<id>{})/whitelist/?".format(settings.APP_URL_REGEX),
+        views.WhitelistViewSet.as_view({'post': 'create', 'get': 'list', 'delete': 'delete'})),
     # apps sharing
     url(r"^apps/(?P<id>{})/perms/(?P<username>[-_\w]+)/?".format(settings.APP_URL_REGEX),
         views.AppPermsViewSet.as_view({'delete': 'destroy'})),

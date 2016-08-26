@@ -430,7 +430,6 @@ class App(UuidAuditedModel):
                 'app_type': scale_type,
                 'build_type': release.build.type,
                 'healthcheck': healthcheck,
-                'service_annotations': {'maintenance': app_settings.maintenance},
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
@@ -469,7 +468,8 @@ class App(UuidAuditedModel):
             raise DeisException('No build associated with this release')
 
         app_settings = self.appsettings_set.latest()
-        service_annotations = {'maintenance': app_settings.maintenance}
+        addresses = ",".join(address for address in app_settings.whitelist)
+        service_annotations = {'maintenance': app_settings.maintenance, 'whitelist': addresses}
 
         # use create to make sure minimum resources are created
         self.create()
@@ -912,3 +912,16 @@ class App(UuidAuditedModel):
             # Fix service to old port and app type
             self._scheduler.update_service(namespace, namespace, data=old_service)
             raise KubeException(str(e)) from e
+
+    def whitelist(self, whitelist):
+        """
+        Add/ Delete addresses to application whitelist
+        """
+        service = self._fetch_service_config(self.id)
+
+        try:
+            addresses = ",".join(address for address in whitelist)
+            service['metadata']['annotations']['router.deis.io/whitelist'] = addresses
+            self._scheduler.update_service(self.id, self.id, data=service)
+        except KubeException as e:
+            raise ServiceUnavailable(str(e)) from e

@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 
 from api.models import App
+from unittest import mock
+from scheduler import KubeException
 from api.tests import adapter, DeisTransactionTestCase
 
 
@@ -89,3 +91,82 @@ class TestAppSettings(DeisTransactionTestCase):
             settings)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(app.appsettings_set.latest().routable)
+
+    def test_settings_whitelist(self, mock_requests):
+        """
+        Test that addresses can be added/deleted to whitelist
+        """
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
+        # add addresses to empty whitelist
+        addresses = ["1.2.3.4", "0.0.0.0/0"]
+        whitelist = {'addresses': addresses}
+        response = self.client.post(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(set(response.data['addresses']),
+                         set(app.appsettings_set.latest().whitelist), response.data)
+        self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+        # get the whitelist
+        response = self.client.get('/v2/apps/{app_id}/whitelist'.format(**locals()))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(set(response.data['addresses']),
+                         set(app.appsettings_set.latest().whitelist), response.data)
+        self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+        # add addresses to non-empty whitelist
+        whitelist = {'addresses': ["2.3.4.5"]}
+        addresses.extend(["2.3.4.5"])
+        response = self.client.post(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(set(response.data['addresses']),
+                         set(app.appsettings_set.latest().whitelist), response.data)
+        self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+        # add exisitng addresses to whitelist
+        response = self.client.post(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 409, response.data)
+        # delete non-exisitng address from whitelist
+        whitelist = {'addresses': ["2.3.4.6"]}
+        response = self.client.delete(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 422)
+        # delete an address from whitelist
+        whitelist = {'addresses': ["2.3.4.5"]}
+        addresses.remove("2.3.4.5")
+        response = self.client.delete(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 204, response.data)
+        self.assertEqual(set(addresses), set(app.appsettings_set.latest().whitelist))
+        # pass invalid address
+        whitelist = {'addresses': ["2.3.4.6.7"]}
+        response = self.client.post(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 400, response.data)
+        # update other appsettings and whitelist should be retained
+        settings = {'maintenance': True}
+        response = self.client.post(
+            '/v2/apps/{app.id}/settings'.format(**locals()),
+            settings)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(set(addresses), set(app.appsettings_set.latest().whitelist))
+
+    def test_kubernetes_service_failure(self, mock_requests):
+        """
+        Cause an Exception in kubernetes services
+        """
+        app_id = self.create_app()
+
+        # scheduler.update_service exception
+        with mock.patch('scheduler.KubeHTTPClient.update_service') as mock_kube:
+            mock_kube.side_effect = KubeException('Boom!')
+            addresses = ["2.3.4.5"]
+            url = '/v2/apps/{}/whitelist'.format(app_id)
+            response = self.client.post(url, {'addresses': addresses})
+            self.assertEqual(response.status_code, 400, response.data)

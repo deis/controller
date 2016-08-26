@@ -490,3 +490,15 @@ class AppSettingsSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError(
                            "The address {} is not valid".format(address))
         return data
+
+
+class TLSSerializer(serializers.ModelSerializer):
+    """Serialize a :class:`~api.models.TLS` model."""
+
+    app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
+    owner = serializers.ReadOnlyField(source='owner.username')
+
+    class Meta:
+        """Metadata options for a :class:`AppSettingsSerializer`."""
+        model = models.TLS
+        fields = '__all__'

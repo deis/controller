@@ -130,7 +130,17 @@ from .tls import TLS  # noqa
 def _log_instance_created(**kwargs):
     if kwargs.get('created'):
         instance = kwargs['instance']
-        message = '{} {} created'.format(instance.__class__.__name__, instance)
+        message = '{} {} created'.format(instance.__class__.__name__.lower(), instance)
+        if hasattr(instance, 'app'):
+            instance.app.log(message)
+        else:
+            logger.info(message)
+
+
+def _log_instance_added(**kwargs):
+    if kwargs.get('created'):
+        instance = kwargs['instance']
+        message = '{} {} added'.format(instance.__class__.__name__.lower(), instance)
         if hasattr(instance, 'app'):
             instance.app.log(message)
         else:
@@ -139,7 +149,7 @@ def _log_instance_created(**kwargs):
 
 def _log_instance_updated(**kwargs):
     instance = kwargs['instance']
-    message = '{} {} updated'.format(instance.__class__.__name__, instance)
+    message = '{} {} updated'.format(instance.__class__.__name__.lower(), instance)
     if hasattr(instance, 'app'):
         instance.app.log(message)
     else:
@@ -148,7 +158,7 @@ def _log_instance_updated(**kwargs):
 
 def _log_instance_removed(**kwargs):
     instance = kwargs['instance']
-    message = '{} {} removed'.format(instance.__class__.__name__, instance)
+    message = '{} {} removed'.format(instance.__class__.__name__.lower(), instance)
     if hasattr(instance, 'app'):
         instance.app.log(message)
     else:
@@ -167,8 +177,8 @@ def _log_release_created(**kwargs):
 post_save.connect(_log_release_created, sender=Release, dispatch_uid='api.models.log')
 
 post_save.connect(_log_instance_created, sender=Build, dispatch_uid='api.models.log')
-post_save.connect(_log_instance_created, sender=Certificate, dispatch_uid='api.models.log')
-post_save.connect(_log_instance_created, sender=Domain, dispatch_uid='api.models.log')
+post_save.connect(_log_instance_added, sender=Certificate, dispatch_uid='api.models.log')
+post_save.connect(_log_instance_added, sender=Domain, dispatch_uid='api.models.log')
 
 post_save.connect(_log_instance_updated, sender=AppSettings, dispatch_uid='api.models.log')
 post_save.connect(_log_instance_updated, sender=Config, dispatch_uid='api.models.log')

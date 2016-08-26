@@ -21,7 +21,7 @@ class SecretsTest(TestCase):
             'this': 'that',
             'empty': None,
         }
-        secret = self.scheduler.create_secret(self.namespace, name, data)
+        secret = self.scheduler.secret.create(self.namespace, name, data)
         data = secret.json()
         self.assertEqual(secret.status_code, 201, data)
         self.assertEqual(data['metadata']['name'], name)
@@ -34,17 +34,17 @@ class SecretsTest(TestCase):
             KubeHTTPException,
             msg='failed to create Secret doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.create_secret('doesnotexist', 'doesnotexist', {})
+            self.scheduler.secret.create('doesnotexist', 'doesnotexist', {})
 
         with self.assertRaises(
             KubeException,
             msg='invlaid is not a supported secret type. Use one of the following: Opaque, kubernetes.io/dockerconfigjson'  # noqa
         ):
-            self.scheduler.create_secret(self.namespace, 'foo', {}, secret_type='invalid')
+            self.scheduler.secret.create(self.namespace, 'foo', {}, secret_type='invalid')
 
     def test_create(self):
         name = self.create()
-        secret = self.scheduler.get_secret(self.namespace, name).json()
+        secret = self.scheduler.secret.get(self.namespace, name).json()
         self.assertEqual(secret['data']['foo'], 'bar', secret)
         self.assertEqual(secret['data']['this'], 'that', secret)
         self.assertEqual(secret['type'], 'Opaque')
@@ -55,21 +55,21 @@ class SecretsTest(TestCase):
             KubeHTTPException,
             msg='failed to update Secret foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.update_secret(self.namespace, 'foo', {})
+            self.scheduler.secret.update(self.namespace, 'foo', {})
 
     def test_update(self):
         # test success
         name = self.create()
-        secret = self.scheduler.get_secret(self.namespace, name).json()
+        secret = self.scheduler.secret.get(self.namespace, name).json()
         self.assertEqual(secret['data']['foo'], 'bar', secret)
         self.assertEqual(secret['data']['this'], 'that', secret)
         self.assertEqual(secret['type'], 'Opaque')
 
         secret['data']['foo'] = 5001
-        response = self.scheduler.update_secret(self.namespace, name, secret['data'])
+        response = self.scheduler.secret.update(self.namespace, name, secret['data'])
         self.assertEqual(response.status_code, 200, response.json())
 
-        secret = self.scheduler.get_secret(self.namespace, name).json()
+        secret = self.scheduler.secret.get(self.namespace, name).json()
         self.assertEqual(secret['data']['foo'], '5001', secret)
 
     def test_delete_failure(self):
@@ -78,19 +78,19 @@ class SecretsTest(TestCase):
             KubeHTTPException,
             msg='failed to delete Secret foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.delete_secret(self.namespace, 'foo')
+            self.scheduler.secret.delete(self.namespace, 'foo')
 
     def test_delete(self):
         # test success
         name = self.create()
-        response = self.scheduler.delete_secret(self.namespace, name)
+        response = self.scheduler.secret.delete(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
 
     def test_get_secrets(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_secrets(self.namespace)
+        response = self.scheduler.secret.get(self.namespace)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -104,12 +104,12 @@ class SecretsTest(TestCase):
             KubeHTTPException,
             msg='failed to get Secret doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
-            self.scheduler.get_secret(self.namespace, 'doesnotexist')
+            self.scheduler.secret.get(self.namespace, 'doesnotexist')
 
     def test_get_secret(self):
         # test success
         name = self.create()
-        response = self.scheduler.get_secret(self.namespace, name)
+        response = self.scheduler.secret.get(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertEqual(data['apiVersion'], 'v1')

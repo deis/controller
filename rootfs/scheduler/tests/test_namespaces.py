@@ -15,7 +15,7 @@ class NamespacesTest(TestCase):
         self.create_namespace()
 
     def test_get_namespaces(self):
-        response = self.scheduler.get_namespaces()
+        response = self.scheduler.ns.get()
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertIn('items', data)
@@ -29,9 +29,9 @@ class NamespacesTest(TestCase):
             KubeHTTPException,
             msg='failed to get Namespace doesnotexist: 404 Not Found'
         ):
-            self.scheduler.get_node('doesnotexist')
+            self.scheduler.node.get('doesnotexist')
 
-        response = self.scheduler.get_namespace(self.namespace)
+        response = self.scheduler.ns.get(self.namespace)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
         self.assertEqual(data['apiVersion'], 'v1')
@@ -52,8 +52,8 @@ class NamespacesTest(TestCase):
             KubeHTTPException,
             msg='failed to delete Namespace doesnotexist: 404 Not Found'
         ):
-            self.scheduler.delete_namespace('doesnotexist')
+            self.scheduler.ns.delete('doesnotexist')
 
     def test_delete_namespace(self):
-        response = self.scheduler.delete_namespace(self.namespace)
+        response = self.scheduler.ns.delete(self.namespace)
         self.assertEqual(response.status_code, 200, response.json())

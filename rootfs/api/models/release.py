@@ -259,7 +259,7 @@ class Release(UuidAuditedModel):
         # Cleanup controllers
         labels = {'heritage': 'deis'}
         controller_removal = []
-        controllers = self._scheduler.get_rcs(self.app.id, labels=labels).json()
+        controllers = self._scheduler.rc.get(self.app.id, labels=labels).json()
         for controller in controllers['items']:
             current_version = controller['metadata']['labels']['version']
             # skip the latest release
@@ -286,20 +286,20 @@ class Release(UuidAuditedModel):
             'app': self.app.id,
             'type': 'env',
         }
-        secrets = self._scheduler.get_secrets(self.app.id, labels=labels).json()
+        secrets = self._scheduler.secret.get(self.app.id, labels=labels).json()
         for secret in secrets['items']:
             current_version = secret['metadata']['labels']['version']
             # skip the latest release
             if current_version == latest_version:
                 continue
 
-            self._scheduler.delete_secret(self.app.id, secret['metadata']['name'])
+            self._scheduler.secret.delete(self.app.id, secret['metadata']['name'])
 
         # Remove stray pods
         labels = {'heritage': 'deis'}
-        pods = self._scheduler.get_pods(self.app.id, labels=labels).json()
+        pods = self._scheduler.pod.get(self.app.id, labels=labels).json()
         for pod in pods['items']:
-            if self._scheduler.pod_deleted(pod):
+            if self._scheduler.pod.deleted(pod):
                 continue
 
             current_version = pod['metadata']['labels']['version']
@@ -308,7 +308,7 @@ class Release(UuidAuditedModel):
                 continue
 
             try:
-                self._scheduler.delete_pod(self.app.id, pod['metadata']['name'])
+                self._scheduler.pod.delete(self.app.id, pod['metadata']['name'])
             except KubeHTTPException as e:
                 # Sometimes k8s will manage to remove the pod from under us
                 if e.response.status_code == 404:
@@ -329,7 +329,7 @@ class Release(UuidAuditedModel):
         # Find all ReplicaSets
         versions = []
         labels = {'heritage': 'deis', 'app': namespace}
-        replicasets = self._scheduler.get_replicasets(namespace, labels=labels).json()
+        replicasets = self._scheduler.rs.get(namespace, labels=labels).json()
         for replicaset in replicasets['items']:
             if (
                 'version' not in replicaset['metadata']['labels'] or
@@ -348,9 +348,9 @@ class Release(UuidAuditedModel):
             'version__notin': versions
         }
         self.app.log('Cleaning up orphaned env var secrets for application {}'.format(namespace), level=logging.DEBUG)  # noqa
-        secrets = self._scheduler.get_secrets(namespace, labels=labels).json()
+        secrets = self._scheduler.secret.get(namespace, labels=labels).json()
         for secret in secrets['items']:
-            self._scheduler.delete_secret(namespace, secret['metadata']['name'])
+            self._scheduler.secret.delete(namespace, secret['metadata']['name'])
 
     def _delete_release_in_scheduler(self, namespace, version):
         """
@@ -368,14 +368,14 @@ class Release(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = self.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
-        controllers = self._scheduler.get_rcs(namespace, labels=labels).json()
+        controllers = self._scheduler.rc.get(namespace, labels=labels).json()
         for controller in controllers['items']:
             self._scheduler.cleanup_release(namespace, controller, deploy_timeout)
 
         # remove secret that contains env vars for the release
         try:
             secret_name = "{}-{}-env".format(namespace, version)
-            self._scheduler.delete_secret(namespace, secret_name)
+            self._scheduler.secret.delete(namespace, secret_name)
         except KubeHTTPException:
             pass
 

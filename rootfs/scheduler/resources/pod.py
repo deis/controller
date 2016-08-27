@@ -26,7 +26,7 @@ class Pod(Resource):
             message = 'get Pods in Namespace "{}"'
 
         url = self.api(url, *args)
-        response = self.session.get(url, params=self.query_params(**kwargs))
+        response = self.http_get(url, params=self.query_params(**kwargs))
         if self.unhealthy(response.status_code):
             args.reverse()  # error msg is in reverse order
             raise KubeHTTPException(response, message, *args)
@@ -324,7 +324,7 @@ class Pod(Resource):
 
         # delete pod
         url = self.api("/namespaces/{}/pods/{}", namespace, name)
-        resp = self.session.delete(url)
+        resp = self.http_delete(url)
         if self.unhealthy(resp.status_code):
             raise KubeHTTPException(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
@@ -344,7 +344,7 @@ class Pod(Resource):
 
     def logs(self, namespace, name):
         url = self.api("/namespaces/{}/pods/{}/log", namespace, name)
-        response = self.session.get(url)
+        response = self.http_get(url)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

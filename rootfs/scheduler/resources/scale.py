@@ -26,7 +26,7 @@ class Scale(Resource):
 
         manifest = self.manifest(namespace, name, replicas)
         url = self.api("/namespaces/{}/{}/{}/scale", namespace, resource_type, name)
-        response = self.session.put(url, json=manifest)
+        response = self.http_put(url, json=manifest)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

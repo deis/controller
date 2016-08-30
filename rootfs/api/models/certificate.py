@@ -81,7 +81,7 @@ class Certificate(AuditedModel):
     certificate = models.TextField(validators=[validate_certificate])
     key = models.TextField()
     # X.509 certificates allow any string of information as the common name.
-    common_name = models.TextField(editable=False, unique=False)
+    common_name = models.TextField(editable=False, unique=False, null=True)
     # A list of DNS records if certificate has SubjectAltName
     san = ArrayField(models.CharField(max_length=253), null=True)
     # SHA256 fingerprint

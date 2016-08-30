@@ -405,6 +405,9 @@ class App(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
+        # get application level pod termination grace period
+        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+
         tasks = []
         for scale_type, replicas in scale_types.items():
             # only web / cmd are routable
@@ -433,6 +436,7 @@ class App(UuidAuditedModel):
                 'routable': routable,
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
+                'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
             }
 
             # gather all proc types to be deployed
@@ -486,6 +490,9 @@ class App(UuidAuditedModel):
 
         deployment_history = release.config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
 
+        # get application level pod termination grace period
+        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
         image = release.image
@@ -512,7 +519,6 @@ class App(UuidAuditedModel):
                 'tags': tags,
                 'envs': envs,
                 'registry': release.config.registry,
-                # only used if there is no previous RC
                 'replicas': replicas,
                 'version': version,
                 'app_type': scale_type,
@@ -522,7 +528,8 @@ class App(UuidAuditedModel):
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'deployment_history_limit': deployment_history,
-                'release_summary': release.summary
+                'release_summary': release.summary,
+                'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
             }
 
         # Sort deploys so routable comes first
@@ -729,6 +736,9 @@ class App(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
+        # get application level pod termination grace period
+        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+
         name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
 
@@ -743,7 +753,8 @@ class App(UuidAuditedModel):
             'registry': release.config.registry,
             'version': version,
             'build_type': release.build.type,
-            'deploy_timeout': deploy_timeout
+            'deploy_timeout': deploy_timeout,
+            'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
         }
 
         try:

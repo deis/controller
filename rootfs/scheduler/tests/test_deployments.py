@@ -21,6 +21,7 @@ class DeploymentsTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'pod_termination_grace_period_seconds': 2,
         }
 
         deployment = self.scheduler.deployment.create(namespace, name, 'quay.io/fake/image',
@@ -38,6 +39,7 @@ class DeploymentsTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'pod_termination_grace_period_seconds': 2,
         }
 
         deployment = self.scheduler.deployment.update(namespace, name, 'quay.io/fake/image',
@@ -56,6 +58,7 @@ class DeploymentsTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'pod_termination_grace_period_seconds': 2,
         }
 
         self.scheduler.scale(namespace, name, 'quay.io/fake/image', 'sh', 'start', **kwargs)

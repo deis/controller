@@ -181,15 +181,8 @@ class KubeHTTPClient(object):
                     namespace, name, image, entrypoint, command, **kwargs
                 )
             except KubeException as e:
-                # rollback to the previous Deployment
-                kwargs['rollback'] = True
-                self.deployment.update(
-                    namespace, name, image, entrypoint, command, **kwargs
-                )
-
                 raise KubeException(
                     'There was a problem while deploying {} of {}-{}. '
-                    'Going back to the previous release. '
                     "Additional information:\n{}".format(version, namespace, app_type, str(e))
                 ) from e
 

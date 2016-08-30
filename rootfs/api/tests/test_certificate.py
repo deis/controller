@@ -99,6 +99,39 @@ class CertificateTest(DeisTestCase):
         for key, value in list(expected.items()):
             self.assertEqual(response.data[key], value, key)
 
+    def test_get_certificate_self_signed(self):
+        """
+        Load a certificate without Common Name (self signed most likely)
+        """
+        with open('{}/certs/{}.key'.format(TEST_ROOT, 'self-signed')) as f:
+            key = f.read()
+
+        with open('{}/certs/{}.cert'.format(TEST_ROOT, 'self-signed')) as f:
+            cert = f.read()
+
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert-self',
+                'certificate': cert,
+                'key': key
+            }
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+        response = self.client.get('{}/{}'.format(self.url, 'random-test-cert-self'))
+        self.assertEqual(response.status_code, 200, response.data)
+
+        expected = {
+            'common_name': None,
+            'expires': '2017-08-30T00:51:54Z',
+            'fingerprint': 'AD:F7:AF:C2:E1:3D:F5:26:47:4E:B9:2D:1C:75:AD:26:6F:05:2C:A7:6F:24:84:A2:8C:39:B3:3F:97:AB:2C:B3',  # noqa
+            'san': [],
+            'domains': [],
+        }
+        for key, value in list(expected.items()):
+            self.assertEqual(response.data[key], value, key)
+
     def test_certficate_denied_requests(self):
         """Disallow put/patch requests"""
         response = self.client.put(self.url)

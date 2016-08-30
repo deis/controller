@@ -21,6 +21,7 @@ class ReplicationControllersTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'pod_termination_grace_period_seconds': 2,
         }
 
         rc = self.scheduler.rc.create(namespace, name, 'quay.io/fake/image',
@@ -39,7 +40,8 @@ class ReplicationControllersTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
-            'deploy_timeout': 120
+            'deploy_timeout': 120,
+            'pod_termination_grace_period_seconds': 2,
         }
 
         self.scheduler.scale_rc(namespace, name, 'quay.io/fake/image', 'sh', 'start', **kwargs)

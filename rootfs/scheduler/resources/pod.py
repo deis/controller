@@ -110,8 +110,8 @@ class Pod(Resource):
         # apply tags as needed to restrict pod to particular node(s)
         spec['nodeSelector'] = kwargs.get('tags', {})
 
-        # How long until a pod is forcefully terminated
-        spec['terminationGracePeriodSeconds'] = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS  # noqa
+        # How long until a pod is forcefully terminated. 30 is kubernetes default
+        spec['terminationGracePeriodSeconds'] = kwargs.get('pod_termination_grace_period_seconds', 30)  # noqa
 
         # set the image pull policy that is associated with the application container
         kwargs['image_pull_policy'] = settings.DOCKER_BUILDER_IMAGE_PULL_POLICY
@@ -384,6 +384,12 @@ class Pod(Resource):
         data['imagePullSecrets'] = [{'name': secret_name}]
 
     def delete(self, namespace, name):
+        # get timeout info from pod
+        pod = self.pod.get(namespace, name).json()
+        # 30 seconds is the kubernetes default
+        timeout = pod['spec'].get('terminationGracePeriodSeconds', 30)
+
+        # delete pod
         url = self.api("/namespaces/{}/pods/{}", namespace, name)
         resp = self.session.delete(url)
         if self.unhealthy(resp.status_code):
@@ -391,7 +397,7 @@ class Pod(Resource):
 
         # Verify the pod has been deleted
         # Only wait as long as the grace period is - k8s will eventually GC
-        for _ in range(settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS):
+        for _ in range(timeout):
             try:
                 pod = self.pod.get(namespace, name).json()
                 # hide pod if it is passed the graceful termination period
@@ -630,7 +636,15 @@ class Pod(Resource):
         # https://github.com/kubernetes/kubernetes/blob/release-1.2/docs/devel/api-conventions.md#metadata
         # http://kubernetes.io/docs/user-guide/pods/#termination-of-pods
 
-        timeout = settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS
+        # fetch timeout from the first pod
+        pods = self.get(namespace, labels=labels).json()
+        if not pods['items']:
+            return
+
+        spec = pods['items'][0]['spec']
+        # default to 30 since that's kubernetes default
+        timeout = spec.get('terminationGracePeriodSeconds', 30)
+
         delta = current - desired
         self.log(namespace, "waiting for {} pods to be terminated ({}s timeout)".format(delta, timeout))  # noqa
         for waited in range(timeout):

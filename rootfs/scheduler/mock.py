@@ -12,7 +12,8 @@ import uuid
 from zlib import adler32
 
 import scheduler
-from scheduler import KubeHTTPClient, KubeHTTPException
+from scheduler import KubeHTTPClient
+from scheduler.exceptions import KubeHTTPException
 
 from django.conf import settings
 from django.core.cache import cache
@@ -79,7 +80,7 @@ class CacheLock(object):
 resources = [
     'namespaces', 'nodes', 'pods', 'replicationcontrollers',
     'secrets', 'services', 'events', 'deployments', 'replicasets',
-    'horizontalpodautoscalers'
+    'horizontalpodautoscalers', 'scale',
 ]
 
 
@@ -103,13 +104,46 @@ def cache_key(key):
     return key
 
 
-def get_type(key, pos=-1):
+def get_type(key):
     key = key.strip('/').split('/')
-    if key[pos] in resources:
-        return key[pos]
+
+    # check if is subresource (last element)
+    if len(key) and key[-1] in resources:
+        return key[-1]
+
+    # go back to second last
+    if len(key) > 1 and key[-2] in resources:
+        return key[-2]
 
     # bad if it gets there
     return 'unknown'
+
+
+def get_namespace(url, resource_type):
+    """Inspects the URL and gets namespace from it if there is any"""
+    # correct back to proper namespace API
+    url = url.replace('apis_autoscaling_v1', 'api_v1')
+    url = url.replace('apis_extensions_v1beta1', 'api_v1')
+    # check if this is a subresource
+    subresource, resource_type, url = is_subresource(resource_type, url)
+    # get namespace name
+    name = url.split('api_v1_namespaces_').pop(1).split("_{}_".format(resource_type), 1).pop(0)
+    return 'api_v1_namespaces_' + name
+
+
+def is_subresource(resource_type, url):
+    # check if this is a subresource
+    subresource = resource_type
+    if url.endswith(resource_type):
+        # find the real resource type to do splitting below
+        url = url.replace('_' + resource_type, '')
+        match = list(set(resources) & set(url.split('_')))
+        match.remove('namespaces')  # not needed
+        # it is only a subresource when another resource can be found
+        if match:
+            resource_type = match.pop()
+
+    return subresource, resource_type, url
 
 
 @CacheLock()
@@ -570,7 +604,6 @@ def fetch_all(request, context):
     url = urlparse(request.url)
     filters = prepare_query_filters(url.query)
     cache_path = cache_key(request.path)
-
     data = filter_data(filters, cache_path)
     return {'items': data}
 
@@ -615,7 +648,9 @@ def get(request, context):
     """Process a GET request to the kubernetes API"""
     # Figure out if it is a GET operation for a single element or a list
     url = urlparse(request.url)
-    if get_type(url.path) in resources:
+    resource_type = get_type(url.path)
+    # is the last element a resource type or a name
+    if url.path.strip('/').split('/')[-1] == resource_type:
         return fetch_all(request, context)
 
     # fetch singular item
@@ -629,9 +664,7 @@ def post(request, context):
     resource_type = get_type(request.url)
     # check if the namespace being posted to exists
     if resource_type != 'namespaces':
-        namespace, _ = url.split('_{}_'.format(resource_type))
-        namespace = namespace.replace('apis_autoscaling_v1', 'api_v1')
-        namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
+        namespace = get_namespace(url, resource_type)
         if cache.get(namespace) is None:
             context.status_code = 404
             context.reason = 'Not Found'
@@ -682,16 +715,20 @@ def put(request, context):
     """Process a PUT request to the kubernetes API"""
     url = cache_key(request.url)
     # type is the second last element
-    resource_type = get_type(request.url, -2)
+    resource_type = get_type(request.url)
     # check if the namespace being posted to exists
     if resource_type != 'namespaces':
-        namespace, _ = url.split('_{}_'.format(resource_type))
-        namespace = namespace.replace('apis_autoscaling_v1', 'api_v1')
-        namespace = namespace.replace('apis_extensions_v1beta1', 'api_v1')
+        namespace = get_namespace(url, resource_type)
         if cache.get(namespace) is None:
             context.status_code = 404
             context.reason = 'Not Found'
             return {}
+
+    # figure out main resource if in subresource
+    original_url = url
+    subresource, resource_type, url = is_subresource(resource_type, url)
+    if subresource != resource_type:
+        cache.set(original_url, request.json(), None)
 
     item = cache.get(url)
     if item is None:
@@ -702,14 +739,21 @@ def put(request, context):
     data = request.json()
 
     # merge new data into old but keep labels separate in case they changed
-    labels = data['metadata'].pop('labels')
-    item['metadata'].update(data['metadata'])
-    data['metadata'] = item['metadata']
-    # make sure only new labels are used
-    data['metadata']['labels'] = labels
+    if 'labels' in data['metadata']:
+        labels = data['metadata'].pop('labels')
+        item['metadata'].update(data['metadata'])
+        data['metadata'] = item['metadata']
+        # make sure only new labels are used
+        data['metadata']['labels'] = labels
 
     # split out deployments and replicasets? due to upsert_pods
     if resource_type in ['replicationcontrollers', 'replicasets', 'deployments']:
+        if subresource == 'scale':
+            # has minimal info so need to copy data
+            replicas = data['spec']['replicas']
+            data = copy.deepcopy(item)  # full copy
+            data['spec']['replicas'] = replicas
+
         if 'status' not in data:
             # just use what was set last time
             data['status'] = {'observedGeneration': item['status']['observedGeneration']}
@@ -744,7 +788,7 @@ def delete(request, context):
         context.reason = 'Not Found'
         return {}
 
-    resource_type = get_type(request.url, -2)
+    resource_type = get_type(request.url)
     # clean everything from a namespace
     if resource_type == 'namespaces':
         for resource in resources:
@@ -783,8 +827,8 @@ def add_cache_item(url, resource_type, data):
         cache.set(resource_type, items, None)
 
     # Keep track of what resources exist under other resources (mostly namespace)
-    namespace, item = url.split('_{}_'.format(resource_type))
-    cache_url = '{}_{}'.format(namespace, resource_type)
+    # sneaky way of getting data up to the resource type without too much magic
+    cache_url = ''.join(url.partition(resource_type)[0:2])
     items = cache.get(cache_url, [])
     if url not in items:
         items.append(url)
@@ -806,8 +850,8 @@ def remove_cache_item(url, resource_type):
         cache.set(resource_type, items, None)
 
     # remove from namespace specific scope
-    namespace, item = url.split('_{}_'.format(resource_type))
-    cache_url = '{}_{}'.format(namespace, resource_type)
+    # sneaky way of getting data up to the resource type without too much magic
+    cache_url = ''.join(url.partition(resource_type)[0:2])
     items = cache.get(cache_url, [])
     if url in items:
         items.remove(url)

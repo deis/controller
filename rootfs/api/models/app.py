@@ -735,7 +735,7 @@ class App(UuidAuditedModel):
             raise ServiceUnavailable('Error accessing deis-logger')
 
         # cast content to string since it comes as bytes via the requests object
-        return str(r.content)
+        return str(r.content.decode('utf-8'))
 
     def run(self, user, command):
         def pod_name(size=5, chars=string.ascii_lowercase + string.digits):

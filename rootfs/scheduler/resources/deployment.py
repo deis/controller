@@ -346,3 +346,8 @@ class Deployment(Resource):
 
             waited += 1
             time.sleep(1)
+
+        # check if the replicas are still not ready because of healthcheck failures
+        ready, _ = self.are_replicas_ready(namespace, name)
+        if not ready:
+            self.pod._handle_not_ready_pods(namespace, labels)

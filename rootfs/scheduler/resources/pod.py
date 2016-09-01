@@ -654,3 +654,26 @@ class Pod(Resource):
             self.log(namespace, 'timed out ({}s) waiting for pods to come up in namespace {}'.format(timeout, namespace))  # noqa
 
         self.log(namespace, "{} out of {} pods are in service".format(count, desired))  # noqa
+
+    def _handle_not_ready_pods(self, namespace, labels):
+        """
+        Detects if any pod is in the Running phase but not Ready and handles
+        any potential issues around that mainly failed healthcheks
+        """
+        pods = self.get(namespace, labels=labels).json()
+        for pod in pods['items']:
+            # only care about pods that are in running phase
+            if pod['status']['phase'] != 'Running':
+                continue
+            name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])  # noqa
+            # find the right container in case there are many on the pod
+            container = self.pod.find_container(name, pod['status']['containerStatuses'])
+            if container is None or container['ready'] == 'true':
+                continue
+
+            for event in self.events(pod):
+                if event['reason'] == 'Unhealthy':
+                    # strip out whitespaces on either side
+                    message = "\n".join([x.strip() for x in event['message'].split("\n")])
+                    raise KubeException(message)
+        return None

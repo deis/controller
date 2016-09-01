@@ -418,7 +418,7 @@ class App(UuidAuditedModel):
             if port:
                 envs['PORT'] = port
 
-            healthcheck = release.config.get_healthcheck().get('scale_type', {})
+            healthcheck = release.config.get_healthcheck().get(scale_type, {})
             if not healthcheck and scale_type in ['web', 'cmd']:
                 healthcheck = release.config.get_healthcheck().get('web/cmd', {})
 
@@ -509,7 +509,7 @@ class App(UuidAuditedModel):
             if port:
                 envs['PORT'] = port
 
-            healthcheck = release.config.get_healthcheck().get('scale_type', {})
+            healthcheck = release.config.get_healthcheck().get(scale_type, {})
             if not healthcheck and scale_type in ['web', 'cmd']:
                 healthcheck = release.config.get_healthcheck().get('web/cmd', {})
 

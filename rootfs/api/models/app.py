@@ -1,7 +1,10 @@
 import backoff
+import base64
 from collections import OrderedDict
 from datetime import datetime
+from docker.auth import auth as docker_auth
 import functools
+import json
 import logging
 import random
 import re
@@ -398,6 +401,7 @@ class App(UuidAuditedModel):
         version = "v{}".format(release.version)
         image = release.image
         envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+        registry = release.config.registry
 
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
@@ -407,6 +411,9 @@ class App(UuidAuditedModel):
 
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+
+        # create image pull secret if needed
+        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
 
         tasks = []
         for scale_type, replicas in scale_types.items():
@@ -427,7 +434,7 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': release.config.tags,
                 'envs': envs,
-                'registry': release.config.registry,
+                'registry': registry,
                 'version': version,
                 'replicas': replicas,
                 'app_type': scale_type,
@@ -437,6 +444,7 @@ class App(UuidAuditedModel):
                 'deploy_batches': batches,
                 'deploy_timeout': deploy_timeout,
                 'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
+                'image_pull_secret_name': image_pull_secret_name,
             }
 
             # gather all proc types to be deployed
@@ -482,6 +490,12 @@ class App(UuidAuditedModel):
             self.structure = self._default_structure(release)
             self.save()
 
+        image = release.image
+        registry = release.config.registry
+        version = "v{}".format(release.version)
+        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+        tags = release.config.tags
+
         # see if the app config has deploy batch preference, otherwise use global
         batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
 
@@ -493,12 +507,11 @@ class App(UuidAuditedModel):
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
 
+        # create image pull secret if needed
+        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
+
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
-        image = release.image
-        version = "v{}".format(release.version)
-        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
-        tags = release.config.tags
 
         for scale_type, replicas in self.structure.items():
             # only web / cmd are routable
@@ -518,7 +531,7 @@ class App(UuidAuditedModel):
                 'cpu': release.config.cpu,
                 'tags': tags,
                 'envs': envs,
-                'registry': release.config.registry,
+                'registry': registry,
                 'replicas': replicas,
                 'version': version,
                 'app_type': scale_type,
@@ -530,6 +543,7 @@ class App(UuidAuditedModel):
                 'deployment_history_limit': deployment_history,
                 'release_summary': release.summary,
                 'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
+                'image_pull_secret_name': image_pull_secret_name,
             }
 
         # Sort deploys so routable comes first
@@ -733,28 +747,34 @@ class App(UuidAuditedModel):
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
 
+        image = release.image
+        registry = release.config.registry
+        version = "v{}".format(release.version)
+        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+
         # see if the app config has deploy timeout preference, otherwise use global
         deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
 
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
 
+        # create image pull secret if needed
+        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
+
         name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
 
-        image = release.image
-        version = "v{}".format(release.version)
-        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
         kwargs = {
             'memory': release.config.memory,
             'cpu': release.config.cpu,
             'tags': release.config.tags,
             'envs': envs,
-            'registry': release.config.registry,
+            'registry': registry,
             'version': version,
             'build_type': release.build.type,
             'deploy_timeout': deploy_timeout,
             'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
+            'image_pull_secret_name': image_pull_secret_name,
         }
 
         try:
@@ -962,3 +982,70 @@ class App(UuidAuditedModel):
             else:
                 # let the user know about any other errors
                 raise ServiceUnavailable(str(e)) from e
+
+    def image_pull_secret(self, namespace, registry, image):
+        """
+        Take registry information and set as an imagePullSecret for an RC / Deployment
+        http://kubernetes.io/docs/user-guide/images/#specifying-imagepullsecrets-on-a-pod
+        """
+        docker_config, name, create = self._get_private_registry_config(image, registry)
+        if create is None:
+            return
+        elif create:
+            data = {'.dockerconfigjson': docker_config}
+            try:
+                self._scheduler.secret.get(namespace, name)
+            except KubeHTTPException:
+                self._scheduler.secret.create(
+                    namespace,
+                    name,
+                    data,
+                    secret_type='kubernetes.io/dockerconfigjson'
+                )
+            else:
+                self._scheduler.secret.update(
+                    namespace,
+                    name,
+                    data,
+                    secret_type='kubernetes.io/dockerconfigjson'
+                )
+
+        return name
+
+    def _get_private_registry_config(self, image, registry=None):
+        name = settings.REGISTRY_SECRET_PREFIX
+        if registry:
+            # try to get the hostname information
+            hostname = registry.get('hostname', None)
+            if not hostname:
+                hostname, _ = docker_auth.split_repo_name(image)
+
+            if hostname == docker_auth.INDEX_NAME:
+                hostname = 'https://index.docker.io/v1/'
+
+            username = registry.get('username')
+            password = registry.get('password')
+        elif settings.REGISTRY_LOCATION == 'off-cluster':
+            secret = self._scheduler.secret.get('deis', 'registry-secret').json()
+            username = secret['data']['username']
+            password = secret['data']['password']
+            hostname = secret['data']['hostname']
+            if hostname == '':
+                hostname = 'https://index.docker.io/v1/'
+            name = name + '-' + settings.REGISTRY_LOCATION
+        elif settings.REGISTRY_LOCATION in ['ecr', 'gcr']:
+            return None, name + '-' + settings.REGISTRY_LOCATION, False
+        else:
+            return None, None, None
+
+        # create / update private registry secret
+        auth = bytes('{}:{}'.format(username, password), 'UTF-8')
+        # value has to be a base64 encoded JSON
+        docker_config = json.dumps({
+            'auths': {
+                hostname: {
+                    'auth': base64.b64encode(auth).decode(encoding='UTF-8')
+                }
+            }
+        })
+        return docker_config, name, True

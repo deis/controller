@@ -93,12 +93,8 @@ class ReplicationController(Resource):
             self.log(namespace, "Not scaling RC {} to {} replicas. Already at desired replicas".format(name, desired))  # noqa
             return
         elif desired != rc['spec']['replicas']:  # RC needs new replica count
-            # Set the new desired replica count
-            rc['spec']['replicas'] = desired
-
             self.log(namespace, "scaling RC {} from {} to {} replicas".format(name, current, desired))  # noqa
-
-            self.update(namespace, name, rc)
+            self.scales.update(namespace, name, desired, rc)
             self.wait_until_updated(namespace, name)
 
         # Double check enough pods are in the required state to service the application

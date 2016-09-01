@@ -162,10 +162,14 @@ class Deployment(Resource):
             self.log(namespace, "Not scaling Deployment {} to {} replicas. Already at desired replicas".format(name, desired))  # noqa
             return
         elif desired != current:
+            self.log(namespace, "scaling Deployment {} from {} to {} replicas".format(name, current, desired))  # noqa
+            self.scales.update(namespace, name, desired, deployment)
+
+            # wait until scaling is done
+            self.wait_until_updated(namespace, name)
             # set the previous replicas count so the wait logic can deal with terminating pods
             kwargs['previous_replicas'] = current
-            self.log(namespace, "scaling Deployment {} from {} to {} replicas".format(name, current, desired))  # noqa
-            self.update(namespace, name, image, entrypoint, command, **kwargs)
+            self.wait_until_ready(namespace, name, **kwargs)
 
     def in_progress(self, namespace, name, deploy_timeout, batches, replicas, tags):
         """

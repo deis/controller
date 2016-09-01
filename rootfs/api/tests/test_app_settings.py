@@ -7,10 +7,12 @@ from rest_framework.authtoken.models import Token
 from api.models import App
 from unittest import mock
 from scheduler import KubeException
-from api.tests import adapter, DeisTransactionTestCase
+from api.tests import adapter, mock_port, DeisTransactionTestCase
 
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
+@mock.patch('api.models.release.publish_release', lambda *args: None)
+@mock.patch('api.models.release.docker_get_port', mock_port)
 class TestAppSettings(DeisTransactionTestCase):
     """Tests setting and updating config values"""
 
@@ -168,3 +170,83 @@ class TestAppSettings(DeisTransactionTestCase):
             url = '/v2/apps/{}/whitelist'.format(app_id)
             response = self.client.post(url, {'addresses': addresses})
             self.assertEqual(response.status_code, 400, response.data)
+
+    def test_autoscale(self, mock_requests):
+        """
+        Test that autoscale can be applied
+        """
+        app_id = self.create_app()
+
+        # create an autoscaling rule
+        scale = {'autoscale': {'cmd': {'min': 2, 'max': 5, 'cpu_percent': 45}}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            scale
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('cmd', response.data['autoscale'])
+        self.assertEqual(response.data['autoscale'], scale['autoscale'])
+
+        # update
+        scale = {'autoscale': {'cmd': {'min': 2, 'max': 8, 'cpu_percent': 45}}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            scale
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('cmd', response.data['autoscale'])
+        self.assertEqual(response.data['autoscale'], scale['autoscale'])
+
+        # create
+        scale = {'autoscale': {'worker': {'min': 2, 'max': 5, 'cpu_percent': 45}}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            scale
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('worker', response.data['autoscale'])
+        self.assertEqual(response.data['autoscale']['worker'], scale['autoscale']['worker'])
+
+        # check that the cmd proc type is still there
+        self.assertIn('cmd', response.data['autoscale'])
+
+        # check that config fails if trying to unset non-existing proc type
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            {'autoscale': {'invalid_proctype': None}})
+        self.assertEqual(response.status_code, 422, response.data)
+
+        # remove a proc type
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            {'autoscale': {'worker': None}})
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotIn('worker', response.data['autoscale'])
+        self.assertIn('cmd', response.data['autoscale'])
+
+        # remove another proc type
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            {'autoscale': {'cmd': None}})
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertNotIn('cmd', response.data['autoscale'])
+
+    def test_autoscale_validations(self, mock_requests):
+        """
+        Test that autoscale validations work
+        """
+        app_id = self.create_app()
+
+        # Set one of the values that require a numeric value to a string
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            {'autoscale': {'cmd': {'min': 4, 'max': 5, 'cpu_percent': "t"}}}
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+
+        # Don't set one of the mandatory value
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            {'autoscale': {'cmd': {'min': 4, 'cpu_percent': 45}}}
+        )
+        self.assertEqual(response.status_code, 400, response.data)

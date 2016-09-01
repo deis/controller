@@ -2,9 +2,12 @@ import logging
 from django.conf import settings
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
+from jsonfield import JSONField
+from rest_framework.exceptions import NotFound
 
+from api.utils import dict_diff
 from api.models import UuidAuditedModel
-from api.exceptions import DeisException, AlreadyExists
+from api.exceptions import DeisException, AlreadyExists, UnprocessableEntity
 
 
 class AppSettings(UuidAuditedModel):
@@ -17,6 +20,7 @@ class AppSettings(UuidAuditedModel):
     maintenance = models.NullBooleanField(default=None)
     routable = models.NullBooleanField(default=None)
     whitelist = ArrayField(models.CharField(max_length=50), default=[])
+    autoscale = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -86,6 +90,46 @@ class AppSettings(UuidAuditedModel):
                     self.summary += ' and '
                 self.summary += "{} {}".format(self.owner, changes)
 
+    def update_autoscale(self, previous_settings):
+        data = getattr(previous_settings, 'autoscale', {}).copy()
+        new = getattr(self, 'autoscale', {}).copy()
+        # If no previous settings then do nothing
+        if not previous_settings:
+            return
+
+        # if nothing changed copy the settings from previous
+        if not new and data:
+            setattr(self, 'autoscale', data)
+        elif data != new:
+            for proc, scale in new.items():
+                if scale is None:
+                    # error if unsetting non-existing key
+                    if proc not in data:
+                        raise UnprocessableEntity('{} does not exist under {}'.format(proc, 'autoscale'))  # noqa
+                    del data[proc]
+                else:
+                    data[proc] = scale
+            setattr(self, 'autoscale', data)
+
+            # only apply new items
+            for proc, scale in new.items():
+                self.app.autoscale(proc, scale)
+
+            # if the autoscale information changed, log the dict diff
+            changes = []
+            old_autoscale = getattr(previous_settings, 'autoscale', {})
+            diff = dict_diff(self.autoscale, old_autoscale)
+            # try to be as succinct as possible
+            added = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('added', {})])))  # noqa
+            added = 'added autoscale for process type ' + added if added else ''
+            changed = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('changed', {})])))  # noqa
+            changed = 'changed autoscale for process type ' + changed if changed else ''
+            deleted = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('deleted', {})])))  # noqa
+            deleted = 'deleted autoscale for process type ' + deleted if deleted else ''
+            changes = ', '.join(i for i in (added, changed, deleted) if i)
+            if changes:
+                self.summary += ["{} {}".format(self.owner, changes)]
+
     def save(self, *args, **kwargs):
         self.summary = []
         previous_settings = None
@@ -98,6 +142,9 @@ class AppSettings(UuidAuditedModel):
             self.update_maintenance(previous_settings)
             self.update_routable(previous_settings)
             self.update_whitelist(previous_settings)
+            self.update_autoscale(previous_settings)
+        except (UnprocessableEntity, NotFound):
+            raise
         except Exception as e:
             self.delete()
             raise DeisException(str(e)) from e

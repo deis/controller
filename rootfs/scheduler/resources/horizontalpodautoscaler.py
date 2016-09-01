@@ -38,7 +38,7 @@ class HorizontalPodAutoscaler(Resource):
 
         return response
 
-    def manifest(self, namespace, name, target, **kwargs):
+    def manifest(self, namespace, name, app_type, target, **kwargs):
         min_replicas = kwargs.get('min')
         max_replicas = kwargs.get('max')
         cpu_percent = kwargs.get('cpu_percent')
@@ -51,7 +51,7 @@ class HorizontalPodAutoscaler(Resource):
 
         labels = {
             'app': namespace,
-            'type': kwargs.get('app_type'),
+            'type': app_type,
             'heritage': 'deis',
         }
 
@@ -66,32 +66,44 @@ class HorizontalPodAutoscaler(Resource):
             'spec': {
                 'minReplicas': min_replicas,
                 'maxReplicas': max_replicas,
-                'scaleRef': {
-                    # only works with Deployments, RS and RC
-                    'kind': target['kind'],
-                    'name': target['metadata']['name'],
-                    # the resource of the above which does the scale action
-                    'subresource': 'scale',
-                },
-                'cpuUtilization': {
-                    'targetPercentage': cpu_percent
-                }
             }
         }
 
+        if self.version() >= 1.3:
+            manifest['spec']['targetCPUUtilizationPercentage'] = cpu_percent
+
+            manifest['spec']['scaleTargetRef'] = {
+                # only works with Deployments, RS and RC
+                'kind': target['kind'],
+                'name': target['metadata']['name'],
+            }
+        elif self.version() <= 1.2:
+            # api changed between version
+            manifest['spec']['cpuUtilization'] = {
+                'targetPercentage': cpu_percent
+            }
+
+            manifest['spec']['scaleRef'] = {
+                # only works with Deployments, RS and RC
+                'kind': target['kind'],
+                'name': target['metadata']['name'],
+                # the resource of the above which does the scale action
+                'subresource': 'scale',
+            }
+
         return manifest
 
-    def create(self, namespace, name, target, **kwargs):
-        manifest = self.manifest(namespace, name, target, **kwargs)
+    def create(self, namespace, name, app_type, target, **kwargs):
+        manifest = self.manifest(namespace, name, app_type, target, **kwargs)
 
         url = self.api("/namespaces/{}/horizontalpodautoscalers", namespace)
         response = self.session.post(url, json=manifest)
         if self.unhealthy(response.status_code):
+            self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
             raise KubeHTTPException(
                 response,
                 'create HorizontalPodAutoscaler "{}" in Namespace "{}"', name, namespace
             )
-            self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
 
         # optionally wait for HPA if requested
         if kwargs.get('wait', False):
@@ -99,8 +111,8 @@ class HorizontalPodAutoscaler(Resource):
 
         return response
 
-    def update(self, namespace, name, target, **kwargs):
-        manifest = self.manifest(namespace, name, target, **kwargs)
+    def update(self, namespace, name, app_type, target, **kwargs):
+        manifest = self.manifest(namespace, name, app_type, target, **kwargs)
 
         url = self.api("/namespaces/{}/horizontalpodautoscalers/{}", namespace, name)
         response = self.session.put(url, json=manifest)
@@ -137,8 +149,12 @@ class HorizontalPodAutoscaler(Resource):
         # ideally it would use the resources wait commands but they vary
         for _ in range(30):
             # fetch resource attached to it
-            resource_kind = hpa['spec']['scaleRef']['kind'].lower()
-            resource_name = hpa['spec']['scaleRef']['name']
+            if self.version() >= 1.3:
+                resource_kind = hpa['spec']['scaleTargetRef']['kind'].lower()
+                resource_name = hpa['spec']['scaleTargetRef']['name']
+            elif self.version() <= 1.2:
+                resource_kind = hpa['spec']['scaleRef']['kind'].lower()
+                resource_name = hpa['spec']['scaleRef']['name']
 
             resource = getattr(self, resource_kind)
             resource = getattr(resource, 'get')(namespace, resource_name).json()

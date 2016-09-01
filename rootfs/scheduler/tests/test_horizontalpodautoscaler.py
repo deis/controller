@@ -38,7 +38,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'cpu_percent': 45,
             'wait': True
         }
-        horizontalpodautoscaler = self.scheduler.hpa.create(namespace, name, deployment.json(), **kwargs)  # noqa
+        horizontalpodautoscaler = self.scheduler.hpa.create(namespace, name, kwargs.get('app_type'), deployment.json(), **kwargs)  # noqa
         self.assertEqual(horizontalpodautoscaler.status_code, 201, horizontalpodautoscaler.json())  # noqa
         return name
 
@@ -55,7 +55,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'cpu_percent': 45,
             'wait': True
         }
-        horizontalpodautoscaler = self.scheduler.hpa.update(namespace, name, deployment.json(), **kwargs)  # noqa
+        horizontalpodautoscaler = self.scheduler.hpa.update(namespace, name, kwargs.get('app_type'), deployment.json(), **kwargs)  # noqa
         self.assertEqual(horizontalpodautoscaler.status_code, 200, horizontalpodautoscaler.json())  # noqa
         return name
 

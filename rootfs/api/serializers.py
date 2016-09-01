@@ -470,6 +470,7 @@ class AppSettingsSerializer(serializers.ModelSerializer):
 
     app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
     owner = serializers.ReadOnlyField(source='owner.username')
+    autoscale = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`AppSettingsSerializer`."""
@@ -489,6 +490,35 @@ class AppSettingsSerializer(serializers.ModelSerializer):
                     except:
                         raise serializers.ValidationError(
                            "The address {} is not valid".format(address))
+
+        return data
+
+    def validate_autoscale(self, data):
+        schema = {
+            "$schema": "http://json-schema.org/schema#",
+            "type": "object",
+            "properties": {
+                # minimum replicas autoscale will keep resource at based on load
+                "min": {"type": "integer"},
+                # maximum replicas autoscale will keep resource at based on load
+                "max": {"type": "integer"},
+                # how much CPU load there is to trigger scaling rules
+                "cpu_percent": {"type": "integer"},
+            },
+            "required": ["min", "max", "cpu_percent"],
+        }
+
+        for proc, autoscale in data.items():
+            if autoscale is None:
+                continue
+
+            try:
+                jsonschema.validate(autoscale, schema)
+            except jsonschema.ValidationError as e:
+                raise serializers.ValidationError(
+                    "could not validate {}: {}".format(autoscale, e.message)
+                )
+
         return data
 
 

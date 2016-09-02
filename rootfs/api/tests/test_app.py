@@ -89,7 +89,7 @@ class AppTest(DeisTestCase):
         self.assertContains(response, 'Application with this id already exists.', status_code=400)
 
     @mock.patch('requests.get')
-    def test_app_actions(self, mock_requests, mock_get):
+    def test_app_logs(self, mock_requests, mock_get):
         app_id = self.create_app()
 
         # test logs - 204 from deis-logger
@@ -111,7 +111,8 @@ class AppTest(DeisTestCase):
         self.assertContains(
             response,
             "Error accessing logs for {}".format(app_id),
-            status_code=500)
+            status_code=500
+        )
 
         # test logs - success accessing deis-logger
         mock_response.status_code = 200
@@ -125,9 +126,8 @@ class AppTest(DeisTestCase):
         self.assertContains(
             response,
             "Error accessing logs for {}".format(app_id),
-            status_code=500)
-
-        # TODO: test run needs an initial build
+            status_code=500
+        )
 
     @mock.patch('api.models.logger')
     def test_app_release_notes_in_logs(self, mock_requests, mock_logger):
@@ -566,9 +566,9 @@ class AppTest(DeisTestCase):
         self.assertEqual(create, None)
 
 
-FAKE_LOG_DATA = """
+FAKE_LOG_DATA = bytes("""
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5
 2013-08-15 12:41:25 [33454] [INFO] Listening at: http://0.0.0.0:5000 (33454)
 2013-08-15 12:41:25 [33454] [INFO] Using worker: sync
 2013-08-15 12:41:25 [33457] [INFO] Booting worker with pid 33457
-"""
+""", 'utf-8')

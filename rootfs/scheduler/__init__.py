@@ -186,28 +186,6 @@ class KubeHTTPClient(object):
                     "Additional information:\n{}".format(version, namespace, app_type, str(e))
                 ) from e
 
-    def cleanup_release(self, namespace, controller, timeout):
-        """
-        Cleans up resources related to an application deployment
-        """
-        # Deployment takes care of this in the API, RC does not
-        # Have the RC scale down pods and delete itself
-        self._scale_rc(namespace, controller['metadata']['name'], 0, timeout)
-        self.rc.delete(namespace, controller['metadata']['name'])
-
-        # Remove stray pods that the scale down will have missed (this can occassionally happen)
-        pods = self.pod.get(namespace, labels=controller['metadata']['labels']).json()
-        for pod in pods['items']:
-            if self.pod.deleted(pod):
-                continue
-
-            try:
-                self.pod.delete(namespace, pod['metadata']['name'])
-            except KubeHTTPException as e:
-                # Sometimes k8s will manage to remove the pod from under us
-                if e.response.status_code == 404:
-                    continue
-
     def scale(self, namespace, name, image, entrypoint, command, **kwargs):
         """Scale Deployment"""
         try:

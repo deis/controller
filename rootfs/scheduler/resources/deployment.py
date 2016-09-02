@@ -94,8 +94,8 @@ class Deployment(Resource):
         }
 
         # Add in how many deployment revisions to keep
-        if kwargs.get('deployment_revision_history', None) is not None:
-            manifest['spec']['revisionHistoryLimit'] = int(kwargs.get('deployment_revision_history'))  # noqa
+        if kwargs.get('deployment_revision_history_limit', None) is not None:
+            manifest['spec']['revisionHistoryLimit'] = int(kwargs.get('deployment_revision_history_limit'))  # noqa
 
         # tell pod how to execute the process
         kwargs['command'] = entrypoint

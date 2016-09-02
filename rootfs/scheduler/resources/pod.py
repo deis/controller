@@ -111,7 +111,7 @@ class Pod(Resource):
         spec['terminationGracePeriodSeconds'] = kwargs.get('pod_termination_grace_period_seconds', 30)  # noqa
 
         # set the image pull policy that is associated with the application container
-        kwargs['image_pull_policy'] = settings.DOCKER_BUILDER_IMAGE_PULL_POLICY
+        kwargs['image_pull_policy'] = settings.IMAGE_PULL_POLICY
 
         # Check if it is a slug builder image.
         if build_type == "buildpack":
@@ -140,7 +140,7 @@ class Pod(Resource):
             # overwrite image so slugrunner image is used in the container
             image = settings.SLUGRUNNER_IMAGE
             # slugrunner pull policy
-            kwargs['image_pull_policy'] = settings.SLUG_BUILDER_IMAGE_PULL_POLICY
+            kwargs['image_pull_policy'] = settings.SLUG_RUNNER_IMAGE_PULL_POLICY
 
         # create the base container
         container = {}

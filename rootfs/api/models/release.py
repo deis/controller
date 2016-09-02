@@ -234,22 +234,14 @@ class Release(UuidAuditedModel):
                 new_release.delete()
             raise DeisException(str(e)) from e
 
-    def delete(self, *args, **kwargs):
-        """Delete release DB record and any RCs from the affect release"""
-        try:
-            self._delete_release_in_scheduler(self.app.id, "v{}".format(self.version))
-        except KubeHTTPException as e:
-            # 404 means they were already cleaned up
-            if e.response.status_code is not 404:
-                # Another problem came up
-                message = 'Could not to cleanup RCs for release {}'.format(self.version)
-                self.app.log(message, level=logging.WARNING)
-                logger.warning(message + ' - ' + str(e))
-        finally:
-            super(Release, self).delete(*args, **kwargs)
-
     def cleanup_old(self):  # noqa
-        """Cleanup all but the latest release from Kubernetes"""
+        """
+        Cleanup any old resources from Kubernetes
+
+        This includes any RCs that are no longer considered the latest release (just a safety net)
+        Secrets no longer tied to any ReplicaSet
+        Stray pods no longer relevant to the latest release
+        """
         latest_version = 'v{}'.format(self.version)
         self.app.log(
             'Cleaning up RCs for releases older than {} (latest)'.format(latest_version),
@@ -276,24 +268,12 @@ class Release(UuidAuditedModel):
                 level=logging.DEBUG
             )
 
+        # this is RC related
         for version in controller_removal:
             self._delete_release_in_scheduler(self.app.id, version)
 
-        # find stray env secrets to remove that may have been missed
-        self.app.log('Cleaning up orphaned environment var secrets', level=logging.DEBUG)
-        labels = {
-            'heritage': 'deis',
-            'app': self.app.id,
-            'type': 'env',
-        }
-        secrets = self._scheduler.secret.get(self.app.id, labels=labels).json()
-        for secret in secrets['items']:
-            current_version = secret['metadata']['labels']['version']
-            # skip the latest release
-            if current_version == latest_version:
-                continue
-
-            self._scheduler.secret.delete(self.app.id, secret['metadata']['name'])
+        # handle Deployments specific cleanups
+        self._cleanup_deployment_secrets_and_configs(self.app.id)
 
         # Remove stray pods
         labels = {'heritage': 'deis'}
@@ -313,8 +293,6 @@ class Release(UuidAuditedModel):
                 # Sometimes k8s will manage to remove the pod from under us
                 if e.response.status_code == 404:
                     continue
-
-        self._cleanup_deployment_secrets_and_configs(self.app.id)
 
     def _cleanup_deployment_secrets_and_configs(self, namespace):
         """
@@ -356,7 +334,7 @@ class Release(UuidAuditedModel):
         """
         Deletes a specific release in k8s based on ReplicationController
 
-        Scale RCs to 0 then delete RCs / Deployments and the version specific
+        Scale RCs to 0 then delete RCs and the version specific
         secret that container the env var
         """
         labels = {
@@ -366,18 +344,14 @@ class Release(UuidAuditedModel):
         }
 
         # see if the app config has deploy timeout preference, otherwise use global
-        deploy_timeout = self.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+        timeout = self.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)
 
         controllers = self._scheduler.rc.get(namespace, labels=labels).json()
         for controller in controllers['items']:
-            self._scheduler.cleanup_release(namespace, controller, deploy_timeout)
-
-        # remove secret that contains env vars for the release
-        try:
-            secret_name = "{}-{}-env".format(namespace, version)
-            self._scheduler.secret.delete(namespace, secret_name)
-        except KubeHTTPException:
-            pass
+            # Deployment takes care of this in the API, RC does not
+            # Have the RC scale down pods and delete itself
+            self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0, timeout)
+            self._scheduler.rc.delete(namespace, controller['metadata']['name'])
 
     def save(self, *args, **kwargs):  # noqa
         if not self.summary:

@@ -50,7 +50,7 @@ class KubeHTTPClient(object):
 
             # get past recursion problems in case of self reference
             resource_mapping[component] = ''
-            resource_mapping[component] = res()
+            resource_mapping[component] = res(self.url)
             # map singular Resource name to the plural one
             resource_mapping[name] = component
             if res.short_name is not None:

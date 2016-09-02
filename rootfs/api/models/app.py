@@ -470,7 +470,7 @@ class App(UuidAuditedModel):
             self.log(err, logging.ERROR)
             raise ServiceUnavailable(err) from e
 
-    def deploy(self, release, force_deploy=False):
+    def deploy(self, release, force_deploy=False, rollback_on_failure=True):  # noqa
         """
         Deploy a new release to this application
 
@@ -569,8 +569,22 @@ class App(UuidAuditedModel):
                 ) for scale_type, kwargs in deploys.items()
             ]
 
-            async_run(tasks)
+            try:
+                async_run(tasks)
+            except KubeException as e:
+                if rollback_on_failure:
+                    err = 'There was a problem deploying {}. Rolling back process types to release {}.'.format(version, "v{}".format(release.previous().version))  # noqa
+                    # This goes in the log before the rollback starts
+                    self.log(err, logging.ERROR)
+                    # revert all process types to old release
+                    self.deploy(release.previous(), force_deploy=True, rollback_on_failure=False)
+                    # let it bubble up
+                    raise DeisException('{}\n{}'.format(err, str(e))) from e
+
+                # otherwise just re-raise
+                raise
         except Exception as e:
+            # This gets shown to the end user
             err = '(app::deploy): {}'.format(e)
             self.log(err, logging.ERROR)
             raise ServiceUnavailable(err) from e

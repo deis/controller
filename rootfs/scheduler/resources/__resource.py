@@ -1,5 +1,4 @@
 from urllib.parse import urljoin
-from django.conf import settings
 from .. import KubeHTTPClient
 
 
@@ -24,9 +23,6 @@ class Resource(KubeHTTPClient, metaclass=ResourceRegistry):
     api_version = 'v1'
     api_prefix = 'api'
     short_name = None
-
-    def __init__(self):
-        super().__init__(settings.SCHEDULER_URL)
 
     def api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""

@@ -26,6 +26,7 @@ from api.utils import generate_app_name, async_run
 from api.models.release import Release
 from api.models.config import Config
 from api.models.domain import Domain
+from api.models.tls import TLS
 from api.models.appsettings import AppSettings
 
 from scheduler import KubeHTTPException, KubeException
@@ -228,6 +229,10 @@ class App(UuidAuditedModel):
             self.appsettings_set.latest()
         except AppSettings.DoesNotExist:
             AppSettings.objects.create(owner=self.owner, app=self)
+        try:
+            self.tls_set.latest()
+        except TLS.DoesNotExist:
+            TLS.objects.create(owner=self.owner, app=self)
         # Attach the platform specific application sub domain to the k8s service
         # Only attach it on first release in case a customer has remove the app domain
         if rel.version == 1 and not Domain.objects.filter(domain=self.id).exists():

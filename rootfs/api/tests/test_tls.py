@@ -61,3 +61,14 @@ class TestTLS(DeisTransactionTestCase):
             '/v2/apps/{app_id}/tls'.format(**locals()),
             data)
         self.assertEqual(response.status_code, 400, response.data)
+
+    def test_tls_created_on_app_create(self, mock_requests):
+        """
+        Ensure that a TLS object is created for an App with default values.
+
+        See https://github.com/deis/controller/issues/1042
+        """
+        app_id = self.create_app()
+        response = self.client.get('/v2/apps/{}/tls'.format(app_id))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['https_enforced'], None)

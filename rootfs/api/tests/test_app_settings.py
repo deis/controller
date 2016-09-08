@@ -99,7 +99,7 @@ class TestAppSettings(DeisTransactionTestCase):
         app_id = self.create_app()
         app = App.objects.get(id=app_id)
         # add addresses to empty whitelist
-        addresses = ["1.2.3.4", "0.0.0.0/0"]
+        addresses = ["0.0.0.0/0"]
         whitelist = {'addresses': addresses}
         response = self.client.post(
             '/v2/apps/{app_id}/whitelist'.format(**locals()),
@@ -108,12 +108,34 @@ class TestAppSettings(DeisTransactionTestCase):
         self.assertEqual(set(response.data['addresses']),
                          set(app.appsettings_set.latest().whitelist), response.data)
         self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+
         # get the whitelist
         response = self.client.get('/v2/apps/{app_id}/whitelist'.format(**locals()))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(set(response.data['addresses']),
                          set(app.appsettings_set.latest().whitelist), response.data)
         self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+
+        # delete an address from whitelist
+        whitelist = {'addresses': ["0.0.0.0/0"]}
+        addresses.remove("0.0.0.0/0")
+        response = self.client.delete(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 204, response.data)
+        self.assertEqual(set(addresses), set(app.appsettings_set.latest().whitelist))
+
+        # add addresses to empty whitelist
+        addresses = ["0.0.0.0/0"]
+        whitelist = {'addresses': addresses}
+        response = self.client.post(
+            '/v2/apps/{app_id}/whitelist'.format(**locals()),
+            whitelist)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(set(response.data['addresses']),
+                         set(app.appsettings_set.latest().whitelist), response.data)
+        self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+
         # add addresses to non-empty whitelist
         whitelist = {'addresses': ["2.3.4.5"]}
         addresses.extend(["2.3.4.5"])
@@ -124,6 +146,7 @@ class TestAppSettings(DeisTransactionTestCase):
         self.assertEqual(set(response.data['addresses']),
                          set(app.appsettings_set.latest().whitelist), response.data)
         self.assertEqual(set(response.data['addresses']), set(addresses), response.data)
+
         # add exisitng addresses to whitelist
         response = self.client.post(
             '/v2/apps/{app_id}/whitelist'.format(**locals()),
@@ -135,14 +158,6 @@ class TestAppSettings(DeisTransactionTestCase):
             '/v2/apps/{app_id}/whitelist'.format(**locals()),
             whitelist)
         self.assertEqual(response.status_code, 422)
-        # delete an address from whitelist
-        whitelist = {'addresses': ["2.3.4.5"]}
-        addresses.remove("2.3.4.5")
-        response = self.client.delete(
-            '/v2/apps/{app_id}/whitelist'.format(**locals()),
-            whitelist)
-        self.assertEqual(response.status_code, 204, response.data)
-        self.assertEqual(set(addresses), set(app.appsettings_set.latest().whitelist))
         # pass invalid address
         whitelist = {'addresses': ["2.3.4.6.7"]}
         response = self.client.post(

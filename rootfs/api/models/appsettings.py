@@ -19,7 +19,9 @@ class AppSettings(UuidAuditedModel):
     app = models.ForeignKey('App', on_delete=models.CASCADE)
     maintenance = models.NullBooleanField(default=None)
     routable = models.NullBooleanField(default=None)
-    whitelist = ArrayField(models.CharField(max_length=50), default=[])
+    # the default values is None to differentiate from user sending an empty whitelist
+    # and user just updating other fields meaning the values needs to be copied from prev release
+    whitelist = ArrayField(models.CharField(max_length=50), default=None)
     autoscale = JSONField(default={}, blank=True)
 
     class Meta:
@@ -70,13 +72,14 @@ class AppSettings(UuidAuditedModel):
             self.summary += ["{} changed routablity from {} to {}".format(self.owner, old, new)]
 
     def update_whitelist(self, previous_settings):
-        # If no previous settings then assume it is the first record and do nothing
+        # If no previous settings then assume it is the first record and set as empty
+        # to prevent from database constraint violation
         if not previous_settings:
-            return
+            setattr(self, 'whitelist', [])
         old = getattr(previous_settings, 'whitelist', [])
-        new = getattr(self, 'whitelist', [])
+        new = getattr(self, 'whitelist', None)
         # if nothing changed copy the settings from previous
-        if len(new) == 0 and len(old) != 0:
+        if new is None and old is not None:
             setattr(self, 'whitelist', old)
         elif set(old) != set(new):
             self.app.whitelist(new)

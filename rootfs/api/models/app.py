@@ -970,8 +970,13 @@ class App(UuidAuditedModel):
         service = self._fetch_service_config(self.id)
 
         try:
-            addresses = ",".join(address for address in whitelist)
-            service['metadata']['annotations']['router.deis.io/whitelist'] = addresses
+            if whitelist:
+                addresses = ",".join(address for address in whitelist)
+                service['metadata']['annotations']['router.deis.io/whitelist'] = addresses
+            elif 'router.deis.io/whitelist' in service['metadata']['annotations']:
+                service['metadata']['annotations'].pop('router.deis.io/whitelist', None)
+            else:
+                return
             self._scheduler.svc.update(self.id, self.id, data=service)
         except KubeException as e:
             raise ServiceUnavailable(str(e)) from e

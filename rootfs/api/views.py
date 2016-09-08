@@ -361,8 +361,11 @@ class CertificateViewSet(BaseDeisViewSet):
 
     def attach(self, request, *args, **kwargs):
         try:
-            # TODO how to validate domain is set in the body?
-            kwargs['domain'] = request.data['domain']
+            if kwargs['domain'] is None and not request.data.get('domain'):
+                raise DeisException("domain is a required field")
+            elif request.data.get('domain'):
+                kwargs['domain'] = request.data['domain']
+
             self.get_object().attach(*args, **kwargs)
         except Http404:
             raise

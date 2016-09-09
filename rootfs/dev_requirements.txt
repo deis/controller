@@ -4,9 +4,6 @@ coverage==4.2.0
 # Run "make flake8" to check python syntax and style
 flake8==2.5.4
 
-# code coverage report at https://codecov.io/github/deis/workflow
-codecov==2.0.5
-
 # mock out python-requests, mostly k8s
 # requests-mock==1.0.0
 -e git+https://github.com/helgi/requests-mock.git@class_adapter#egg=request_mock

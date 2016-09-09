@@ -1,4 +1,3 @@
-from urllib.parse import urljoin
 from .. import KubeHTTPClient
 
 
@@ -26,5 +25,4 @@ class Resource(KubeHTTPClient, metaclass=ResourceRegistry):
 
     def api(self, tmpl, *args):
         """Return a fully-qualified Kubernetes API URL from a string template with args."""
-        url = "/{}/{}".format(self.api_prefix, self.api_version) + tmpl.format(*args)
-        return urljoin(self.url, url)
+        return "/{}/{}".format(self.api_prefix, self.api_version) + tmpl.format(*args)

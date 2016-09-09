@@ -21,7 +21,7 @@ class ReplicationController(Resource):
             message = 'get ReplicationControllers in Namespace "{}"'
 
         url = self.api(url, *args)
-        response = self.session.get(url, params=self.query_params(**kwargs))
+        response = self.http_get(url, params=self.query_params(**kwargs))
         if self.unhealthy(response.status_code):
             args.reverse()  # error msg is in reverse order
             raise KubeHTTPException(response, message, *args)
@@ -54,7 +54,7 @@ class ReplicationController(Resource):
         manifest['spec']['template'] = self.pod.manifest(namespace, name, image, **kwargs)
 
         url = self.api("/namespaces/{}/replicationcontrollers", namespace)
-        resp = self.session.post(url, json=manifest)
+        resp = self.http_post(url, json=manifest)
         if self.unhealthy(resp.status_code):
             raise KubeHTTPException(
                 resp,
@@ -68,7 +68,7 @@ class ReplicationController(Resource):
 
     def update(self, namespace, name, data):
         url = self.api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        response = self.session.put(url, json=data)
+        response = self.http_put(url, json=data)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(response, 'scale ReplicationController "{}"', name)
 
@@ -76,7 +76,7 @@ class ReplicationController(Resource):
 
     def delete(self, namespace, name):
         url = self.api("/namespaces/{}/replicationcontrollers/{}", namespace, name)
-        response = self.session.delete(url)
+        response = self.http_delete(url)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

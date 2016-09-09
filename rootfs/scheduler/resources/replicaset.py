@@ -21,7 +21,7 @@ class ReplicaSet(Resource):
             message = 'get ReplicaSets in Namespace "{}"'
 
         url = self.api(url, *args)
-        response = self.session.get(url, params=self.query_params(**kwargs))
+        response = self.http_get(url, params=self.query_params(**kwargs))
         if self.unhealthy(response.status_code):
             args.reverse()  # error msg is in reverse order
             raise KubeHTTPException(response, message, *args)

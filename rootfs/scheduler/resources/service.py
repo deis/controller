@@ -20,7 +20,7 @@ class Service(Resource):
             message = 'get Services in Namespace "{}"'
 
         url = self.api(url, *args)
-        response = self.session.get(url, params=self.query_params(**kwargs))
+        response = self.http_get(url, params=self.query_params(**kwargs))
         if self.unhealthy(response.status_code):
             args.reverse()  # error msg is in reverse order
             raise KubeHTTPException(response, message, *args)
@@ -56,7 +56,7 @@ class Service(Resource):
 
         data = dict_merge(manifest, kwargs.get('data', {}))
         url = self.api("/namespaces/{}/services", namespace)
-        response = self.session.post(url, json=data)
+        response = self.http_post(url, json=data)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,
@@ -67,7 +67,7 @@ class Service(Resource):
 
     def update(self, namespace, name, data):
         url = self.api("/namespaces/{}/services/{}", namespace, name)
-        response = self.session.put(url, json=data)
+        response = self.http_put(url, json=data)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,
@@ -78,7 +78,7 @@ class Service(Resource):
 
     def delete(self, namespace, name):
         url = self.api("/namespaces/{}/services/{}", namespace, name)
-        response = self.session.delete(url)
+        response = self.http_delete(url)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

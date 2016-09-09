@@ -2,8 +2,10 @@ from collections import OrderedDict
 from datetime import datetime
 import logging
 import requests
+import requests.exceptions
 from requests_toolbelt import user_agent
 import time
+from urllib.parse import urljoin
 
 from api import __version__ as deis_version
 from scheduler.exceptions import KubeException, KubeHTTPException   # noqa
@@ -73,7 +75,7 @@ class KubeHTTPClient(object):
 
     def version(self):
         """Get Kubernetes version as a float"""
-        response = self.session.get(self.url + '/version')
+        response = self.http_get('/version')
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(response, 'fetching Kubernetes version')
 
@@ -138,6 +140,89 @@ class KubeHTTPClient(object):
         """
         lvl = getattr(logging, level.upper()) if hasattr(logging, level.upper()) else logging.INFO
         logger.log(lvl, "[{}]: {}".format(namespace, message))
+
+    def http_head(self, path, **kwargs):
+        """
+        Make a HEAD request to the k8s server.
+        """
+        try:
+
+            url = urljoin(self.url, path)
+            response = self.session.head(url, **kwargs)
+        except requests.exceptions.ConnectionError as err:
+            # reraise as KubeException, but log stacktrace.
+            message = "There was a problem retrieving headers from " \
+                "the Kubernetes API server. URL: {}".format(url)
+            logger.error(message)
+            raise KubeException(message) from err
+
+        return response
+
+    def http_get(self, path, params=None, **kwargs):
+        """
+        Make a GET request to the k8s server.
+        """
+        try:
+            url = urljoin(self.url, path)
+            response = self.session.get(url, params=params, **kwargs)
+        except requests.exceptions.ConnectionError as err:
+            # reraise as KubeException, but log stacktrace.
+            message = "There was a problem retrieving data from " \
+                      "the Kubernetes API server. URL: {}, params: {}".format(url, params)
+            logger.error(message)
+            raise KubeException(message) from err
+
+        return response
+
+    def http_post(self, path, data=None, json=None, **kwargs):
+        """
+        Make a POST request to the k8s server.
+        """
+        try:
+            url = urljoin(self.url, path)
+            response = self.session.post(url, data=data, json=json, **kwargs)
+        except requests.exceptions.ConnectionError as err:
+            # reraise as KubeException, but log stacktrace.
+            message = "There was a problem posting data to " \
+                      "the Kubernetes API server. URL: {}, " \
+                      "data: {}, json: {}".format(url, data, json)
+            logger.error(message)
+            raise KubeException(message) from err
+
+        return response
+
+    def http_put(self, path, data=None, **kwargs):
+        """
+        Make a PUT request to the k8s server.
+        """
+        try:
+            url = urljoin(self.url, path)
+            response = self.session.put(url, data=data, **kwargs)
+        except requests.exceptions.ConnectionError as err:
+            # reraise as KubeException, but log stacktrace.
+            message = "There was a problem putting data to " \
+                      "the Kubernetes API server. URL: {}, " \
+                      "data: {}".format(url, data)
+            logger.error(message)
+            raise KubeException(message) from err
+
+        return response
+
+    def http_delete(self, path, **kwargs):
+        """
+        Make a DELETE request to the k8s server.
+        """
+        try:
+            url = urljoin(self.url, path)
+            response = self.session.delete(url, **kwargs)
+        except requests.exceptions.ConnectionError as err:
+            # reraise as KubeException, but log stacktrace.
+            message = "There was a problem deleting data from " \
+                      "the Kubernetes API server. URL: {}".format(url)
+            logger.error(message)
+            raise KubeException(message) from err
+
+        return response
 
     def deploy(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
         """Deploy Deployment depending on what's requested"""
@@ -226,7 +311,7 @@ class KubeHTTPClient(object):
         manifest = self.pod.manifest(namespace, name, image, **kwargs)
 
         url = self.pods.api("/namespaces/{}/pods", namespace)
-        response = self.session.post(url, json=manifest)
+        response = self.http_post(url, json=manifest)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
 

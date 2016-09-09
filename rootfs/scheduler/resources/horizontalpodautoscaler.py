@@ -31,7 +31,7 @@ class HorizontalPodAutoscaler(Resource):
             message = 'get HorizontalPodAutoscalers in Namespace "{}"'
 
         url = self.api(url, *args)
-        response = self.session.get(url, params=self.query_params(**kwargs))
+        response = self.http_get(url, params=self.query_params(**kwargs))
         if self.unhealthy(response.status_code):
             args.reverse()  # error msg is in reverse order
             raise KubeHTTPException(response, message, *args)
@@ -97,7 +97,7 @@ class HorizontalPodAutoscaler(Resource):
         manifest = self.manifest(namespace, name, app_type, target, **kwargs)
 
         url = self.api("/namespaces/{}/horizontalpodautoscalers", namespace)
-        response = self.session.post(url, json=manifest)
+        response = self.http_post(url, json=manifest)
         if self.unhealthy(response.status_code):
             self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
             raise KubeHTTPException(
@@ -115,7 +115,7 @@ class HorizontalPodAutoscaler(Resource):
         manifest = self.manifest(namespace, name, app_type, target, **kwargs)
 
         url = self.api("/namespaces/{}/horizontalpodautoscalers/{}", namespace, name)
-        response = self.session.put(url, json=manifest)
+        response = self.http_put(url, json=manifest)
         if self.unhealthy(response.status_code):
             self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
             raise KubeHTTPException(response, 'update HorizontalPodAutoscaler "{}"', name)
@@ -128,7 +128,7 @@ class HorizontalPodAutoscaler(Resource):
 
     def delete(self, namespace, name):
         url = self.api("/namespaces/{}/horizontalpodautoscalers/{}", namespace, name)
-        response = self.session.delete(url)
+        response = self.http_delete(url)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(
                 response,

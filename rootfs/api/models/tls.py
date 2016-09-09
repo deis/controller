@@ -41,11 +41,13 @@ class TLS(UuidAuditedModel):
         config = self._load_service_config(app, 'router')
 
         # See if the ssl.enforce annotation is available
-        if 'ssl.enforce' not in config:
-            config['ssl.enforce'] = 'false'
+        if 'ssl' not in config:
+            config['ssl'] = {}
+        if 'enforce' not in config['ssl']:
+            config['ssl']['enforce'] = 'false'
 
         # convert from bool to string
-        config['ssl.enforce'] = str(https_enforced)
+        config['ssl']['enforce'] = str(https_enforced)
 
         self._save_service_config(app, 'router', config)
 

@@ -92,6 +92,14 @@ class CertificateUseCase1Test(DeisTestCase):
         )
         self.assertEqual(response.status_code, 201, response.data)
 
+        # Attach domain to cert but post no body
+        response = self.client.post(
+            '{}/{}/domain/'.format(self.url, self.name),
+            {}
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data, {'detail': 'domain is a required field'})
+
         # Assert data
         response = self.client.get('{}/{}'.format(self.url, self.name))
         self.assertEqual(response.status_code, 200, response.data)

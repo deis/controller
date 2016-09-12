@@ -627,12 +627,13 @@ class App(UuidAuditedModel):
 
     def _default_structure(self, release):
         """Scale to default structure based on release type"""
-        # if there is no SHA, assume a docker image is being promoted
-        if not release.build.sha:
-            structure = {'cmd': 1}
-
-        elif release.build.procfile and 'web' in release.build.procfile:
+        # If web in procfile then honor it
+        if release.build.procfile and 'web' in release.build.procfile:
             structure = {'web': 1}
+
+        # if there is no SHA, assume a docker image is being promoted
+        elif not release.build.sha:
+            structure = {'cmd': 1}
 
         # if a dockerfile, assume docker workflow
         elif release.build.dockerfile:

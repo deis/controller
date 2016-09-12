@@ -254,7 +254,6 @@ BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
 
 # k8s image policies
 SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugrunner:canary')  # noqa
-SLUG_RUNNER_IMAGE_PULL_POLICY = os.environ.get('SLUG_RUNNER_IMAGE_PULL_POLICY', "IfNotPresent")  # noqa
 IMAGE_PULL_POLICY = os.environ.get('IMAGE_PULL_POLICY', "IfNotPresent")  # noqa
 
 # Define a global default on how many pods to bring up and then

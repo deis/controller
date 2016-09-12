@@ -3,7 +3,6 @@ import operator
 import os
 import time
 
-from django.conf import settings
 from scheduler.exceptions import KubeException, KubeHTTPException
 from scheduler.resources import Resource
 from scheduler.states import PodState
@@ -110,9 +109,6 @@ class Pod(Resource):
         # How long until a pod is forcefully terminated. 30 is kubernetes default
         spec['terminationGracePeriodSeconds'] = kwargs.get('pod_termination_grace_period_seconds', 30)  # noqa
 
-        # set the image pull policy that is associated with the application container
-        kwargs['image_pull_policy'] = settings.IMAGE_PULL_POLICY
-
         # Check if it is a slug builder image.
         if build_type == "buildpack":
             # only buildpack apps need access to object storage
@@ -136,11 +132,6 @@ class Pod(Resource):
                 'mountPath': '/var/run/secrets/deis/objectstore/creds',
                 'readOnly': True
             }]
-
-            # overwrite image so slugrunner image is used in the container
-            image = settings.SLUGRUNNER_IMAGE
-            # slugrunner pull policy
-            kwargs['image_pull_policy'] = settings.SLUG_RUNNER_IMAGE_PULL_POLICY
 
         # create the base container
         container = {}

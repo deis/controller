@@ -350,7 +350,7 @@ class Release(UuidAuditedModel):
         for controller in controllers['items']:
             # Deployment takes care of this in the API, RC does not
             # Have the RC scale down pods and delete itself
-            self._scheduler._scale_rc(namespace, controller['metadata']['name'], 0, timeout)
+            self._scheduler.rc.scale(namespace, controller['metadata']['name'], 0, timeout)
             self._scheduler.rc.delete(namespace, controller['metadata']['name'])
 
     def save(self, *args, **kwargs):  # noqa

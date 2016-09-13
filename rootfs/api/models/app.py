@@ -403,63 +403,13 @@ class App(UuidAuditedModel):
     def _scale_pods(self, scale_types):
         release = self.release_set.latest()
         app_settings = self.appsettings_set.latest()
-        version = "v{}".format(release.version)
-        image = release.image
-        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
-        registry = release.config.registry
 
-        # see if the app config has deploy batch preference, otherwise use global
-        batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
-
-        # see if the app config has deploy timeout preference, otherwise use global
-        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
-
-        # get application level pod termination grace period
-        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
-
-        # set the image pull policy that is associated with the application container
-        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
-
-        # create image pull secret if needed
-        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
+        # use slugrunner image for app if buildpack app otherwise use normal image
+        image = settings.SLUGRUNNER_IMAGE if release.build.type == 'buildpack' else release.image
 
         tasks = []
         for scale_type, replicas in scale_types.items():
-            # only web / cmd are routable
-            # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] and app_settings.routable else False
-            # fetch application port and inject into ENV Vars as needed
-            port = release.get_port()
-            if port:
-                envs['PORT'] = port
-
-            healthcheck = release.config.get_healthcheck().get(scale_type, {})
-            if not healthcheck and scale_type in ['web', 'cmd']:
-                healthcheck = release.config.get_healthcheck().get('web/cmd', {})
-
-            kwargs = {
-                'memory': release.config.memory,
-                'cpu': release.config.cpu,
-                'tags': release.config.tags,
-                'envs': envs,
-                'registry': registry,
-                'version': version,
-                'replicas': replicas,
-                'app_type': scale_type,
-                'build_type': release.build.type,
-                'healthcheck': healthcheck,
-                'routable': routable,
-                'deploy_batches': batches,
-                'deploy_timeout': deploy_timeout,
-                'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
-                'image_pull_secret_name': image_pull_secret_name,
-                'image_pull_policy': image_pull_policy
-            }
-
-            # Check if it is a slug builder image.
-            if release.build.type == 'buildpack':
-                # overwrite image so slugrunner image is used in the container
-                image = settings.SLUGRUNNER_IMAGE
+            data = self._gather_app_settings(release, app_settings, scale_type, replicas)  # noqa
 
             # gather all proc types to be deployed
             tasks.append(
@@ -470,13 +420,13 @@ class App(UuidAuditedModel):
                     image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
-                    **kwargs
+                    **data
                 )
             )
 
         try:
             # create the application config in k8s (secret in this case) for all deploy objects
-            self._scheduler.set_application_config(self.id, envs, version)
+            self.set_application_config(release)
 
             async_run(tasks)
         except Exception as e:
@@ -493,13 +443,6 @@ class App(UuidAuditedModel):
         if release.build is None:
             raise DeisException('No build associated with this release')
 
-        app_settings = self.appsettings_set.latest()
-        if app_settings.whitelist:
-            addresses = ",".join(address for address in app_settings.whitelist)
-        else:
-            addresses = None
-        service_annotations = {'maintenance': app_settings.maintenance, 'whitelist': addresses}
-
         # use create to make sure minimum resources are created
         self.create()
 
@@ -507,65 +450,12 @@ class App(UuidAuditedModel):
             self.structure = self._default_structure(release)
             self.save()
 
-        image = release.image
-        registry = release.config.registry
-        version = "v{}".format(release.version)
-        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
-        tags = release.config.tags
-
-        # see if the app config has deploy batch preference, otherwise use global
-        batches = release.config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
-
-        # see if the app config has deploy timeout preference, otherwise use global
-        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
-
-        deployment_history = release.config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
-
-        # get application level pod termination grace period
-        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
-
-        # set the image pull policy that is associated with the application container
-        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
-
-        # create image pull secret if needed
-        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
+        app_settings = self.appsettings_set.latest()
 
         # deploy application to k8s. Also handles initial scaling
         deploys = {}
-
         for scale_type, replicas in self.structure.items():
-            # only web / cmd are routable
-            # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
-            routable = True if scale_type in ['web', 'cmd'] and app_settings.routable else False
-            # fetch application port and inject into ENV vars as needed
-            port = release.get_port()
-            if port:
-                envs['PORT'] = port
-
-            healthcheck = release.config.get_healthcheck().get(scale_type, {})
-            if not healthcheck and scale_type in ['web', 'cmd']:
-                healthcheck = release.config.get_healthcheck().get('web/cmd', {})
-
-            deploys[scale_type] = {
-                'memory': release.config.memory,
-                'cpu': release.config.cpu,
-                'tags': tags,
-                'envs': envs,
-                'registry': registry,
-                'replicas': replicas,
-                'version': version,
-                'app_type': scale_type,
-                'build_type': release.build.type,
-                'healthcheck': healthcheck,
-                'routable': routable,
-                'deploy_batches': batches,
-                'deploy_timeout': deploy_timeout,
-                'deployment_revision_history_limit': deployment_history,
-                'release_summary': release.summary,
-                'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
-                'image_pull_secret_name': image_pull_secret_name,
-                'image_pull_policy': image_pull_policy
-            }
+            deploys[scale_type] = self._gather_app_settings(release, app_settings, scale_type, replicas)  # noqa
 
         # Sort deploys so routable comes first
         deploys = OrderedDict(sorted(deploys.items(), key=lambda d: d[1].get('routable')))
@@ -573,13 +463,12 @@ class App(UuidAuditedModel):
         # Check if any proc type has a Deployment in progress
         self._check_deployment_in_progress(deploys, force_deploy)
 
+        # use slugrunner image for app if buildpack app otherwise use normal image
+        image = settings.SLUGRUNNER_IMAGE if release.build.type == 'buildpack' else release.image
+
         try:
             # create the application config in k8s (secret in this case) for all deploy objects
-            self._scheduler.set_application_config(self.id, envs, version)
-
-            if release.build.type == 'buildpack':
-                # overwrite image so slugrunner image is used in the container
-                image = settings.SLUGRUNNER_IMAGE
+            self.set_application_config(release)
 
             # gather all proc types to be deployed
             tasks = [
@@ -598,7 +487,7 @@ class App(UuidAuditedModel):
                 async_run(tasks)
             except KubeException as e:
                 if rollback_on_failure:
-                    err = 'There was a problem deploying {}. Rolling back process types to release {}.'.format(version, "v{}".format(release.previous().version))  # noqa
+                    err = 'There was a problem deploying {}. Rolling back process types to release {}.'.format('v{}'.format(release.version), "v{}".format(release.previous().version))  # noqa
                     # This goes in the log before the rollback starts
                     self.log(err, logging.ERROR)
                     # revert all process types to old release
@@ -615,9 +504,19 @@ class App(UuidAuditedModel):
             raise ServiceUnavailable(err) from e
 
         app_type = 'web' if 'web' in deploys else 'cmd' if 'cmd' in deploys else None
-        # Make sure the application is routable and uses the correct port Done after the fact to
+        # Make sure the application is routable and uses the correct port done after the fact to
         # let initial deploy settle before routing traffic to the application
         if deploys and app_type:
+            app_settings = self.appsettings_set.latest()
+            if app_settings.whitelist:
+                addresses = ",".join(address for address in app_settings.whitelist)
+            else:
+                addresses = None
+            service_annotations = {
+                'maintenance': app_settings.maintenance,
+                'whitelist': addresses
+            }
+
             routable = deploys[app_type].get('routable')
             port = deploys[app_type].get('envs', {}).get('PORT', None)
             self._update_application_service(self.id, app_type, port, routable, service_annotations)  # noqa
@@ -787,44 +686,17 @@ class App(UuidAuditedModel):
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
 
-        image = release.image
-        registry = release.config.registry
-        version = "v{}".format(release.version)
-        envs = self._build_env_vars(release.build.type, version, image, release.config.values)
+        app_settings = self.appsettings_set.latest()
+        # use slugrunner image for app if buildpack app otherwise use normal image
+        image = settings.SLUGRUNNER_IMAGE if release.build.type == 'buildpack' else release.image
 
-        # see if the app config has deploy timeout preference, otherwise use global
-        deploy_timeout = release.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)  # noqa
+        data = self._gather_app_settings(release, app_settings, 'run', 1)
 
-        # get application level pod termination grace period
-        pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
-
-        # set the image pull policy that is associated with the application container
-        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
-
-        # create image pull secret if needed
-        image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
+        # create application config and build the pod manifest
+        self.set_application_config(release)
 
         name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
-
-        kwargs = {
-            'memory': release.config.memory,
-            'cpu': release.config.cpu,
-            'tags': release.config.tags,
-            'envs': envs,
-            'registry': registry,
-            'version': version,
-            'build_type': release.build.type,
-            'deploy_timeout': deploy_timeout,
-            'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
-            'image_pull_secret_name': image_pull_secret_name,
-            'image_pull_policy': image_pull_policy
-        }
-
-        # Check if it is a slug builder image.
-        if release.build.type == 'buildpack':
-            # overwrite image so slugrunner image is used in the container
-            image = settings.SLUGRUNNER_IMAGE
 
         try:
             exit_code, output = self._scheduler.run(
@@ -833,7 +705,7 @@ class App(UuidAuditedModel):
                 image,
                 self._get_entrypoint(scale_type),
                 [command],
-                **kwargs
+                **data
             )
 
             return exit_code, output
@@ -909,7 +781,7 @@ class App(UuidAuditedModel):
 
         return labels
 
-    def _build_env_vars(self, build_type, version, image, envs):
+    def _build_env_vars(self, release):
         """
         Build a dict of env vars, setting default vars based on app type
         and then combining with the user set ones
@@ -918,19 +790,24 @@ class App(UuidAuditedModel):
         # mix in default environment information deis may require
         default_env = {
             'DEIS_APP': self.id,
-            'WORKFLOW_RELEASE': version
+            'WORKFLOW_RELEASE': 'v{}'.format(release.version)
         }
 
         # Check if it is a slug builder image.
-        if build_type == 'buildpack':
+        if release.build.type == 'buildpack':
             # overwrite image so slugrunner image is used in the container
-            default_env['SLUG_URL'] = image
+            default_env['SLUG_URL'] = release.image
             default_env['BUILDER_STORAGE'] = settings.APP_STORAGE
             default_env['DEIS_MINIO_SERVICE_HOST'] = settings.MINIO_HOST
             default_env['DEIS_MINIO_SERVICE_PORT'] = settings.MINIO_PORT
 
+        # fetch application port and inject into ENV vars as needed
+        port = release.get_port()
+        if port:
+            default_env['PORT'] = port
+
         # merge envs on top of default to make envs win
-        default_env.update(envs)
+        default_env.update(release.config.values)
         return default_env
 
     def maintenance_mode(self, mode):
@@ -1106,3 +983,88 @@ class App(UuidAuditedModel):
             }
         })
         return docker_config, name, True
+
+    def _gather_app_settings(self, release, app_settings, process_type, replicas):
+        """
+        Gathers all required information needed in one easy place for passing into
+        the Kubernetes client to deploy an application
+
+        Any global setting that can also be set per app goes here
+        """
+        envs = self._build_env_vars(release)
+        config = release.config
+
+        # see if the app config has deploy batch preference, otherwise use global
+        batches = config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
+
+        # see if the app config has deploy timeout preference, otherwise use global
+        deploy_timeout = config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)
+
+        # configures how many ReplicaSets to keep beside the latest version
+        deployment_history = config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
+
+        # get application level pod termination grace period
+        pod_termination_grace_period_seconds = config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+
+        # set the image pull policy that is associated with the application container
+        image_pull_policy = config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)
+
+        # create image pull secret if needed
+        image_pull_secret_name = self.image_pull_secret(self.id, config.registry, release.image)
+
+        # only web / cmd are routable
+        # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
+        routable = True if process_type in ['web', 'cmd'] and app_settings.routable else False
+
+        healthcheck = config.get_healthcheck().get(process_type, {})
+        if not healthcheck and process_type in ['web', 'cmd']:
+            healthcheck = config.get_healthcheck().get('web/cmd', {})
+
+        return {
+            'memory': config.memory,
+            'cpu': config.cpu,
+            'tags': config.tags,
+            'envs': envs,
+            'registry': config.registry,
+            'replicas': replicas,
+            'version': 'v{}'.format(release.version),
+            'app_type': process_type,
+            'build_type': release.build.type,
+            'healthcheck': healthcheck,
+            'routable': routable,
+            'deploy_batches': batches,
+            'deploy_timeout': deploy_timeout,
+            'deployment_revision_history_limit': deployment_history,
+            'release_summary': release.summary,
+            'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
+            'image_pull_secret_name': image_pull_secret_name,
+            'image_pull_policy': image_pull_policy
+        }
+
+    def set_application_config(self, release):
+        """
+        Creates the application config as a secret in Kubernetes and
+        updates it if it already exists
+        """
+        # env vars are stored in secrets and mapped to env in k8s
+        version = 'v{}'.format(release.version)
+        try:
+            labels = {
+                'version': version,
+                'type': 'env'
+            }
+
+            # secrets use dns labels for keys, map those properly here
+            secrets_env = {}
+            for key, value in self._build_env_vars(release).items():
+                secrets_env[key.lower().replace('_', '-')] = str(value)
+
+            # dictionary sorted by key
+            secrets_env = OrderedDict(sorted(secrets_env.items(), key=lambda t: t[0]))
+
+            secret_name = "{}-{}-env".format(self.id, version)
+            self._scheduler.secret.get(self.id, secret_name)
+        except KubeHTTPException:
+            self._scheduler.secret.create(self.id, secret_name, secrets_env, labels=labels)
+        else:
+            self._scheduler.secret.update(self.id, secret_name, secrets_env, labels=labels)

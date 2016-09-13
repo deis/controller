@@ -299,15 +299,11 @@ class KubeHTTPClient(object):
             name, image, entrypoint, command)
         )
 
-        # force the app_type
-        kwargs['app_type'] = 'run'
         # run pods never restart
         kwargs['restartPolicy'] = 'Never'
         kwargs['command'] = entrypoint
         kwargs['args'] = command
 
-        # create application config and build the pod manifest
-        self.set_application_config(namespace, kwargs.get('envs', {}), kwargs.get('version'))
         manifest = self.pod.manifest(namespace, name, image, **kwargs)
 
         url = self.pods.api("/namespaces/{}/pods", namespace)
@@ -368,29 +364,6 @@ class KubeHTTPClient(object):
         finally:
             # cleanup
             self.pod.delete(namespace, name)
-
-    def set_application_config(self, namespace, envs, version):
-        # env vars are stored in secrets and mapped to env in k8s
-        try:
-            labels = {
-                'version': version,
-                'type': 'env'
-            }
-
-            # secrets use dns labels for keys, map those properly here
-            secrets_env = {}
-            for key, value in envs.items():
-                secrets_env[key.lower().replace('_', '-')] = str(value)
-
-            # dictionary sorted by key
-            secrets_env = OrderedDict(sorted(secrets_env.items(), key=lambda t: t[0]))
-
-            secret_name = "{}-{}-env".format(namespace, version)
-            self.secret.get(namespace, secret_name)
-        except KubeHTTPException:
-            self.secret.create(namespace, secret_name, secrets_env, labels=labels)
-        else:
-            self.secret.update(namespace, secret_name, secrets_env, labels=labels)
 
     def _get_deploy_steps(self, batches, tags):
         # if there is no batch information available default to available nodes for app

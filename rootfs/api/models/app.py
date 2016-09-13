@@ -417,6 +417,9 @@ class App(UuidAuditedModel):
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
 
+        # set the image pull policy that is associated with the application container
+        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
+
         # create image pull secret if needed
         image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
 
@@ -450,7 +453,13 @@ class App(UuidAuditedModel):
                 'deploy_timeout': deploy_timeout,
                 'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
                 'image_pull_secret_name': image_pull_secret_name,
+                'image_pull_policy': image_pull_policy
             }
+
+            # Check if it is a slug builder image.
+            if release.build.type == 'buildpack':
+                # overwrite image so slugrunner image is used in the container
+                image = settings.SLUGRUNNER_IMAGE
 
             # gather all proc types to be deployed
             tasks.append(
@@ -512,6 +521,9 @@ class App(UuidAuditedModel):
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
 
+        # set the image pull policy that is associated with the application container
+        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
+
         # create image pull secret if needed
         image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
 
@@ -549,6 +561,7 @@ class App(UuidAuditedModel):
                 'release_summary': release.summary,
                 'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
                 'image_pull_secret_name': image_pull_secret_name,
+                'image_pull_policy': image_pull_policy
             }
 
         # Sort deploys so routable comes first
@@ -560,6 +573,10 @@ class App(UuidAuditedModel):
         try:
             # create the application config in k8s (secret in this case) for all deploy objects
             self._scheduler.set_application_config(self.id, envs, version)
+
+            if release.build.type == 'buildpack':
+                # overwrite image so slugrunner image is used in the container
+                image = settings.SLUGRUNNER_IMAGE
 
             # gather all proc types to be deployed
             tasks = [
@@ -778,6 +795,9 @@ class App(UuidAuditedModel):
         # get application level pod termination grace period
         pod_termination_grace_period_seconds = release.config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
 
+        # set the image pull policy that is associated with the application container
+        image_pull_policy = release.config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)  # noqa
+
         # create image pull secret if needed
         image_pull_secret_name = self.image_pull_secret(self.id, registry, image)
 
@@ -795,7 +815,13 @@ class App(UuidAuditedModel):
             'deploy_timeout': deploy_timeout,
             'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
             'image_pull_secret_name': image_pull_secret_name,
+            'image_pull_policy': image_pull_policy
         }
+
+        # Check if it is a slug builder image.
+        if release.build.type == 'buildpack':
+            # overwrite image so slugrunner image is used in the container
+            image = settings.SLUGRUNNER_IMAGE
 
         try:
             exit_code, output = self._scheduler.run(

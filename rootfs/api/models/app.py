@@ -494,7 +494,10 @@ class App(UuidAuditedModel):
             raise DeisException('No build associated with this release')
 
         app_settings = self.appsettings_set.latest()
-        addresses = ",".join(address for address in app_settings.whitelist)
+        if app_settings.whitelist:
+            addresses = ",".join(address for address in app_settings.whitelist)
+        else:
+            addresses = None
         service_annotations = {'maintenance': app_settings.maintenance, 'whitelist': addresses}
 
         # use create to make sure minimum resources are created
@@ -966,7 +969,10 @@ class App(UuidAuditedModel):
         try:
             # Update service information
             for key, value in annotations.items():
-                service['metadata']['annotations']['router.deis.io/%s' % key] = str(value)
+                if value is not None:
+                    service['metadata']['annotations']['router.deis.io/%s' % key] = str(value)
+                else:
+                    service['metadata']['annotations'].pop('router.deis.io/%s' % key, None)
             if routable:
                 service['metadata']['labels']['router.deis.io/routable'] = 'true'
             else:

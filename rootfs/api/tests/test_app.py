@@ -132,12 +132,19 @@ class AppTest(DeisTestCase):
     @mock.patch('api.models.logger')
     def test_app_release_notes_in_logs(self, mock_requests, mock_logger):
         """Verifies that an app's release summary is dumped into the logs."""
-        self.create_app()
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
 
         # check app logs
-        exp_msg = "autotest created initial release"
-        exp_log_call = mock.call(logging.INFO, exp_msg)
-        mock_logger.log.has_calls(exp_log_call)
+        exp_msg = "[{app_id}]: {self.user.username} created initial release".format(**locals())
+        mock_logger.log.has_calls(logging.INFO, exp_msg)
+        app.log('hello world')
+        exp_msg = "[{app_id}]: hello world".format(**locals())
+        mock_logger.log.has_calls(logging.INFO, exp_msg)
+        app.log('goodbye world', logging.WARNING)
+        # assert logging with a different log level
+        exp_msg = "[{app_id}]: goodbye world".format(**locals())
+        mock_logger.log.has_calls(logging.WARNING, exp_msg)
 
     def test_app_errors(self, mock_requests):
         response = self.client.post('/v2/apps', {'id': 'camelCase'})

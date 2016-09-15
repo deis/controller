@@ -56,11 +56,11 @@ class ReplicationController(Resource):
         url = self.api("/namespaces/{}/replicationcontrollers", namespace)
         resp = self.http_post(url, json=manifest)
         if self.unhealthy(resp.status_code):
+            self.log(namespace, 'template: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')
             raise KubeHTTPException(
                 resp,
                 'create ReplicationController "{}" in Namespace "{}"', name, namespace
             )
-            self.log(namespace, 'manifest used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
 
         self.wait_until_updated(namespace, name)
 

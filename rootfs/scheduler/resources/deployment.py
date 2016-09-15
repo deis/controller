@@ -113,11 +113,11 @@ class Deployment(Resource):
         url = self.api("/namespaces/{}/deployments", namespace)
         response = self.http_post(url, json=manifest)
         if self.unhealthy(response.status_code):
+            self.log(namespace, 'template: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')
             raise KubeHTTPException(
                 response,
                 'create Deployment "{}" in Namespace "{}"', name, namespace
             )
-            self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
 
         self.wait_until_updated(namespace, name)
         self.wait_until_ready(namespace, name, **kwargs)
@@ -131,7 +131,7 @@ class Deployment(Resource):
         url = self.api("/namespaces/{}/deployments/{}", namespace, name)
         response = self.http_put(url, json=manifest)
         if self.unhealthy(response.status_code):
-            self.log(namespace, 'template used: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')  # noqa
+            self.log(namespace, 'template: {}'.format(json.dumps(manifest, indent=4)), 'DEBUG')
             raise KubeHTTPException(response, 'update Deployment "{}"', name)
 
         self.wait_until_updated(namespace, name)

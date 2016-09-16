@@ -19,6 +19,7 @@ from rest_framework.authtoken.models import Token
 from api.models import App
 from scheduler import KubeException
 
+from api.exceptions import DeisException
 from api.tests import adapter, mock_port, DeisTestCase
 import requests_mock
 
@@ -571,6 +572,37 @@ class AppTest(DeisTestCase):
         self.assertEqual(docker_config, None)
         self.assertEqual(name, None)
         self.assertEqual(create, None)
+
+    def test_build_env_vars(self, mock_requests):
+        app = App.objects.create(owner=self.user)
+        # Make sure an exception is raised when calling without a build available
+        with self.assertRaises(DeisException):
+            app._build_env_vars(app.release_set.latest())
+        data = {'image': 'autotest/example'}
+        url = "/v2/apps/{app.id}/builds".format(**locals())
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            app._build_env_vars(app.release_set.latest()),
+            {
+                'DEIS_APP': app.id,
+                'WORKFLOW_RELEASE': 'v2',
+                'PORT': 5000
+            })
+        data['sha'] = 'abc1234'
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(
+            app._build_env_vars(app.release_set.latest()),
+            {
+                'DEIS_APP': app.id,
+                'WORKFLOW_RELEASE': 'v3',
+                'PORT': 5000,
+                'SLUG_URL': 'autotest/example',
+                'BUILDER_STORAGE': None,
+                'DEIS_MINIO_SERVICE_HOST': '127.0.0.1',
+                'DEIS_MINIO_SERVICE_PORT': 80
+            })
 
 
 FAKE_LOG_DATA = bytes("""

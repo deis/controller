@@ -681,7 +681,6 @@ class App(UuidAuditedModel):
             return ''.join(random.choice(chars) for _ in range(size))
 
         """Run a one-off command in an ephemeral app container."""
-        scale_type = 'run'
         release = self.release_set.latest()
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
@@ -690,11 +689,12 @@ class App(UuidAuditedModel):
         # use slugrunner image for app if buildpack app otherwise use normal image
         image = settings.SLUGRUNNER_IMAGE if release.build.type == 'buildpack' else release.image
 
-        data = self._gather_app_settings(release, app_settings, 'run', 1)
+        data = self._gather_app_settings(release, app_settings, process_type='run', replicas=1)
 
         # create application config and build the pod manifest
         self.set_application_config(release)
 
+        scale_type = 'run'
         name = self._get_job_id(scale_type) + '-' + pod_name()
         self.log("{} on {} runs '{}'".format(user.username, name, command))
 

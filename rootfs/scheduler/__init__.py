@@ -304,23 +304,7 @@ class KubeHTTPClient(object):
         kwargs['command'] = entrypoint
         kwargs['args'] = command
 
-        manifest = self.pod.manifest(namespace, name, image, **kwargs)
-
-        url = self.pods.api("/namespaces/{}/pods", namespace)
-        response = self.http_post(url, json=manifest)
-        if self.unhealthy(response.status_code):
-            raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
-
-        # wait for run pod to start - use the same function as scale
-        labels = manifest['metadata']['labels']
-        containers = manifest['spec']['containers']
-        self.pods.wait_until_ready(
-            namespace,
-            containers,
-            labels,
-            desired=1,
-            timeout=kwargs.get('deploy_timeout')
-        )
+        self.pod.create(namespace, name, image, **kwargs)
 
         try:
             # give pod 20 minutes to execute (after it got into ready state)
@@ -331,8 +315,7 @@ class KubeHTTPClient(object):
             waited = 0
             timeout = 1200  # 20 minutes
             while (state == 'up' and waited < timeout):
-                response = self.pod.get(namespace, name)
-                pod = response.json()
+                pod = self.pod.get(namespace, name).json()
                 state = str(self.pod.state(pod))
                 # default data
                 exit_code = 0

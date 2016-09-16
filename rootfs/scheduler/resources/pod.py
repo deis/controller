@@ -32,6 +32,27 @@ class Pod(Resource):
 
         return response
 
+    def create(self, namespace, name, image, **kwargs):
+        manifest = self.manifest(namespace, name, image, **kwargs)
+
+        url = self.api('/namespaces/{}/pods', namespace)
+        response = self.http_post(url, json=manifest)
+        if self.unhealthy(response.status_code):
+            raise KubeHTTPException(response, 'create Pod in Namespace "{}"', namespace)
+
+        # wait for all pods to start - use the same function as scale
+        labels = manifest['metadata']['labels']
+        containers = manifest['spec']['containers']
+        self.pods.wait_until_ready(
+            namespace,
+            containers,
+            labels,
+            desired=kwargs.get('replicas'),
+            timeout=kwargs.get('deploy_timeout')
+        )
+
+        return response
+
     def state(self, pod):
         """
         Resolve Pod state to an internally understandable format and returns a
@@ -315,9 +336,9 @@ class Pod(Resource):
 
         # delete pod
         url = self.api("/namespaces/{}/pods/{}", namespace, name)
-        resp = self.http_delete(url)
-        if self.unhealthy(resp.status_code):
-            raise KubeHTTPException(resp, 'delete Pod "{}" in Namespace "{}"', name, namespace)
+        response = self.http_delete(url)
+        if self.unhealthy(response.status_code):
+            raise KubeHTTPException(response, 'delete Pod "{}" in Namespace "{}"', name, namespace)
 
         # Verify the pod has been deleted
         # Only wait as long as the grace period is - k8s will eventually GC
@@ -332,6 +353,8 @@ class Pod(Resource):
                     break
 
             time.sleep(1)
+
+        return response
 
     def logs(self, namespace, name):
         url = self.api("/namespaces/{}/pods/{}/log", namespace, name)

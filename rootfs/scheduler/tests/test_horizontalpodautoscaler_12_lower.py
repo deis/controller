@@ -3,11 +3,13 @@ Unit tests for the Deis scheduler module.
 
 Run the tests with './manage.py test scheduler'
 """
+from unittest import mock
 from scheduler import KubeHTTPException, KubeException
 from scheduler.tests import TestCase
 from scheduler.utils import generate_random_name
 
 
+@mock.patch('scheduler.KubeHTTPClient.version', lambda *args: 1.2)
 class HorizontalPodAutoscalersTest(TestCase):
     """Tests scheduler horizontalpodautoscaler calls"""
 
@@ -40,7 +42,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'cpu_percent': 45,
             'wait': True
         }
-        horizontalpodautoscaler = self.scheduler.hpa.create(namespace, name, kwargs.get('app_type'), deployment.json(), **data)  # noqa
+        horizontalpodautoscaler = self.scheduler.hpa.create(namespace, name, d_kwargs.get('app_type'), deployment.json(), **data)  # noqa
         self.assertEqual(horizontalpodautoscaler.status_code, 201, horizontalpodautoscaler.json())  # noqa
         return name
 
@@ -67,7 +69,7 @@ class HorizontalPodAutoscalersTest(TestCase):
         """
         namespace = self.namespace if namespace is None else namespace
         # these are all required even if it is kwargs...
-        d_kwargs = {
+        kwargs = {
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
@@ -77,7 +79,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'command': 'start',
         }
 
-        deployment = self.scheduler.deployment.update(namespace, name, **d_kwargs)
+        deployment = self.scheduler.deployment.update(namespace, name, **kwargs)
         data = deployment.json()
         self.assertEqual(deployment.status_code, 200, data)
         return name
@@ -206,7 +208,7 @@ class HorizontalPodAutoscalersTest(TestCase):
         response = self.scheduler.hpa.get(self.namespace, name)
         data = response.json()
         self.assertEqual(response.status_code, 200, data)
-        self.assertEqual(data['apiVersion'], 'autoscaling/v1')
+        self.assertEqual(data['apiVersion'], 'extensions/v1beta1')
         self.assertEqual(data['kind'], 'HorizontalPodAutoscaler')
         self.assertEqual(data['metadata']['name'], name)
         self.assertDictContainsSubset(

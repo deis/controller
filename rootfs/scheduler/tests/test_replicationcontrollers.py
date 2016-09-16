@@ -22,10 +22,12 @@ class ReplicationControllersTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
+            'image': 'quay.io/fake/image',
+            'entrypoint': 'sh',
+            'command': 'start',
         }
 
-        rc = self.scheduler.rc.create(namespace, name, 'quay.io/fake/image',
-                                      'sh', 'start', **kwargs)
+        rc = self.scheduler.rc.create(namespace, name, **kwargs)
         data = rc.json()
         self.assertEqual(rc.status_code, 201, data)
         return name
@@ -42,9 +44,12 @@ class ReplicationControllersTest(TestCase):
             'replicas': kwargs.get('replicas', 4),
             'deploy_timeout': 120,
             'pod_termination_grace_period_seconds': 2,
+            'image': 'quay.io/fake/image',
+            'entrypoint': 'sh',
+            'command': 'start',
         }
 
-        self.scheduler.scale_rc(namespace, name, 'quay.io/fake/image', 'sh', 'start', **kwargs)
+        self.scheduler.scale_rc(namespace, name, **kwargs)
         return name
 
     def test_create_failure(self):

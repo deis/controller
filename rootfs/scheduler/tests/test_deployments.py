@@ -22,10 +22,12 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
+            'image': 'quay.io/fake/image',
+            'entrypoint': 'sh',
+            'command': 'start',
         }
 
-        deployment = self.scheduler.deployment.create(namespace, name, 'quay.io/fake/image',
-                                                      'sh', 'start', **kwargs)
+        deployment = self.scheduler.deployment.create(namespace, name, **kwargs)
         self.assertEqual(deployment.status_code, 201, deployment.json())
         return name
 
@@ -40,10 +42,12 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
+            'image': 'quay.io/fake/image',
+            'entrypoint': 'sh',
+            'command': 'start',
         }
 
-        deployment = self.scheduler.deployment.update(namespace, name, 'quay.io/fake/image',
-                                                      'sh', 'start', **kwargs)
+        deployment = self.scheduler.deployment.update(namespace, name, **kwargs)
         data = deployment.json()
         self.assertEqual(deployment.status_code, 200, data)
         return name
@@ -59,9 +63,12 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
+            'image': 'quay.io/fake/image',
+            'entrypoint': 'sh',
+            'command': 'start',
         }
 
-        self.scheduler.scale(namespace, name, 'quay.io/fake/image', 'sh', 'start', **kwargs)
+        self.scheduler.scale(namespace, name, **kwargs)
         return name
 
     def test_create_failure(self):

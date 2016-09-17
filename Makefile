@@ -60,7 +60,7 @@ test-check:
 	cd rootfs && python manage.py check
 
 test-style:
-	cd rootfs && flake8 --show-pep8 --show-source
+	cd rootfs && flake8 --show-source
 	${SHELLCHECK_PREFIX} $(SHELL_SCRIPTS)
 
 test-unit:

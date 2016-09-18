@@ -16,7 +16,7 @@ from django.core.cache import cache
 from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
 
-from api.models import App
+from api.models import App, Config
 from scheduler import KubeException
 
 from api.exceptions import DeisException
@@ -604,6 +604,28 @@ class AppTest(DeisTestCase):
                 'DEIS_MINIO_SERVICE_PORT': 80
             })
 
+    def test_gather_app_settings(self, mock_requests):
+        app = App.objects.create(owner=self.user)
+        app.save()
+        data = {'image': 'autotest/example'}
+        url = "/v2/apps/{app.id}/builds".format(**locals())
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 201, response.data)
+        Config.objects.create(
+            owner=self.user,
+            app=app,
+            values={
+                'DEIS_DEPLOY_TIMEOUT': '60',
+                'DEIS_DEPLOY_BATCHES': '3',
+                'KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS': '60'
+            })
+        s = app._gather_app_settings(app.release_set.latest(),
+                                     app.appsettings_set.latest(),
+                                     'web',
+                                     3)
+        assert isinstance(s['deploy_batches'], int)
+        assert isinstance(s['deploy_timeout'], int)
+        assert isinstance(s['pod_termination_grace_period_seconds'], int)
 
 FAKE_LOG_DATA = bytes("""
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5

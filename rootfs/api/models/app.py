@@ -996,16 +996,16 @@ class App(UuidAuditedModel):
         config = release.config
 
         # see if the app config has deploy batch preference, otherwise use global
-        batches = config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES)
+        batches = int(config.values.get('DEIS_DEPLOY_BATCHES', settings.DEIS_DEPLOY_BATCHES))  # noqa
 
         # see if the app config has deploy timeout preference, otherwise use global
-        deploy_timeout = config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)
+        deploy_timeout = int(config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT))  # noqa
 
         # configures how many ReplicaSets to keep beside the latest version
         deployment_history = config.values.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', settings.KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT)  # noqa
 
         # get application level pod termination grace period
-        pod_termination_grace_period_seconds = config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS)  # noqa
+        pod_termination_grace_period_seconds = int(config.values.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', settings.KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS))  # noqa
 
         # set the image pull policy that is associated with the application container
         image_pull_policy = config.values.get('IMAGE_PULL_POLICY', settings.IMAGE_PULL_POLICY)

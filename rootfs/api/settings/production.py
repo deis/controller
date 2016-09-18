@@ -261,13 +261,13 @@ IMAGE_PULL_POLICY = os.environ.get('IMAGE_PULL_POLICY', "IfNotPresent")  # noqa
 # Defaults to None, the default is to deploy to as many nodes as
 # the application has been instructed to run on
 # Can also be overwritten on per app basis if desired
-DEIS_DEPLOY_BATCHES = os.environ.get('DEIS_DEPLOY_BATCHES', None)
+DEIS_DEPLOY_BATCHES = int(os.environ.get('DEIS_DEPLOY_BATCHES', 0))
 
 # For old style deploys (RCs) defines how long each batch
 # (as defined by DEIS_DEPLOY_BATCHES) can take before giving up
 # For Kubernetes Deployments it is part of the global timeout
 # where it roughly goes BATCHES * TIMEOUT = global timeout
-DEIS_DEPLOY_TIMEOUT = os.environ.get('DEIS_DEPLOY_TIMEOUT', 120)
+DEIS_DEPLOY_TIMEOUT = int(os.environ.get('DEIS_DEPLOY_TIMEOUT', 120))
 
 KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', None)  # noqa
 

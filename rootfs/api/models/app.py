@@ -23,9 +23,9 @@ from api import __version__ as deis_version
 from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
 
 from api.utils import generate_app_name, async_run
-from api.models.release import Release
 from api.models.config import Config
 from api.models.domain import Domain
+from api.models.release import Release
 from api.models.tls import TLS
 from api.models.appsettings import AppSettings
 
@@ -786,6 +786,8 @@ class App(UuidAuditedModel):
         Build a dict of env vars, setting default vars based on app type
         and then combining with the user set ones
         """
+        if release.build is None:
+            raise DeisException('No build associated with this release to run this command')
 
         # mix in default environment information deis may require
         default_env = {
@@ -803,8 +805,7 @@ class App(UuidAuditedModel):
 
         # fetch application port and inject into ENV vars as needed
         port = release.get_port()
-        if port:
-            default_env['PORT'] = port
+        default_env['PORT'] = port
 
         # merge envs on top of default to make envs win
         default_env.update(release.config.values)

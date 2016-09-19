@@ -1,0 +1,29 @@
+# This Dockerfile is intended for building the development environment.
+FROM quay.io/deis/base:0.3.1
+
+RUN apt-get update && \
+	apt-get install -y --no-install-recommends \
+				gcc \
+				git \
+				libffi-dev \
+				libpq-dev \
+				python3-dev \
+				libpq5 \
+				python3 && \
+	apt-get clean && \
+	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/man /usr/share/doc && \
+	ln -s /usr/bin/python3 /usr/bin/python && \
+	curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.2 
+
+COPY rootfs/requirements.txt /app/
+COPY rootfs/dev_requirements.txt /app/
+
+
+RUN mkdir -p /configs && \
+	pip install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt -r /app/dev_requirements.txt
+
+
+COPY rootfs /app
+
+# define execution environment
+WORKDIR /app

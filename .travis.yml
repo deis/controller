@@ -1,22 +1,25 @@
 language: python
-python:
-  - 3.5
+python: 3.5
 branches:
   only:
     - master
+env:
+  global:
+    - DOCKER_CACHE_FILE=/home/travis/docker/cache.tar.gz
 services:
-  - postgresql
   - docker
 sudo: required
-addons:
-  postgresql: "9.4"
-cache: pip
-before_install:
-  - createdb -U postgres deis
+cache:
+  pip: true
+  directories:
+    - /home/travis/docker/
+before_cache:
+  - mkdir -p $(dirname ${DOCKER_CACHE_FILE})
+  - docker save $(docker history -q quay.io/deis/controller-dev:git-${TRAVIS_COMMIT:0:7} | grep -v '<missing>') | gzip > ${DOCKER_CACHE_FILE}
 install:
-  - pip install -r rootfs/requirements.txt
-  - pip install -r rootfs/dev_requirements.txt
+  - if [ -f ${DOCKER_CACHE_FILE} ]; then gunzip -c ${DOCKER_CACHE_FILE} | docker load; fi
+  - pip install codecov
 script:
   - make test
 after_success:
-  - pushd rootfs/ && codecov && popd
+  - codecov -f out/.coverage

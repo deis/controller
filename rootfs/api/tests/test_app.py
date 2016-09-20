@@ -582,16 +582,21 @@ class AppTest(DeisTestCase):
         url = "/v2/apps/{app.id}/builds".format(**locals())
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 201, response.data)
+        time_created = app.release_set.latest().created
         self.assertEqual(
             app._build_env_vars(app.release_set.latest()),
             {
                 'DEIS_APP': app.id,
                 'WORKFLOW_RELEASE': 'v2',
-                'PORT': 5000
+                'PORT': 5000,
+                'WORKFLOW_RELEASE_SUMMARY': 'autotest deployed autotest/example',
+                'WORKFLOW_RELEASE_CREATED_AT': str(time_created.strftime(
+                    settings.DEIS_DATETIME_FORMAT))
             })
         data['sha'] = 'abc1234'
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 201, response.data)
+        time_created = app.release_set.latest().created
         self.assertEqual(
             app._build_env_vars(app.release_set.latest()),
             {
@@ -601,7 +606,11 @@ class AppTest(DeisTestCase):
                 'SLUG_URL': 'autotest/example',
                 'BUILDER_STORAGE': None,
                 'DEIS_MINIO_SERVICE_HOST': '127.0.0.1',
-                'DEIS_MINIO_SERVICE_PORT': 80
+                'DEIS_MINIO_SERVICE_PORT': 80,
+                'SOURCE_VERSION': 'abc1234',
+                'WORKFLOW_RELEASE_SUMMARY': 'autotest deployed abc1234',
+                'WORKFLOW_RELEASE_CREATED_AT': str(time_created.strftime(
+                    settings.DEIS_DATETIME_FORMAT))
             })
 
     def test_gather_app_settings(self, mock_requests):

@@ -792,7 +792,10 @@ class App(UuidAuditedModel):
         # mix in default environment information deis may require
         default_env = {
             'DEIS_APP': self.id,
-            'WORKFLOW_RELEASE': 'v{}'.format(release.version)
+            'WORKFLOW_RELEASE': 'v{}'.format(release.version),
+            'WORKFLOW_RELEASE_SUMMARY': release.summary,
+            'WORKFLOW_RELEASE_CREATED_AT': str(release.created.strftime(
+                settings.DEIS_DATETIME_FORMAT))
         }
 
         # Check if it is a slug builder image.
@@ -802,6 +805,9 @@ class App(UuidAuditedModel):
             default_env['BUILDER_STORAGE'] = settings.APP_STORAGE
             default_env['DEIS_MINIO_SERVICE_HOST'] = settings.MINIO_HOST
             default_env['DEIS_MINIO_SERVICE_PORT'] = settings.MINIO_PORT
+
+        if release.build.sha:
+            default_env['SOURCE_VERSION'] = release.build.sha
 
         # fetch application port and inject into ENV vars as needed
         port = release.get_port()

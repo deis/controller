@@ -3,6 +3,8 @@ Unit tests for the Deis scheduler module.
 
 Run the tests with './manage.py test scheduler'
 """
+from unittest import mock
+from datetime import datetime, timedelta
 from scheduler import KubeHTTPException
 from scheduler.tests import TestCase
 from scheduler.utils import generate_random_name
@@ -91,3 +93,109 @@ class PodsTest(TestCase):
             },
             data['metadata']['labels']
         )
+
+    def test_liveness_status(self):
+        # Missing Ready type means pod has passed liveness check
+        pod = {'status': {'conditions': []}}
+        self.assertTrue(self.scheduler.pod.liveness_status(pod))
+
+        # fake out a minimal pod structure for success
+        pod['status']['conditions'].append({
+            'type': 'Ready',
+            'status': 'True'
+        })
+        self.assertTrue(self.scheduler.pod.liveness_status(pod))
+
+        # fake out a minimal pod structure for failure
+        pod['status']['conditions'][0]['status'] = 'False'
+        self.assertFalse(self.scheduler.pod.liveness_status(pod))
+
+    def test_readiness_status(self):
+        # create a pod to then manipulate
+        name = self.create()
+        pod = self.scheduler.pod.get(self.namespace, name).json()
+
+        # on a newly created pod has an overall "Running" status with ready state on a container
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Running')
+
+        # on a newly created pod has been deleted with ready state on a container
+        pod['metadata']['deletionTimestamp'] = 'fake'
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
+        del pod['metadata']['deletionTimestamp']
+
+        # now say the app container is not Ready
+        container = pod['status']['containerStatuses'][0]
+        container['ready'] = False
+
+        # state of the container is Starting when container is not ready but says Running
+        self.assertTrue('running' in container['state'].keys())
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Starting')
+
+        # verify Terminating status
+        del container['state']['running']
+        container['state']['terminated'] = 'fake'
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
+
+        # test metdata terminating
+        del container['state']['terminated']
+        pod['metadata']['deletionTimestamp'] = 'fake'
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
+        del pod['metadata']['deletionTimestamp']
+
+        # inject fake state
+        container['state']['random'] = 'fake'
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Unknown')
+
+        # no containers around means Unknown
+        pod['status']['containerStatuses'] = []
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Unknown')
+
+    def test_ready(self):
+        # create a pod to then manipulate
+        name = self.create()
+        pod = self.scheduler.pod.get(self.namespace, name).json()
+
+        # pod itself shouldn't be ready yet
+        self.assertFalse(self.scheduler.pod.ready(pod))
+
+        # only pod but no other probe
+        pod['status']['phase'] = 'Running'
+        # fake out functions for failure
+        with mock.patch('scheduler.resources.pod.Pod.readiness_status') as ready:
+            ready.return_value = 'Starting'
+
+            # only readiness is ready so overall ready status is False
+            self.assertFalse(self.scheduler.pod.ready(pod))
+
+            with mock.patch('scheduler.resources.pod.Pod.liveness_status') as liveness:
+                liveness.return_value = False
+
+                # all things have lined up, go time
+                self.assertFalse(self.scheduler.pod.ready(pod))
+
+        # fake out other functions since they are tested by themselves
+        with mock.patch('scheduler.resources.pod.Pod.readiness_status') as ready:
+            ready.return_value = 'Running'
+            with mock.patch('scheduler.resources.pod.Pod.liveness_status') as liveness:
+                # keep liveness as failing for now
+                liveness.return_value = False
+
+                # only readiness is ready so overall ready status is False
+                self.assertFalse(self.scheduler.pod.ready(pod))
+
+                # all things have lined up, go time
+                liveness.return_value = True
+                self.assertTrue(self.scheduler.pod.ready(pod))
+
+    def test_deleted(self):
+        # create a pod to then manipulate
+        name = self.create()
+        pod = self.scheduler.pod.get(self.namespace, name).json()
+
+        # pod should no be deleted yet
+        self.assertFalse(self.scheduler.pod.deleted(pod))
+
+        # set deleted 10 minutes in the past
+        ts_deleted = datetime.utcnow() - timedelta(minutes=10)
+        pod['metadata']['deletionTimestamp'] = ts_deleted.strftime(self.scheduler.DATETIME_FORMAT)
+        self.assertTrue(self.scheduler.pod.deleted(pod))

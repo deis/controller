@@ -113,6 +113,7 @@ class Pod(Resource):
             'apiVersion': 'v1',
             'metadata': {
               'name': name,
+              'namespace': namespace,
               'labels': labels
             },
             'spec': {}
@@ -381,7 +382,7 @@ class Pod(Resource):
         """Check if the pod container have passed the readiness probes"""
         name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])
         # find the right container in case there are many on the pod
-        container = self.pod.find_container(name, pod['status']['containerStatuses'])
+        container = self.find_container(name, pod['status']['containerStatuses'])
         if container is None:
             # Seems like the most sensible default
             return 'Unknown'
@@ -679,9 +680,10 @@ class Pod(Resource):
             # only care about pods that are in running phase
             if pod['status']['phase'] != 'Running':
                 continue
+
             name = '{}-{}'.format(pod['metadata']['labels']['app'], pod['metadata']['labels']['type'])  # noqa
             # find the right container in case there are many on the pod
-            container = self.pod.find_container(name, pod['status']['containerStatuses'])
+            container = self.find_container(name, pod['status']['containerStatuses'])
             if container is None or container['ready'] == 'true':
                 continue
 
@@ -690,4 +692,5 @@ class Pod(Resource):
                     # strip out whitespaces on either side
                     message = "\n".join([x.strip() for x in event['message'].split("\n")])
                     raise KubeException(message)
+
         return None

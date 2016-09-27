@@ -1,4 +1,4 @@
-FROM quay.io/deis/base:0.3.1
+FROM quay.io/deis/base:v0.3.4
 
 RUN adduser --system \
 	--shell /bin/bash \
@@ -9,21 +9,39 @@ RUN adduser --system \
 
 COPY requirements.txt /app/requirements.txt
 
-RUN buildDeps='gcc git libffi-dev libpq-dev python3-dev'; \
+RUN buildDeps='gcc git libffi-dev libpq-dev python3-dev python3-pip python3-wheel python3-setuptools'; \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         $buildDeps \
+        sudo \
         libpq5 \
-        python3 \
-        sudo && \
+        python3-minimal \
+        # cryptography package needs pkg_resources
+        python3-pkg-resources && \
     ln -s /usr/bin/python3 /usr/bin/python && \
-    curl -sSL https://bootstrap.pypa.io/get-pip.py | python - pip==8.1.2 && \
     mkdir -p /configs && chown -R deis:deis /configs && \
-    pip install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt && \
-    rm -rf /root/.cache/pip/* && \
+    pip3 install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt && \
+    # cleanup
     apt-get purge -y --auto-remove $buildDeps && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /usr/share/man /usr/share/doc
+    apt-get autoremove -y && \
+    apt-get clean -y && \
+    # package up license files if any by appending to existing tar
+    COPYRIGHT_TAR='/usr/share/copyrights.tar'; \
+    gunzip $COPYRIGHT_TAR.gz; tar -rf $COPYRIGHT_TAR /usr/share/doc/*/copyright; gzip $COPYRIGHT_TAR && \
+    rm -rf \
+        /usr/share/doc \
+        /usr/share/man \
+        /usr/share/info \
+        /usr/share/locale \
+        /var/lib/apt/lists/* \
+        /var/log/* \
+        /var/cache/debconf/* \
+        /etc/systemd \
+        /lib/lsb \
+        /lib/udev \
+        /usr/lib/x86_64-linux-gnu/gconv/IBM* \
+        /usr/lib/x86_64-linux-gnu/gconv/EBC* && \
+    bash -c "mkdir -p /usr/share/man/man{1..8}"
 
 COPY . /app
 

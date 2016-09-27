@@ -153,7 +153,7 @@ class Release(UuidAuditedModel):
             if (creds is not None) or (settings.REGISTRY_LOCATION != 'on-cluster'):
                 if envs.get('PORT', None) is None:
                     raise DeisException(
-                        'PORT needs to be set in the config '
+                        'PORT needs to be set in the application config '
                         'when using a private registry'
                     )
 

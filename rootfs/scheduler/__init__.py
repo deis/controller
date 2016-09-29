@@ -348,59 +348,5 @@ class KubeHTTPClient(object):
             # cleanup
             self.pod.delete(namespace, name)
 
-    def _get_deploy_steps(self, batches, tags):
-        # if there is no batch information available default to available nodes for app
-        if not batches:
-            # figure out how many nodes the application can go on
-            steps = len(self.node.get(labels=tags).json()['items'])
-        else:
-            steps = int(batches)
-
-        return steps
-
-    def _get_deploy_batches(self, steps, desired):
-        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
-        if desired < steps:
-            # do it all in one go
-            batches = [desired]
-        else:
-            # figure out the stepped deploy count and then see if there is a leftover
-            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
-            if desired - sum(batches) > 0:
-                batches.append(desired - sum(batches))
-
-        return batches
-
-    def _deploy_probe_timeout(self, timeout, namespace, labels, containers):
-        """
-        Added in additional timeouts based on readiness and liveness probe
-
-        Uses the max of the two instead of combining them as the checks are stacked.
-        """
-
-        container_name = '{}-{}'.format(labels['app'], labels['type'])
-        container = self.pod.find_container(container_name, containers)
-
-        # get health info from container
-        added_timeout = []
-        if 'readinessProbe' in container:
-            # If there is initial delay on the readiness check then timeout needs to be higher
-            # this is to account for kubernetes having readiness check report as failure until
-            # the initial delay period is up
-            added_timeout.append(int(container['readinessProbe'].get('initialDelaySeconds', 50)))
-
-        if 'livenessProbe' in container:
-            # If there is initial delay on the readiness check then timeout needs to be higher
-            # this is to account for kubernetes having liveness check report as failure until
-            # the initial delay period is up
-            added_timeout.append(int(container['livenessProbe'].get('initialDelaySeconds', 50)))
-
-        if added_timeout:
-            delay = max(added_timeout)
-            self.log(namespace, "adding {}s on to the original {}s timeout to account for the initial delay specified in the liveness / readiness probe".format(delay, timeout))  # noqa
-            timeout += delay
-
-        return timeout
-
 
 SchedulerClient = KubeHTTPClient

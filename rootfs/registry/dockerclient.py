@@ -7,7 +7,6 @@ import os
 import backoff
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
-from simpleflock import SimpleFlock
 
 import docker
 import docker.constants
@@ -24,8 +23,6 @@ class RegistryException(Exception):
 
 class DockerClient(object):
     """Use the Docker API to pull, tag, build, and push images to deis-registry."""
-
-    FLOCKFILE = '/tmp/controller-pull'
 
     def __init__(self):
         timeout = os.environ.get('DOCKER_CLIENT_TIMEOUT', docker.constants.DEFAULT_TIMEOUT_SECONDS)
@@ -123,9 +120,8 @@ class DockerClient(object):
         """Pull a Docker image into the local storage graph."""
         check_blacklist(repo)
         logger.info("Pulling Docker image {}:{}".format(repo, tag))
-        with SimpleFlock(self.FLOCKFILE, timeout=1200):
-            stream = self.client.pull(repo, tag=tag, stream=True, decode=True)
-            log_output(stream, 'pull', repo, tag)
+        stream = self.client.pull(repo, tag=tag, stream=True, decode=True)
+        log_output(stream, 'pull', repo, tag)
 
     @backoff.on_exception(backoff.expo, Exception, max_tries=3)
     def push(self, repo, tag):

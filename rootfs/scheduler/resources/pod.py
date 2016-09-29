@@ -624,7 +624,7 @@ class Pod(Resource):
         if desired == 0:
             return
 
-        timeout = self._deploy_probe_timeout(timeout, namespace, labels, containers)
+        timeout = self.deploy_probe_timeout(timeout, namespace, labels, containers)
         self.log(namespace, "waiting for {} pods in {} namespace to be in services ({}s timeout)".format(desired, namespace, timeout))  # noqa
 
         # Ensure the minimum desired number of pods are available
@@ -694,3 +694,34 @@ class Pod(Resource):
                     raise KubeException(message)
 
         return None
+
+    def deploy_probe_timeout(self, timeout, namespace, labels, containers):
+        """
+        Added in additional timeouts based on readiness and liveness probe
+
+        Uses the max of the two instead of combining them as the checks are stacked.
+        """
+
+        container_name = '{}-{}'.format(labels['app'], labels['type'])
+        container = self.pod.find_container(container_name, containers)
+
+        # get health info from container
+        added_timeout = []
+        if 'readinessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having readiness check report as failure until
+            # the initial delay period is up
+            added_timeout.append(int(container['readinessProbe'].get('initialDelaySeconds', 50)))
+
+        if 'livenessProbe' in container:
+            # If there is initial delay on the readiness check then timeout needs to be higher
+            # this is to account for kubernetes having liveness check report as failure until
+            # the initial delay period is up
+            added_timeout.append(int(container['livenessProbe'].get('initialDelaySeconds', 50)))
+
+        if added_timeout:
+            delay = max(added_timeout)
+            self.log(namespace, "adding {}s on to the original {}s timeout to account for the initial delay specified in the liveness / readiness probe".format(delay, timeout))  # noqa
+            timeout += delay
+
+        return timeout

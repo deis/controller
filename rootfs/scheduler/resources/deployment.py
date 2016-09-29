@@ -171,7 +171,7 @@ class Deployment(Resource):
             kwargs['previous_replicas'] = current
             self.wait_until_ready(namespace, name, **kwargs)
 
-    def in_progress(self, namespace, name, deploy_timeout, batches, replicas, tags):
+    def in_progress(self, namespace, name, timeout, batches, replicas, tags):
         """
         Determine if a Deployment has a deploy in progress
 
@@ -207,7 +207,7 @@ class Deployment(Resource):
         containers = deployment['spec']['template']['spec']['containers']
 
         # calculate base deploy timeout
-        deploy_timeout = self._deploy_probe_timeout(deploy_timeout, namespace, labels, containers)
+        deploy_timeout = self.pod.deploy_probe_timeout(timeout, namespace, labels, containers)
 
         # a rough calculation that figures out an overall timeout
         steps = self._get_deploy_steps(batches, tags)
@@ -304,7 +304,7 @@ class Deployment(Resource):
 
         current = int(kwargs.get('previous_replicas', 0))
         batches = kwargs.get('deploy_batches', None)
-        deploy_timeout = kwargs.get('deploy_timeout', 120)
+        timeout = kwargs.get('deploy_timeout', 120)
         tags = kwargs.get('tags', {})
         steps = self._get_deploy_steps(batches, tags)
         batches = self._get_deploy_batches(steps, replicas)
@@ -320,7 +320,7 @@ class Deployment(Resource):
             return
 
         # calculate base deploy timeout
-        deploy_timeout = self._deploy_probe_timeout(deploy_timeout, namespace, labels, containers)
+        deploy_timeout = self.pod.deploy_probe_timeout(timeout, namespace, labels, containers)
 
         # a rough calculation that figures out an overall timeout
         timeout = len(batches) * deploy_timeout
@@ -351,3 +351,26 @@ class Deployment(Resource):
         ready, _ = self.are_replicas_ready(namespace, name)
         if not ready:
             self.pod._handle_not_ready_pods(namespace, labels)
+
+    def _get_deploy_steps(self, batches, tags):
+        # if there is no batch information available default to available nodes for app
+        if not batches:
+            # figure out how many nodes the application can go on
+            steps = len(self.node.get(labels=tags).json()['items'])
+        else:
+            steps = int(batches)
+
+        return steps
+
+    def _get_deploy_batches(self, steps, desired):
+        # figure out what kind of batches the deploy is done in - 1 in, 1 out or higher
+        if desired < steps:
+            # do it all in one go
+            batches = [desired]
+        else:
+            # figure out the stepped deploy count and then see if there is a leftover
+            batches = [steps for n in set(range(1, (desired + 1))) if n % steps == 0]
+            if desired - sum(batches) > 0:
+                batches.append(desired - sum(batches))
+
+        return batches

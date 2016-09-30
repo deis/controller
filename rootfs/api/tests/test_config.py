@@ -325,3 +325,9 @@ class ConfigTest(DeisTransactionTestCase):
         body = {'values': {'FOO': 'bar'}}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 403)
+
+    def test_config_app_not_exists(self, mock_requests):
+        url = '/v2/apps/{}/config'.format('fake')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data, 'No App matches the given query.')

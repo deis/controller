@@ -117,7 +117,7 @@ class ReleaseTest(DeisTransactionTestCase):
         response = self.client.get(url)
         for key in response.data.keys():
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'build', 'config',
-                                'summary', 'version'])
+                                'summary', 'version', 'failed'])
         expected = {
             'owner': self.user.username,
             'app': app_id,
@@ -263,6 +263,7 @@ class ReleaseTest(DeisTransactionTestCase):
         Cause an Exception in app.deploy to cause a release.delete
         """
         app_id = self.create_app()
+        app = App.objects.get(id=app_id)
 
         # deploy app to get a build
         url = "/v2/apps/{}/builds".format(app_id)
@@ -277,12 +278,6 @@ class ReleaseTest(DeisTransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
-        # update config to roll a new release
-        url = '/v2/apps/{}/config'.format(app_id)
-        body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 201, response.data)
-
         # app.deploy exception
         with mock.patch('api.models.App.deploy') as mock_deploy:
             mock_deploy.side_effect = Exception('Boom!')
@@ -290,6 +285,20 @@ class ReleaseTest(DeisTransactionTestCase):
             body = {'version': 2}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)
+            self.assertEqual(app.release_set.latest().version, 4)
+
+        # update config to roll a new release
+        url = '/v2/apps/{}/config'.format(app_id)
+        body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # try to rollback to v4 and verify that the rollback failed
+        # (v4 is a failed release)
+        url = "/v2/apps/{app_id}/releases/rollback/".format(**locals())
+        body = {'version': 4}
+        response = self.client.post(url, body)
+        self.assertContains(response, 'Cannot roll back to failed release.', status_code=400)
 
         # app.deploy exception followed by a KubeHTTPException of 404
         with mock.patch('api.models.App.deploy') as mock_deploy:

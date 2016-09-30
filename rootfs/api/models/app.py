@@ -138,7 +138,7 @@ class App(UuidAuditedModel):
         """
         try:
             # FIXME: remove slugrunner's hardcoded entrypoint
-            release = self.release_set.latest()
+            release = self.release_set.filter(failed=False).latest()
             if release.build.dockerfile or not release.build.sha:
                 return [release.build.procfile[container_type]]
 
@@ -161,7 +161,7 @@ class App(UuidAuditedModel):
 
         # if this is a procfile-based app, switch the entrypoint to slugrunner's default
         # FIXME: remove slugrunner's hardcoded entrypoint
-        release = self.release_set.latest()
+        release = self.release_set.filter(failed=False).latest()
         if release.build.procfile and \
            release.build.sha and not \
            release.build.dockerfile:
@@ -352,10 +352,10 @@ class App(UuidAuditedModel):
         # use create to make sure minimum resources are created
         self.create()
 
-        if self.release_set.latest().build is None:
+        if self.release_set.filter(failed=False).latest().build is None:
             raise DeisException('No build associated with this release')
 
-        release = self.release_set.latest()
+        release = self.release_set.filter(failed=False).latest()
 
         # Validate structure
         try:
@@ -401,7 +401,7 @@ class App(UuidAuditedModel):
         return False
 
     def _scale_pods(self, scale_types):
-        release = self.release_set.latest()
+        release = self.release_set.filter(failed=False).latest()
         app_settings = self.appsettings_set.latest()
 
         # use slugrunner image for app if buildpack app otherwise use normal image
@@ -577,7 +577,7 @@ class App(UuidAuditedModel):
         only run after kubernetes has reported all pods as healthy
         """
         # Bail out early if the application is not routable
-        release = self.release_set.latest()
+        release = self.release_set.filter(failed=False).latest()
         app_settings = self.appsettings_set.latest()
         if not kwargs.get('routable', False) and app_settings.routable:
             return
@@ -681,7 +681,7 @@ class App(UuidAuditedModel):
             return ''.join(random.choice(chars) for _ in range(size))
 
         """Run a one-off command in an ephemeral app container."""
-        release = self.release_set.latest()
+        release = self.release_set.filter(failed=False).latest()
         if release.build is None:
             raise DeisException('No build associated with this release to run this command')
 
@@ -769,7 +769,7 @@ class App(UuidAuditedModel):
 
         # always supply a version, either latest or a specific one
         if 'release' not in kwargs or kwargs['release'] is None:
-            release = self.release_set.latest()
+            release = self.release_set.filter(failed=False).latest()
         else:
             release = self.release_set.get(version=kwargs['release'])
 

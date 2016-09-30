@@ -185,7 +185,7 @@ class ReleasableViewSet(AppResourceViewSet):
     """A viewset for application resources which affect the release cycle."""
     def get_object(self):
         """Retrieve the object based on the latest release's value"""
-        return getattr(self.get_app().release_set.latest(), self.model.__name__.lower())
+        return getattr(self.get_app().release_set.filter(failed=False).latest(), self.model.__name__.lower())  # noqa
 
 
 class AppViewSet(BaseDeisViewSet):
@@ -265,14 +265,25 @@ class ConfigViewSet(ReleasableViewSet):
     serializer_class = serializers.ConfigSerializer
 
     def post_save(self, config):
-        release = config.app.release_set.latest()
-        self.release = release.new(self.request.user, config=config, build=release.build)
+        release = config.app.release_set.filter(failed=False).latest()
+        latest_version = config.app.release_set.latest().version
         try:
+            self.release = release.new(self.request.user, config=config, build=release.build)
             # It's possible to set config values before a build
             if self.release.build is not None:
                 config.app.deploy(self.release)
         except Exception as e:
-            self.release.delete()
+            if (not hasattr(self, 'release') and
+                    config.app.release_set.latest().version == latest_version+1):
+                self.release = config.app.release_set.latest()
+            if hasattr(self, 'release'):
+                self.release.failed = True
+                self.release.summary = "{} deployed a config that failed".format(self.request.user)  # noqa
+                self.release.save()
+            else:
+                config.delete()
+            if isinstance(e, AlreadyExists):
+                raise
             raise DeisException(str(e)) from e
 
 
@@ -403,7 +414,7 @@ class ReleaseViewSet(AppResourceViewSet):
         Create a new release as a copy of the state of the compiled slug and config vars of a
         previous release.
         """
-        release = self.get_app().release_set.latest()
+        release = self.get_app().release_set.filter(failed=False).latest()
         new_release = release.rollback(request.user, request.data.get('version', None))
         response = {'version': new_release.version}
         return Response(response, status=status.HTTP_201_CREATED)
@@ -505,7 +516,7 @@ class BuildHookViewSet(BaseHookViewSet):
         request.data['owner'] = self.user
         super(BuildHookViewSet, self).create(request, *args, **kwargs)
         # return the application databag
-        response = {'release': {'version': app.release_set.latest().version}}
+        response = {'release': {'version': app.release_set.filter(failed=False).latest().version}}
         return Response(response, status=status.HTTP_200_OK)
 
     def post_save(self, build):
@@ -523,7 +534,7 @@ class ConfigHookViewSet(BaseHookViewSet):
         # check the user is authorized for this app
         if not permissions.is_app_user(request, app):
             raise PermissionDenied()
-        config = app.release_set.latest().config
+        config = app.release_set.filter(failed=False).latest().config
         serializer = self.get_serializer(config)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

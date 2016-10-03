@@ -107,29 +107,43 @@ class KeyTest(DeisTestCase):
         response = self._check_bad_key(BAD_KEY)
         self.assertEqual(response.data, {'public': ['Key contains invalid base64 chars']})
 
-    def _check_duplicate_key(self, pubkey, pubkey2):
+    def _check_duplicate_fingerprint(self, pubkey, pubkey2):
         """
         Test that a user cannot add a duplicate key
         """
         url = '/v2/keys'
+        # initial key
         body = {'id': 'mykey@box.local', 'public': pubkey}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
-        response = self.client.post(url, body)
-        self.assertEqual(response.status_code, 400, response.data)
+
         # test that adding a key with the same fingerprint fails
         body = {'id': 'mykey2@box.local', 'public': pubkey}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
-        body = {'id': 'mykey2@box.local', 'public': pubkey2}
+        self.assertEqual(response.data, {'public': ['Public Key is already in use']}, response.data)  # noqa
+
+        body = {'id': 'mykey3@box.local', 'public': pubkey2}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
     def test_rsa_duplicate_key(self):
-        self._check_duplicate_key(RSA_PUBKEY, RSA_PUBKEY2)
+        self._check_duplicate_fingerprint(RSA_PUBKEY, RSA_PUBKEY2)
 
     def test_ecdsa_duplicate_key(self):
-        self._check_duplicate_key(ECDSA_PUBKEY, ECDSA_PUBKEY2)
+        self._check_duplicate_fingerprint(ECDSA_PUBKEY, ECDSA_PUBKEY2)
+
+    def test_duplicate_id(self):
+        url = '/v2/keys'
+        body = {'id': 'duplicae@box.local', 'public': RSA_PUBKEY}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # same name, diff key
+        body = {'id': 'duplicae@box.local', 'public': RSA_PUBKEY2}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(response.data, {'id': ['SSH Key with this id already exists.']}, response.data)  # noqa
 
     def test_rsa_key_str(self):
         """Test the text representation of a key"""

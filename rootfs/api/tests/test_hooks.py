@@ -68,7 +68,7 @@ class HookTest(DeisTransactionTestCase):
         public = response.data['public']
 
         # Create another keys
-        body = {'id': str(self.user), 'public': RSA_PUBKEY2}
+        body = {'id': str(self.user) + '-2', 'public': RSA_PUBKEY2}
         response = self.client.post('/v2/keys', body)
         self.assertEqual(response.status_code, 201, response.data)
         public2 = response.data['public']

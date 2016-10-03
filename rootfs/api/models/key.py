@@ -20,7 +20,7 @@ class Key(UuidAuditedModel):
     """An SSH public key."""
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    id = models.CharField(max_length=128)
+    id = models.CharField(max_length=128, unique=True)
     public = models.TextField(
         unique=True, validators=[validate_base64],
         error_messages={

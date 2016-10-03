@@ -23,6 +23,7 @@ class Release(UuidAuditedModel):
     app = models.ForeignKey('App', on_delete=models.CASCADE)
     version = models.PositiveIntegerField()
     summary = models.TextField(blank=True, null=True)
+    failed = models.BooleanField(default=False)
 
     config = models.ForeignKey('Config', on_delete=models.CASCADE)
     build = models.ForeignKey('Build', null=True, on_delete=models.CASCADE)
@@ -77,7 +78,7 @@ class Release(UuidAuditedModel):
         Releases start at v1 and auto-increment.
         """
         # construct fully-qualified target image
-        new_version = self.version + 1
+        new_version = self.app.release_set.latest().version + 1
         # create new release and auto-increment version
         release = Release.objects.create(
             owner=user, app=self.app, config=config,
@@ -202,7 +203,7 @@ class Release(UuidAuditedModel):
 
         try:
             # Get the Release previous to this one
-            prev_release = releases.latest()
+            prev_release = releases.filter(failed=False).latest()
         except Release.DoesNotExist:
             prev_release = None
         return prev_release
@@ -218,6 +219,9 @@ class Release(UuidAuditedModel):
                 raise DeisException('Cannot roll back to initial release.')
 
             prev = self.app.release_set.get(version=version)
+            if prev.failed:
+                raise DeisException('Cannot roll back to failed release.')
+            latest_version = self.app.release_set.latest().version
             new_release = self.new(
                 user,
                 build=prev.build,
@@ -230,8 +234,14 @@ class Release(UuidAuditedModel):
                 self.app.deploy(new_release, force_deploy=True)
             return new_release
         except Exception as e:
+            # check if the exception is during create or publish
+            if ('new_release' not in locals() and 'latest_version' in locals() and
+                    self.app.release_set.latest().version == latest_version+1):
+                new_release = self.app.release_set.latest()
             if 'new_release' in locals():
-                new_release.delete()
+                new_release.failed = True
+                new_release.summary = "{} performed roll back to a release that failed".format(self.owner)  # noqa
+                new_release.save()
             raise DeisException(str(e)) from e
 
     def cleanup_old(self):  # noqa

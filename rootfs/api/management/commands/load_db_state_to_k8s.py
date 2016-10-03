@@ -24,7 +24,7 @@ class Command(BaseCommand):
         # deploy applications
         print("Deploying available applications")
         for application in App.objects.all():
-            rel = application.release_set.latest()
+            rel = application.release_set.filter(failed=False).latest()
             if rel.build is None:
                 print('WARNING: {} has no build associated with '
                       'its latest release. Skipping deployment...'.format(application))

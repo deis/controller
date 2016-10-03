@@ -148,7 +148,7 @@ class Config(UuidAuditedModel):
         try:
             # Get config from the latest available release
             try:
-                previous_config = self.app.release_set.latest().config
+                previous_config = self.app.release_set.filter(failed=False).latest().config
             except Release.DoesNotExist:
                 # If that doesn't exist then fallback on app config
                 # usually means a totally new app

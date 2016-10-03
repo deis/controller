@@ -331,3 +331,41 @@ class ConfigTest(DeisTransactionTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.data, 'No App matches the given query.')
+
+    def test_config_failures(self, mock_requests):
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
+
+        # deploy app to get a build
+        url = "/v2/apps/{}/builds".format(app_id)
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['image'], body['image'])
+
+        # set an initial config value
+        url = "/v2/apps/{app_id}/config".format(**locals())
+        body = {'values': json.dumps({'NEW_URL1': 'http://localhost:8080/'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIn('NEW_URL1', response.data['values'])
+        success_config = app.release_set.latest().config
+
+        # create a failed config to check that failed release is created
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+            url = '/v2/apps/{app_id}/config'.format(**locals())
+            body = {'values': json.dumps({'test': "testvalue"})}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(app.release_set.latest().version, 4)
+            self.assertEqual(app.release_set.filter(failed=False).latest().version, 3)
+
+        # create a build to see that the new release is created with the last successful config
+        url = "/v2/apps/{}/builds".format(app_id)
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(app.release_set.latest().version, 5)
+        self.assertEqual(app.release_set.latest().config, success_config)
+        self.assertEqual(app.config_set.count(), 3)

@@ -52,8 +52,8 @@ class Build(UuidAuditedModel):
         return 'git-{}'.format(self.sha) if self.source_based else 'latest'
 
     def create(self, user, *args, **kwargs):
-        latest_release = self.app.release_set.latest()
-
+        latest_release = self.app.release_set.filter(failed=False).latest()
+        latest_version = self.app.release_set.latest().version
         try:
             new_release = latest_release.new(
                 user,
@@ -64,24 +64,29 @@ class Build(UuidAuditedModel):
             self.app.deploy(new_release)
             return new_release
         except Exception as e:
+            # check if the exception is during create or publish
+            if ('new_release' not in locals() and
+                    self.app.release_set.latest().version == latest_version+1):
+                new_release = self.app.release_set.latest()
             if 'new_release' in locals():
-                new_release.delete()
-            self.delete()
+                new_release.failed = True
+                new_release.summary = "{} deployed {} which failed".format(self.owner, str(self.uuid)[:7])  # noqa
+                new_release.save()
+            else:
+                self.delete()
 
             raise DeisException(str(e)) from e
 
     def save(self, **kwargs):
-        try:
-            removed = {}
-            previous_build = self.app.build_set.latest()
-            for proc in previous_build.procfile:
+        removed = {}
+        previous_release = self.app.release_set.filter(failed=False).latest()
+        if previous_release.build is not None:
+            for proc in previous_release.build.procfile:
                 if proc not in self.procfile:
                     # Scale proc type down to 0
                     removed[proc] = 0
 
             self.app.scale(self.owner, removed)
-        except Build.DoesNotExist:
-            pass
 
         return super(Build, self).save(**kwargs)
 

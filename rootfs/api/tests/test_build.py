@@ -11,7 +11,7 @@ from django.conf import settings
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from api.models import Build
+from api.models import Build, App
 from registry.dockerclient import RegistryException
 from scheduler import KubeException
 
@@ -401,7 +401,7 @@ class BuildTest(DeisTransactionTestCase):
 
     def test_release_create_failure(self, mock_requests):
         """
-        Cause an Exception in app.deploy to cause a release.delete in build.create
+        Cause an Exception in app.deploy to cause a failed release in build.create
         """
         app_id = self.create_app()
 
@@ -422,7 +422,7 @@ class BuildTest(DeisTransactionTestCase):
 
     def test_release_registry_create_failure(self, mock_requests):
         """
-        Cause a RegistryException in app.deploy to cause a release.delete in build.create
+        Cause a RegistryException in app.deploy to cause a failed release in build.create
         """
         app_id = self.create_app()
 
@@ -454,3 +454,36 @@ class BuildTest(DeisTransactionTestCase):
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
             self.assertEqual(response.status_code, 400, response.data)
+
+    def test_build_failures(self, mock_requests):
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
+
+        # deploy app to get a build
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['image'], body['image'])
+        success_build = app.release_set.latest().build
+
+        # create a failed build to check that failed release is created
+        with mock.patch('api.models.App.deploy') as mock_deploy:
+            mock_deploy.side_effect = Exception('Boom!')
+
+            url = "/v2/apps/{app_id}/builds".format(**locals())
+            body = {'image': 'autotest/example'}
+            response = self.client.post(url, body)
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertEqual(app.release_set.latest().version, 3)
+            self.assertEqual(app.release_set.filter(failed=False).latest().version, 2)
+
+        # create a config to see that the new release is created with the last successful build
+        url = "/v2/apps/{app_id}/config".format(**locals())
+
+        body = {'values': json.dumps({'Test': 'test'})}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(app.release_set.latest().version, 4)
+        self.assertEqual(app.release_set.latest().build, success_build)
+        self.assertEqual(app.build_set.count(), 2)

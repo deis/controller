@@ -12,7 +12,7 @@ morph==0.1.2
 ndg-httpsclient==0.4.2
 psycopg2==2.6.2
 pyOpenSSL==16.1.0
-pytz==2016.6.1
+pytz==2016.7
 requests==2.11.1
 requests-toolbelt==0.7.0
 jsonschema==2.5.1

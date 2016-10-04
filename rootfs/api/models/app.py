@@ -478,6 +478,9 @@ class App(UuidAuditedModel):
         try:
             # create the application config in k8s (secret in this case) for all deploy objects
             self.set_application_config(release)
+            # only buildpack apps need access to object storage
+            if release.build.type == 'buildpack':
+                self.create_object_store_secret()
 
             # gather all proc types to be deployed
             tasks = [
@@ -1084,3 +1087,10 @@ class App(UuidAuditedModel):
             self._scheduler.secret.create(self.id, secret_name, secrets_env, labels=labels)
         else:
             self._scheduler.secret.update(self.id, secret_name, secrets_env, labels=labels)
+
+    def create_object_store_secret(self):
+        try:
+            self._scheduler.secret.get(self.id, 'objectstorage-keyfile')
+        except KubeException:
+            secret = self._scheduler.secret.get('deis', 'objectstorage-keyfile').json()
+            self._scheduler.secret.create(self.id, 'objectstorage-keyfile', secret['data'])

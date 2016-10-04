@@ -663,6 +663,33 @@ class AppTest(DeisTestCase):
         assert isinstance(s['deploy_timeout'], int)
         assert isinstance(s['pod_termination_grace_period_seconds'], int)
 
+    def test_app_name_bad_regex(self, mock_requests):
+        """
+        Create a normal app and then try to do a build on it but include
+        extra chars (equal for example) in the name and make sure no new
+        apps are created and that the operation errors out
+        """
+        # create app
+        app_id = self.create_app()
+
+        # verify that there is only 1 app and it is the one expected
+        response = self.client.get("/v2/apps")
+        self.assertEqual(response.status_code, 200, response)
+        self.assertEqual(response.data['count'], 1, response.data)
+        self.assertEqual(response.data['results'][0]['id'], app_id, response.data)
+
+        # deploy to an app that doesn't exist should fail with 404
+        url = "/v2/apps/{}/builds".format('={}'.format(app_id))
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 404, response)
+
+        # verify again that there is only 1 app
+        response = self.client.get("/v2/apps")
+        self.assertEqual(response.status_code, 200, response)
+        self.assertEqual(response.data['count'], 1, response.data)
+
+
 FAKE_LOG_DATA = bytes("""
 2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5
 2013-08-15 12:41:25 [33454] [INFO] Listening at: http://0.0.0.0:5000 (33454)

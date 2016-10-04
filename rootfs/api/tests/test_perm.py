@@ -174,7 +174,7 @@ class TestAppPerms(DeisTestCase):
         self.assertEqual(len(response.data['results']), 1)
         # check that user 2 can't see any of the app's builds, configs,
         # containers, limits, or releases
-        for model in ['builds', 'config', 'containers', 'releases']:
+        for model in ['builds', 'config', 'pods', 'releases']:
             response = self.client.get("/v2/apps/{}/{}/".format(app_id, model))
             msg = "Failed: status '%s', and data '%s'" % (response.status_code, response.data)
             self.assertEqual(response.status_code, 403, msg=msg)

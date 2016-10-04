@@ -242,16 +242,25 @@ class App(UuidAuditedModel):
         """Delete this application including all containers"""
         self.log("deleting environment")
         try:
-            self._scheduler.ns.delete(self.id)
+            # check if namespace exists
+            self._scheduler.ns.get(self.id)
 
-            # wait 30 seconds for termination
-            for _ in range(30):
-                try:
-                    self._scheduler.ns.get(self.id)
-                except KubeException:
-                    break
-        except KubeException as e:
-            raise ServiceUnavailable('Could not delete Kubernetes Namespace {}'.format(self.id)) from e  # noqa
+            try:
+                self._scheduler.ns.delete(self.id)
+
+                # wait 30 seconds for termination
+                for _ in range(30):
+                    try:
+                        self._scheduler.ns.get(self.id)
+                    except KubeHTTPException as e:
+                        # only break out on a 404
+                        if e.response.status_code == 404:
+                            break
+            except KubeException as e:
+                raise ServiceUnavailable('Could not delete Kubernetes Namespace {} within 30 seconds'.format(self.id)) from e  # noqa
+        except KubeHTTPException:
+            # it's fine if the namespace does not exist - delete app from the DB
+            pass
 
         self._clean_app_logs()
         return super(App, self).delete(*args, **kwargs)

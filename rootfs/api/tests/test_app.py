@@ -17,7 +17,7 @@ from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
 
 from api.models import App, Config
-from scheduler import KubeException
+from scheduler import KubeException, KubeHTTPException
 
 from api.exceptions import DeisException
 from api.tests import adapter, mock_port, DeisTestCase
@@ -101,7 +101,7 @@ class AppTest(DeisTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 204, response.content)
 
-        # test logs - 404 from deis-logger
+        # test logs -  from deis-logger
         mock_response.status_code = 404
         response = self.client.get(url)
         self.assertEqual(response.status_code, 204, response.content)
@@ -404,6 +404,33 @@ class AppTest(DeisTestCase):
             mock_kube.side_effect = KubeException('Boom!')
             response = self.client.delete('/v2/apps/{}'.format(app_id))
             self.assertEqual(response.status_code, 503, response.data)
+
+    def test_app_delete_missing_namespace(self, mock_requests):
+        """
+        Create an app and then delete but have namespace missing
+        Should still succeed
+        """
+        # create
+        app_id = self.create_app()
+
+        with mock.patch('scheduler.resources.namespace.Namespace.get') as mock_kube:
+            # instead of full request mocking, fake it out in a simple way
+            class Response(object):
+                def json(self):
+                    return '{}'
+
+            response = Response()
+            response.status_code = 404
+            response.reason = "Not Found"
+            kube_exception = KubeHTTPException(response, 'big boom')
+            mock_kube.side_effect = kube_exception
+
+            response = self.client.delete('/v2/apps/{}'.format(app_id))
+            self.assertEqual(response.status_code, 204, response.data)
+
+        # verify that app is gone
+        response = self.client.get('/v2/apps/{}'.format(app_id))
+        self.assertEqual(response.status_code, 404, response.data)
 
     def test_app_verify_application_health_success(self, mock_requests):
         """

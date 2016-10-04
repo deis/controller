@@ -127,7 +127,7 @@ class HookTest(DeisTransactionTestCase):
         app_id = self.create_app()
 
         build = {'username': 'autotest', 'app': app_id}
-        url = '/v2/hooks/builds'.format(**locals())
+        url = '/v2/hooks/build'.format(**locals())
         body = {'receive_user': 'autotest',
                 'receive_repo': app_id,
                 'image': '{app_id}:v2'.format(**locals())}
@@ -146,7 +146,7 @@ class HookTest(DeisTransactionTestCase):
         """Test creating a slug_url build via an API Hook"""
         app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
-        url = '/v2/hooks/builds'.format(**locals())
+        url = '/v2/hooks/build'.format(**locals())
         body = {'receive_user': 'autotest',
                 'receive_repo': app_id,
                 'image': 'http://example.com/slugs/foo-12345354.tar.gz'}
@@ -168,7 +168,7 @@ class HookTest(DeisTransactionTestCase):
         app_id = self.create_app()
 
         build = {'username': 'autotest', 'app': app_id}
-        url = '/v2/hooks/builds'.format(**locals())
+        url = '/v2/hooks/build'.format(**locals())
         PROCFILE = {'web': 'node server.js', 'worker': 'node worker.js'}
         SHA = 'ecdff91c57a0b9ab82e89634df87e293d259a3aa'
         body = {'receive_user': 'autotest',
@@ -213,7 +213,7 @@ class HookTest(DeisTransactionTestCase):
         """Test creating a Dockerfile build via an API Hook"""
         app_id = self.create_app()
         build = {'username': 'autotest', 'app': app_id}
-        url = '/v2/hooks/builds'.format(**locals())
+        url = '/v2/hooks/build'.format(**locals())
         SHA = 'ecdff91c57a0b9ab82e89634df87e293d259a3aa'
         DOCKERFILE = """FROM busybox
         CMD /bin/true"""
@@ -296,7 +296,7 @@ class HookTest(DeisTransactionTestCase):
                 'image': '{app_id}:v2'.format(**locals()),
                 'sha': 'ecdff91c57a0b9ab82e89634df87e293d259a3aa',
                 'dockerfile': DOCKERFILE}
-        url = '/v2/hooks/builds'
+        url = '/v2/hooks/build'
         response = self.client.post(url, body,
                                     HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 200, response.data)

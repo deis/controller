@@ -189,6 +189,16 @@ class BuildSerializer(serializers.ModelSerializer):
         fields = ['owner', 'app', 'image', 'sha', 'procfile', 'dockerfile', 'created',
                   'updated', 'uuid']
 
+    def validate_procfile(self, data):
+        for key, value in data.items():
+            if value is None or value == "":
+                raise serializers.ValidationError("Command can't be empty for process type")
+
+            if not re.match(PROCTYPE_MATCH, key):
+                raise serializers.ValidationError("Process types can only contain alphanumeric")
+
+        return data
+
 
 class ConfigSerializer(serializers.ModelSerializer):
     """Serialize a :class:`~api.models.Config` model."""

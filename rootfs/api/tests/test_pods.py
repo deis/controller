@@ -49,10 +49,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -211,10 +211,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -298,10 +298,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -333,10 +333,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -377,10 +377,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -438,10 +438,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -675,7 +675,7 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({'web': 'node server.js', 'worker': 'node worker.js'})
+            'procfile': {'web': 'node server.js', 'worker': 'node worker.js'}
         }
         response = self.client.post(url, body)
         unauthorized_user = User.objects.get(username='autotest2')
@@ -700,10 +700,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(build_url, body)
 
@@ -715,9 +715,9 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(build_url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -735,10 +735,10 @@ class PodTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(build_url, body)
 

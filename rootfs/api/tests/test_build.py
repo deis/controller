@@ -201,10 +201,10 @@ class BuildTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -227,10 +227,10 @@ class BuildTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'rake': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -299,10 +299,10 @@ class BuildTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -323,10 +323,10 @@ class BuildTest(DeisTransactionTestCase):
         body = {
             'image': 'autotest/example',
             'sha': 'a'*40,
-            'procfile': json.dumps({
+            'procfile': {
                 'web': 'node server.js',
                 'worker': 'node worker.js'
-            })
+            }
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
@@ -487,3 +487,31 @@ class BuildTest(DeisTransactionTestCase):
         self.assertEqual(app.release_set.latest().version, 4)
         self.assertEqual(app.release_set.latest().build, success_build)
         self.assertEqual(app.build_set.count(), 2)
+
+    def test_build_validate_procfile(self, mock_requests):
+        app_id = self.create_app()
+
+        # deploy app with incorrect proctype
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker_test': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+        # deploy app with empty command
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker': ''
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)

@@ -133,13 +133,6 @@ class Pod(Resource):
 
         # Check if it is a slug builder image.
         if build_type == "buildpack":
-            # only buildpack apps need access to object storage
-            try:
-                self.secret.get(namespace, 'objectstorage-keyfile')
-            except KubeException:
-                secret = self.secret.get('deis', 'objectstorage-keyfile').json()
-                self.secret.create(namespace, 'objectstorage-keyfile', secret['data'])
-
             # add the required volume to the top level pod spec
             spec['volumes'] = [{
                 'name': 'objectstorage-keyfile',

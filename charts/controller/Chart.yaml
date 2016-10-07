@@ -1,0 +1,7 @@
+name: controller
+home: https://github.com/deis/controller
+version: <Will be populated by the ci before publishing the chart>
+description: Deis Workflow Controller (API).
+maintainers:
+  - name: Deis Team
+    email: engineering@deis.com

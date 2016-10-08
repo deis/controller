@@ -42,7 +42,7 @@ commit-hook:
 full-clean: check-docker
 	docker images -q $(IMAGE_PREFIX)$(COMPONENT) | xargs docker rmi -f
 
-postgres:
+postgres: check-docker
 	docker start postgres || docker run --restart="always" -d -p 5432:5432 --name postgres postgres:9.3
 	docker exec postgres createdb -U postgres deis 2>/dev/null || true
 	@echo "To use postgres for local development:"

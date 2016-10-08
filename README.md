@@ -50,16 +50,11 @@ helmc install workflow-dev
 
 ### Postgresql
 
-Postgresql can be installed via `homebrew`:
-
+The application and tests use PostgreSQL. To start a local instance via Docker, run `make postgres` and set the following in your shell:
 ```
-brew install postgresql
-```
-
-Or via your package manager. For example, on Debian Jessie:
-
-```
-apt-get install postgresql libpq-dev
+  export PGHOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
+  export PGPORT=5432
+  export PGUSER=postgres
 ```
 
 ### Python

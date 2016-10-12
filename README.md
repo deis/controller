@@ -76,10 +76,10 @@ Or via your package manager. For example, on Debian Jessie:
 apt-get install python3 python3-dev python3-venv
 ```
 
-With the correct Python in place the quickest way to get up and running is to run `make setup-venv` which will install the Python specific dependencies via [PIP](https://pip.pypa.io/en/stable/) inside an isolated (virtualenv)[https://docs.python.org/3/library/venv.html].
+With the correct Python in place the quickest way to get up and running is to run `make setup-venv` which will install the Python specific dependencies via [PIP](https://pip.pypa.io/en/stable/) inside an isolated [virtualenv](virtualenv).
 Running `python --version` to verify the correct version is recommend.
 
-Follow the linked documentation to learn about (virtualenv)[https://docs.python.org/3/library/venv.html] and how to `activate` and `deactivate` the environment.
+Follow the linked documentation to learn about [virtualenv](virtualenv) and how to `activate` and `deactivate` the environment.
 
 ## Testing Your Code
 
@@ -122,3 +122,4 @@ Unless required by applicable law or agreed to in writing, software distributed 
 [issues]: https://github.com/deis/controller/issues
 [prs]: https://github.com/deis/controller/pulls
 [workflow]: https://github.com/deis/workflow
+[virtualenv]: https://docs.python.org/3/library/venv.html

@@ -1,0 +1,37 @@
+org: "deisci"
+pull_policy: "Always"
+docker_tag: canary
+app_pull_policy: "Always"
+# limits_cpu: "100m"
+# limits_memory: "50Mi"
+
+global:
+  # Set the storage backend
+  #
+  # Valid values are:
+  # - s3: Store persistent data in AWS S3 (configure in S3 section)
+  # - azure: Store persistent data in Azure's object storage
+  # - gcs: Store persistent data in Google Cloud Storage
+  # - minio: Store persistent data on in-cluster Minio server
+  storage: minio
+  # Set the location of Workflow's PostgreSQL database
+  #
+  # Valid values are:
+  # - on-cluster: Run PostgreSQL within the Kubernetes cluster (credentials are generated
+  #   automatically; backups are sent to object storage
+  #   configured above)
+  # - off-cluster: Run PostgreSQL outside the Kubernetes cluster (configure in database section)
+  database_location: "on-cluster"
+
+  # Set the location of Workflow's Registry
+  #
+  # Valid values are:
+  # - on-cluster: Run registry within the Kubernetes cluster
+  # - off-cluster: Use registry outside the Kubernetes cluster (example: dockerhub,quay.io,self-hosted)
+  # - ecr: Use Amazon's ECR
+  # - gcr: Use Google's GCR
+  registry_location: "on-cluster"
+  # The host port to which registry proxy binds to
+  host_port: 5555
+  # Prefix for the imagepull secret created when using private registry
+  secret_prefix: "private-registry"

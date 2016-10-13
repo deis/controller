@@ -1,0 +1,119 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: deis-controller
+  labels:
+    heritage: deis
+  annotations:
+    component.deis.io/version: {{ .Values.docker_tag }}
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: deis-controller
+  template:
+    metadata:
+      labels:
+        app: deis-controller
+    spec:
+      serviceAccount: deis-controller
+      containers:
+        - name: deis-controller
+          image: quay.io/{{.Values.org}}/controller:{{.Values.docker_tag}}
+          imagePullPolicy: {{.Values.pull_policy}}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: 8000
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 5
+          ports:
+            - containerPort: 8000
+              name: http
+{{- if or (.Values.limits_cpu) (.Values.limits_memory)}}
+          resources:
+            limits:
+{{- if (.Values.limits_cpu) }}
+              cpu: {{.Values.limits_cpu}}
+{{- end}}
+{{- if (.Values.limits_memory) }}
+              memory: {{.Values.limits_memory}}
+{{- end}}
+{{- end}}
+          env:
+            # NOTE(bacongobbler): use deis/registry_proxy to work around Docker --insecure-registry requirements
+            - name: "DEIS_REGISTRY_SERVICE_HOST"
+              value: "localhost"
+            - name: "DEIS_REGISTRY_SERVICE_PORT"
+              value: "{{ .Values.global.host_port }}"
+            - name: "APP_STORAGE"
+              value: "{{ .Values.global.storage}}"
+            - name: "DEIS_REGISTRY_LOCATION"
+              value: "{{ .Values.global.registry_location }}"
+            - name: "DEIS_REGISTRY_SECRET_PREFIX"
+              value: "{{ .Values.global.secret_prefix }}"
+            - name: "SLUGRUNNER_IMAGE_NAME"
+              valueFrom:
+                configMapKeyRef:
+                  name: slugrunner-config
+                  key: image
+            - name: "IMAGE_PULL_POLICY"
+              value: "{{ .Values.app_pull_policy }}"
+            - name: DEIS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: django-secret-key
+                  key: secret-key
+            - name: DEIS_BUILDER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: builder-key-auth
+                  key: builder-key
+{{- if eq .Values.global.database_location "off-cluster" }}
+            - name: DEIS_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: database-creds
+                  key: name
+            - name: DEIS_DATABASE_SERVICE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: database-creds
+                  key: host
+            - name: DEIS_DATABASE_SERVICE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: database-creds
+                  key: port
+{{- end }}
+            - name: DEIS_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database-creds
+                  key: user
+            - name: DEIS_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database-creds
+                  key: password
+            - name: RESERVED_NAMES
+              value: "deis, deis-builder, deis-workflow-manager, grafana"
+          volumeMounts:
+            - mountPath: /var/run/docker.sock
+              name: docker-socket
+      volumes:
+        - name: docker-socket
+          hostPath:
+            path: /var/run/docker.sock

@@ -43,6 +43,12 @@ ECDSA_PUBKEY2 = (
     "pSPf7VWhYbJ753csQ= testing"
 )
 
+ED25519_PUBKEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIORIdG868fEBUKoEqSQZFKfSLoHkSBmW2uXX"
+    "GaZKEuus testing"
+)
+
+
 BAD_KEY = (
     "ssh-rsa foo_bar"
 )
@@ -102,6 +108,9 @@ class KeyTest(DeisTestCase):
 
     def test_ecdsa_key(self):
         self._check_key(ECDSA_PUBKEY)
+
+    def test_ed25519_key(self):
+        self._check_key(ED25519_PUBKEY)
 
     def test_bad_key(self):
         response = self._check_bad_key(BAD_KEY)

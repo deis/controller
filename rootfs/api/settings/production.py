@@ -1,7 +1,7 @@
 """
 Django settings for the Deis project.
 """
-
+from distutils.util import strtobool
 import os.path
 import tempfile
 
@@ -255,6 +255,29 @@ BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
 # k8s image policies
 SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugrunner:canary')  # noqa
 IMAGE_PULL_POLICY = os.environ.get('IMAGE_PULL_POLICY', "IfNotPresent")  # noqa
+
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a user deploys one build with a Procfile but then forgets to in the next one
+# then let that go through without scaling the missing process types down
+#
+# If the user has a Procfile in both deploys then processes are scaled up / down as per usual
+#
+# By default the process types are scaled down unless this setting is turned on
+DEIS_DEPLOY_PROCFILE_MISSING_REMOVE = bool(strtobool(os.environ.get('DEIS_DEPLOY_PROCFILE_MISSING_REMOVE', 'true')))  # noqa
+
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a previous deploy had a Procfile but then the following deploy has no Procfile then it will
+# result in a 406 - Not Acceptable
+# Has priority over DEIS_DEPLOY_PROCFILE_MISSING_REMOVE
+DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING = bool(strtobool(os.environ.get('DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING', 'false')))  # noqa
 
 # Define a global default on how many pods to bring up and then
 # take down sequentially during a deploy

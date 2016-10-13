@@ -19,6 +19,10 @@ class AlreadyExists(APIException):
     status_code = 409
 
 
+class Conflict(AlreadyExists):
+    pass
+
+
 class UnprocessableEntity(APIException):
     status_code = 422
 

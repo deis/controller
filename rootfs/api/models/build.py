@@ -2,7 +2,8 @@ from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
 
-from api.models import UuidAuditedModel, DeisException
+from api.models import UuidAuditedModel
+from api.exceptions import DeisException, Conflict
 
 import logging
 logger = logging.getLogger(__name__)
@@ -78,15 +79,54 @@ class Build(UuidAuditedModel):
             raise DeisException(str(e)) from e
 
     def save(self, **kwargs):
-        removed = {}
         previous_release = self.app.release_set.filter(failed=False).latest()
-        if previous_release.build is not None:
+
+        if (
+            settings.DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING is True and
+            # previous release had a Procfile and the current one does not
+            (
+                previous_release.build is not None and
+                len(previous_release.build.procfile) > 0 and
+                len(self.procfile) == 0
+            )
+        ):
+            # Reject deployment
+            raise Conflict(
+                'Last deployment had a Procfile but is missing in this deploy. '
+                'For a successful deployment provide a Procfile.'
+            )
+
+        # See if processes are permitted to be removed
+        remove_procs = (
+            # If set to True then contents of Procfile does not affect the outcome
+            settings.DEIS_DEPLOY_PROCFILE_MISSING_REMOVE is True or
+            # previous release had a Procfile and the current one does as well
+            (
+                previous_release.build is not None and
+                len(previous_release.build.procfile) > 0 and
+                len(self.procfile) > 0
+            )
+        )
+
+        # spin down any proc type removed between the last procfile and the newest one
+        if remove_procs and previous_release.build is not None:
+            removed = {}
             for proc in previous_release.build.procfile:
                 if proc not in self.procfile:
                     # Scale proc type down to 0
                     removed[proc] = 0
 
             self.app.scale(self.owner, removed)
+
+        # make sure the latest build has procfile if the intent is to
+        # allow empty Procfile without removals
+        if (
+            settings.DEIS_DEPLOY_PROCFILE_MISSING_REMOVE is False and
+            previous_release.build is not None and
+            len(previous_release.build.procfile) > 0 and
+            len(self.procfile) == 0
+        ):
+            self.procfile = previous_release.build.procfile
 
         return super(Build, self).save(**kwargs)
 

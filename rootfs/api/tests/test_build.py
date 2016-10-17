@@ -8,6 +8,7 @@ import json
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.conf import settings
+from django.test.utils import override_settings
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
@@ -234,6 +235,207 @@ class BuildTest(DeisTransactionTestCase):
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
+
+    @override_settings(DEIS_DEPLOY_PROCFILE_MISSING_REMOVE=True)
+    def test_build_forgotten_procfile(self, mock_requests):
+        """
+        Test that when a user first posts a build with a Procfile
+        and then later without it that missing process are actually
+        scaled down
+        """
+        # start with a new app
+        app_id = self.create_app()
+
+        # post a new build with procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # scale worker
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'worker': 1}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 204, response.data)
+
+        # verify worker
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'worker')
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-worker-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # do another deploy for this time forget Procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # verify worker is not there
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+        # verify web is still there
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 0)
+
+        # look at the app structure
+        url = "/v2/apps/{app_id}".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.json()['structure'], {'web': 0, 'worker': 0})
+
+    @override_settings(DEIS_DEPLOY_PROCFILE_MISSING_REMOVE=False)
+    def test_build_no_remove_process(self, mock_requests):
+        """
+        Specifically test PROCFILE_REMOVE_PROCS_ON_DEPLOY being turned off
+        and a user posting a new build without a Procfile that was previously
+        applied
+        """
+        # start with a new app
+        app_id = self.create_app()
+
+        # post a new build with procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # scale worker
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'worker': 1}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 204, response.data)
+
+        # verify worker
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'worker')
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-worker-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # do another deploy for this time forget Procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # verify worker is still there
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'worker')
+        self.assertEqual(container['release'], 'v3')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-worker-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # verify web is still there
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'web')
+        self.assertEqual(container['release'], 'v3')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # look at the app structure
+        url = "/v2/apps/{app_id}".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.json()['structure'], {'web': 1, 'worker': 1})
+
+        # scale worker to make sure no info was lost
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'worker': 2}  # bump from 1 to 2
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 204, response.data)
+
+        # verify worker info
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 2)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'worker')
+        self.assertEqual(container['release'], 'v3')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-worker-[0-9]{8,10}-[a-z0-9]{5}')
+
+    @override_settings(DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING=True)
+    def test_build_forgotten_procfile_reject(self, mock_requests):
+        """
+        Test that when a user first posts a build with a Procfile
+        and then later without it that missing process are actually
+        scaled down
+        """
+        # start with a new app
+        app_id = self.create_app()
+
+        # post a new build with procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # scale worker
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'worker': 1}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 204, response.data)
+
+        # verify worker
+        url = "/v2/apps/{app_id}/pods/worker".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'worker')
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-worker-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # do another deploy for this time forget Procfile
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example'}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 409, response.data)
 
     def test_build_str(self, mock_requests):
         """Test the text representation of a build."""

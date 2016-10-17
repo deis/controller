@@ -30,6 +30,22 @@ RSA_PUBKEY2 = (
     "dJS08nTeElUg6pn83A3hqWX+J testing"
 )
 
+ECDSA_PUBKEY = (
+    "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAAB"
+    "BBCGB0x9lmubbLJTF5NekCI0Cgjyip6jJh/t/qQQi1LAZisbREBJ8Wy+hwSn3tnbf/Imh9X"
+    "+MQnrrza0jaQ3QUAQ= autotest@autotesting comment"
+)
+
+ED25519_PUBKEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAPYa7ztrkGyl/LSpBxv0DjPej74GCSVItX"
+    "9Y2+/zxc+ testing"
+)
+
+BAD_KEY = (
+    "ssh-rsa foooooooooooooooooooooooooooooooooooooooooooooooooooobaaaaaaarrr"
+    "rrrrr testing"
+)
+
 
 @requests_mock.Mocker(real_http=True, adapter=adapter)
 @mock.patch('api.models.release.publish_release', lambda *args: None)
@@ -61,17 +77,34 @@ class HookTest(DeisTransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
-        # Create key
+        # Create rsa key
         body = {'id': str(self.user), 'public': RSA_PUBKEY}
         response = self.client.post('/v2/keys', body)
         self.assertEqual(response.status_code, 201, response.data)
-        public = response.data['public']
+        rsa_pub = response.data['public']
 
-        # Create another keys
+        # Create another rsa key
         body = {'id': str(self.user) + '-2', 'public': RSA_PUBKEY2}
         response = self.client.post('/v2/keys', body)
         self.assertEqual(response.status_code, 201, response.data)
-        public2 = response.data['public']
+        rsa_pub2 = response.data['public']
+
+        # Create dsa key
+        body = {'id': str(self.user) + '-3', 'public': ECDSA_PUBKEY}
+        response = self.client.post('/v2/keys', body)
+        self.assertEqual(response.status_code, 201, response.data)
+        dsa_pub = response.data['public']
+
+        # Create ed25519 key
+        body = {'id': str(self.user) + '-4', 'public': ED25519_PUBKEY}
+        response = self.client.post('/v2/keys', body)
+        self.assertEqual(response.status_code, 201, response.data)
+        ed25519_pub = response.data['public']
+
+        # Attempt adding a bad SSH pubkey
+        body = {'id': str(self.user) + '-5', 'public': BAD_KEY}
+        response = self.client.post('/v2/keys', body)
+        self.assertEqual(response.status_code, 400, response.data)
 
         # Make sure 404 is returned for a random app
         url = '/v2/hooks/keys/doesnotexist'
@@ -83,8 +116,10 @@ class HookTest(DeisTransactionTestCase):
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data, {"autotest": [
-            {'key': public, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
-            {'key': public2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'}
+            {'key': rsa_pub, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
+            {'key': rsa_pub2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'},
+            {'key': dsa_pub, 'fingerprint': '28:dd:ef:f9:12:ab:f9:80:6f:4c:0a:e7:e7:a4:59:95'},
+            {'key': ed25519_pub, 'fingerprint': '75:9a:b3:81:13:40:c2:78:32:aa:e3:b4:93:2a:12:c9'}
         ]})
 
         # Test against an app that exist but user does not
@@ -97,8 +132,11 @@ class HookTest(DeisTransactionTestCase):
         response = self.client.get(url, HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data, {"autotest": [
-            {'key': public, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
-            {'key': public2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'}
+            {'key': rsa_pub, 'fingerprint': '54:6d:da:1f:91:b5:2b:6f:a2:83:90:c4:f9:73:76:f5'},
+            {'key': rsa_pub2, 'fingerprint': '43:fd:22:bc:dc:ca:6a:28:ba:71:4c:18:41:1d:d1:e2'},
+            {'key': dsa_pub, 'fingerprint': '28:dd:ef:f9:12:ab:f9:80:6f:4c:0a:e7:e7:a4:59:95'},
+            {'key': ed25519_pub, 'fingerprint': '75:9a:b3:81:13:40:c2:78:32:aa:e3:b4:93:2a:12:c9'}
+
         ]})
 
         # Fetch a valid ssh key

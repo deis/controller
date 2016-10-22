@@ -19,8 +19,10 @@ from api import models
 # proc type name is alphanumeric
 # https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
 PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+)$')
-MEMLIMIT_MATCH = re.compile(r'^(?P<mem>[0-9]+(MB|KB|GB|[BKMG]))$', re.IGNORECASE)
-CPUSHARE_MATCH = re.compile(r'^(?P<cpu>[-+]?[0-9]*\.?[0-9]+[m]{0,1})$')
+MEMLIMIT_MATCH = re.compile(
+    r'^(?P<mem>(([0-9]+(MB|KB|GB|[BKMG])|0)(/([0-9]+(MB|KB|GB|[BKMG])))?))$', re.IGNORECASE)
+CPUSHARE_MATCH = re.compile(
+    r'^(?P<cpu>(([-+]?[0-9]*\.?[0-9]+[m]?)(/([-+]?[0-9]*\.?[0-9]+[m]?))?))$')
 TAGVAL_MATCH = re.compile(r'^(?:[a-zA-Z\d][-\.\w]{0,61})?[a-zA-Z\d]$')
 CONFIGKEY_MATCH = re.compile(r'^[a-z_]+[a-z0-9_]*$', re.IGNORECASE)
 PROBE_SCHEMA = {
@@ -273,7 +275,8 @@ class ConfigSerializer(serializers.ModelSerializer):
 
             if not re.match(MEMLIMIT_MATCH, str(value)):
                 raise serializers.ValidationError(
-                    "Limit format: <number><unit>, where unit = B, K, M or G")
+                    "Memory limit format: <number><unit> or <number><unit>/<number><unit>, "
+                    "where unit = B, K, M or G")
 
         return data
 
@@ -287,7 +290,8 @@ class ConfigSerializer(serializers.ModelSerializer):
 
             shares = re.match(CPUSHARE_MATCH, str(value))
             if not shares:
-                raise serializers.ValidationError("CPU shares must be a numeric value")
+                raise serializers.ValidationError(
+                    "CPU limit format: <value> or <value>/<value>, where value must be a numeric")
 
         return data
 

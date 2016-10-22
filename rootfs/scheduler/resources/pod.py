@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import datetime, timedelta
 import operator
 import os
@@ -172,9 +173,6 @@ class Pod(Resource):
 
     def _set_container(self, namespace, container_name, data, **kwargs):
         """Set app container information (env, healthcheck, etc) on a Pod"""
-        app_type = kwargs.get('app_type')
-        mem = kwargs.get('memory', {}).get(app_type)
-        cpu = kwargs.get('cpu', {}).get(app_type)
         env = kwargs.get('envs', {})
 
         # container name
@@ -222,23 +220,48 @@ class Pod(Resource):
         # list sorted by dict key name
         data['env'].sort(key=operator.itemgetter('name'))
 
+        self._set_resources(data, kwargs)
+
+        self._set_health_checks(data, env, **kwargs)
+
+    def _set_resources(self, container, kwargs):
+        """ Set CPU/memory resource management manifest """
+        app_type = kwargs.get("app_type")
+        mem = kwargs.get("memory", {}).get(app_type)
+        cpu = kwargs.get("cpu", {}).get(app_type)
+
         if mem or cpu:
-            data["resources"] = {"limits": {}}
+            resources = defaultdict(dict)
 
-        if mem:
-            if mem[-2:-1].isalpha() and mem[-1].isalpha():
-                mem = mem[:-1]
+            if mem:
+                if "/" in mem:
+                    parts = mem.split("/")
+                    resources["requests"]["memory"] = self._format_memory(parts[0])
+                    resources["limits"]["memory"] = self._format_memory(parts[1])
+                else:
+                    resources["limits"]["memory"] = self._format_memory(mem)
 
+            if cpu:
+                # CPU needs to be defined as lower case
+                if "/" in cpu:
+                    parts = cpu.split("/")
+                    resources["requests"]["cpu"] = parts[0].lower()
+                    resources["limits"]["cpu"] = parts[1].lower()
+                else:
+                    resources["limits"]["cpu"] = cpu.lower()
+
+            if resources:
+                container["resources"] = dict(resources)
+
+    def _format_memory(self, mem):
+        """ Format memory limit value """
+        if mem[-2:-1].isalpha() and mem[-1].isalpha():
+            mem = mem[:-1]
+
+        if mem[-1].isalpha():
             # memory needs to be upper cased (only first char)
             mem = mem.upper() + "i"
-            data["resources"]["limits"]["memory"] = mem
-
-        if cpu:
-            # CPU needs to be defined as lower case
-            data["resources"]["limits"]["cpu"] = cpu.lower()
-
-        # add in healthchecks
-        self._set_health_checks(data, env, **kwargs)
+        return mem
 
     def _set_health_checks(self, container, env, **kwargs):
         healthchecks = kwargs.get('healthcheck', None)

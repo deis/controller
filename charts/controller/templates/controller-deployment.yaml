@@ -53,6 +53,8 @@ spec:
 {{- end}}
 {{- end}}
           env:
+            - name: REGISTRATION_MODE
+              value: {{ .Values.registration_mode }}
             # NOTE(bacongobbler): use deis/registry_proxy to work around Docker --insecure-registry requirements
             - name: "DEIS_REGISTRY_SERVICE_HOST"
               value: "localhost"

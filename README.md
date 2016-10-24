@@ -59,10 +59,18 @@ The application and tests use PostgreSQL. To start a local instance via Docker, 
 
 ### Python
 
-Python 3.5 is a minimum requirement and can be installed via `homebrew`:
+Python 3.5 is a minimum requirement and can be installed via `pyenv`:
 
 ```
-brew install python3
+brew install pyenv
+```
+
+- After installing, ensure [`eval "$(pyenv init -)"` is added to your shell startup.](https://github.com/yyuu/pyenv/#homebrew-on-mac-os-x)
+- Install and use Python 3.5:
+```
+pyenv install 3.5.0
+# if you have build issues, ensure Xcode CLI tools are installed:https://github.com/yyuu/pyenv/issues/451#issuecomment-151336786
+python local 3.5.0 # use Python 3.5.0 in your current directory
 ```
 
 Or via your package manager. For example, on Debian Jessie:

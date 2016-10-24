@@ -4,6 +4,11 @@ docker_tag: canary
 app_pull_policy: "Always"
 # limits_cpu: "100m"
 # limits_memory: "50Mi"
+# Possible values are:
+# enabled - allows for open registration
+# disabled - turns off open registration
+# admin_only - allows for registration by an admin only.
+registration_mode: "enabled"
 
 global:
   # Set the storage backend

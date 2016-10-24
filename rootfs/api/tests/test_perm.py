@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
+from django.test.utils import override_settings
 from api.tests import DeisTestCase
 
 
@@ -31,6 +32,21 @@ class TestAdminPerms(DeisTestCase):
         response = self.client.post(url, submit)
         self.assertEqual(response.status_code, 201, response.data)
         self.assertFalse(response.data['is_superuser'])
+
+    @override_settings(REGISTRATION_MODE="admin_only")
+    def test_first_signup_admin_only(self):
+        # register a first user
+        username, password = 'firstuser', 'password'
+        email = 'autotest@deis.io'
+        submit = {
+            'username': username,
+            'password': password,
+            'email': email,
+        }
+        url = '/v2/auth/register'
+        response = self.client.post(url, submit)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(response.data['is_superuser'])
 
     def test_list(self):
         submit = {

@@ -2,7 +2,7 @@
 from rest_framework import exceptions
 from rest_framework import permissions
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, User
 
 from api import models
 
@@ -109,6 +109,8 @@ class HasRegistrationAuth(permissions.BasePermission):
             if settings.REGISTRATION_MODE == 'enabled':
                 return True
             elif settings.REGISTRATION_MODE == 'admin_only':
+                if not User.objects.filter(is_superuser=True).exists():
+                    return True
                 return request.user.is_superuser
             else:
                 raise Exception("{} is not a valid registation mode"

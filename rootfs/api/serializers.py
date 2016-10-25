@@ -216,6 +216,7 @@ class ConfigSerializer(serializers.ModelSerializer):
     class Meta:
         """Metadata options for a :class:`ConfigSerializer`."""
         model = models.Config
+        fields = '__all__'
 
     def validate_values(self, data):
         for key, value in data.items():
@@ -373,6 +374,7 @@ class ReleaseSerializer(serializers.ModelSerializer):
     class Meta:
         """Metadata options for a :class:`ReleaseSerializer`."""
         model = models.Release
+        fields = '__all__'
 
 
 class KeySerializer(serializers.ModelSerializer):
@@ -383,6 +385,7 @@ class KeySerializer(serializers.ModelSerializer):
     class Meta:
         """Metadata options for a KeySerializer."""
         model = models.Key
+        fields = '__all__'
 
 
 class DomainSerializer(serializers.ModelSerializer):
@@ -462,6 +465,7 @@ class CertificateSerializer(serializers.ModelSerializer):
             'key': {'write_only': True}
         }
         read_only_fields = ['common_name', 'fingerprint', 'san', 'domains', 'subject', 'issuer']
+        fields = '__all__'
 
 
 class PodSerializer(serializers.BaseSerializer):

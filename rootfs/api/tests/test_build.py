@@ -655,6 +655,8 @@ class BuildTest(DeisTransactionTestCase):
             url = "/v2/apps/{app_id}/builds".format(**locals())
             body = {'image': 'autotest/example'}
             response = self.client.post(url, body)
+            exp_error = {'detail': '(app::deploy): Boom!'}
+            self.assertEqual(response.data, exp_error, response.data)
             self.assertEqual(response.status_code, 400, response.data)
 
     def test_build_failures(self, mock_requests):

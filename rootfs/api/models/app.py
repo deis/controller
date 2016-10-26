@@ -498,7 +498,9 @@ class App(UuidAuditedModel):
             try:
                 async_run(tasks)
             except KubeException as e:
-                if rollback_on_failure:
+                # Don't rollback if the previous release doesn't have a build which means
+                # this is the first build and all the previous releases are just config changes.
+                if rollback_on_failure and release.previous().build is not None:
                     err = 'There was a problem deploying {}. Rolling back process types to release {}.'.format('v{}'.format(release.version), "v{}".format(release.previous().version))  # noqa
                     # This goes in the log before the rollback starts
                     self.log(err, logging.ERROR)

@@ -707,6 +707,41 @@ class BuildTest(DeisTransactionTestCase):
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
+
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                '-': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker-': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                '-worker': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
         # deploy app with empty command
         url = "/v2/apps/{app_id}/builds".format(**locals())
         body = {
@@ -719,3 +754,15 @@ class BuildTest(DeisTransactionTestCase):
         }
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
+
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'Worker-test1': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)

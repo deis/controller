@@ -18,7 +18,7 @@ from api import models
 
 # proc type name is alphanumeric
 # https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
-PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+)$')
+PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-zA-Z0-9]+(\-[a-zA-Z0-9]+)*)$')
 MEMLIMIT_MATCH = re.compile(
     r'^(?P<mem>(([0-9]+(MB|KB|GB|[BKMG])|0)(/([0-9]+(MB|KB|GB|[BKMG])))?))$', re.IGNORECASE)
 CPUSHARE_MATCH = re.compile(

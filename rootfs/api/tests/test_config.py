@@ -169,7 +169,9 @@ class ConfigTest(DeisTransactionTestCase):
         body = {'cpu': json.dumps({'web': 'this will fail'})}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 400, response.data)
-        self.assertIn('CPU shares must be a numeric value', response.data['cpu'])
+        self.assertIn(
+            'CPU limit format: <value> or <value>/<value>, where value must be a numeric',
+            response.data['cpu'])
 
     def test_config_set_same_key(self, mock_requests):
         """

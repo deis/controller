@@ -433,3 +433,15 @@ class ReleaseTest(DeisTransactionTestCase):
         ):
             release = app.release_set.latest()
             release.get_port()
+
+        # Set routable to false and port should be None instead of error
+        response = self.client.post(
+            '/v2/apps/{app.id}/settings'.format(**locals()),
+            {'routable': False}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertFalse(app.appsettings_set.latest().routable)
+
+        release = app.release_set.latest()
+        port = release.get_port()
+        self.assertIsNone(port)

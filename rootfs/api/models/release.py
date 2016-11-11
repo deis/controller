@@ -153,6 +153,8 @@ class Release(UuidAuditedModel):
             # application has registry auth - $PORT is required
             if (creds is not None) or (settings.REGISTRY_LOCATION != 'on-cluster'):
                 if envs.get('PORT', None) is None:
+                    if not self.app.appsettings_set.latest().routable:
+                        return None
                     raise DeisException(
                         'PORT needs to be set in the application config '
                         'when using a private registry'
@@ -167,7 +169,7 @@ class Release(UuidAuditedModel):
 
             # discover port from docker image
             port = docker_get_port(self.image, deis_registry, creds)
-            if port is None:
+            if port is None and self.app.appsettings_set.latest().routable:
                 msg = "Expose a port or make the app non routable by changing the process type"
                 self.app.log(msg, logging.ERROR)
                 raise DeisException(msg)

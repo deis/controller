@@ -825,7 +825,8 @@ class App(UuidAuditedModel):
 
         # fetch application port and inject into ENV vars as needed
         port = release.get_port()
-        default_env['PORT'] = port
+        if port:
+            default_env['PORT'] = port
 
         # merge envs on top of default to make envs win
         default_env.update(release.config.values)

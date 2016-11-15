@@ -98,9 +98,9 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.sessions',
     # Third-party apps
+    'channels',
     'corsheaders',
     'guardian',
-    'gunicorn',
     'jsonfield',
     'rest_framework',
     'rest_framework.authtoken',
@@ -333,6 +333,11 @@ REGISTRY_SECRET_PREFIX = os.environ.get('DEIS_REGISTRY_SECRET_PREFIX', 'private-
 LOGGER_HOST = os.environ.get('DEIS_LOGGER_SERVICE_HOST', '127.0.0.1')
 LOGGER_PORT = os.environ.get('DEIS_LOGGER_SERVICE_PORT_HTTP', 80)
 
+# redis settings
+REDIS_HOST = os.environ.get('DEIS_LOGGER_REDIS_SERVICE_HOST', '127.0.0.1')
+REDIS_PORT = os.environ.get('DEIS_LOGGER_REDIS_SERVICE_PORT', 6379)
+REDIS_PASSWORD = os.environ.get('DEIS_LOGGER_REDIS_PASSWORD', '')
+
 # router information
 ROUTER_HOST = os.environ.get('DEIS_ROUTER_SERVICE_HOST', '127.0.0.1')
 ROUTER_PORT = os.environ.get('DEIS_ROUTER_SERVICE_PORT', 80)
@@ -359,6 +364,15 @@ DATABASES = {
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
+
+# channels routing
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "asgi_redis.RedisChannelLayer",
+        "CONFIG": {"hosts": ["redis://:{}@{}:{}".format(REDIS_PASSWORD, REDIS_HOST, REDIS_PORT)]},
+        "ROUTING": "api.routing.pty_routing",
+    },
+}
 
 # LDAP settings taken from environment variables.
 LDAP_ENDPOINT = os.environ.get('LDAP_ENDPOINT', '')

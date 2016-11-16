@@ -735,6 +735,11 @@ def put(request, context):
         context.status_code = 404
         context.reason = 'Not Found'
         return {}
+    # raise a 503 when we want to intentionally test for it
+    elif item['metadata']['name'] == 'image-pull-failed-test':
+        context.status_code = 503
+        context.reason = 'Network Unreachable'
+        return {}
 
     data = request.json()
 

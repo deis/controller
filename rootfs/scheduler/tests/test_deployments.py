@@ -88,6 +88,13 @@ class DeploymentsTest(TestCase):
             msg='failed to update Deployment foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
             self.update(self.namespace, 'foo')
+        name = 'image-pull-failed-test'
+        self.create(name=name)
+        with self.assertRaises(
+            KubeHTTPException,
+            msg='failed to update Deployment "{}": 503 Network Unreachable'.format(name)
+        ):
+            self.update(self.namespace, name)
 
     def test_update(self):
         # test success

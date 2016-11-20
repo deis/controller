@@ -489,6 +489,7 @@ class AppSettingsSerializer(serializers.ModelSerializer):
     app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
     owner = serializers.ReadOnlyField(source='owner.username')
     autoscale = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
+    label = JSONFieldSerializer(convert_to_str=False, required=False, binary=True)
 
     class Meta:
         """Metadata options for a :class:`AppSettingsSerializer`."""

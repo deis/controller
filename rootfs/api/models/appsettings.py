@@ -23,6 +23,7 @@ class AppSettings(UuidAuditedModel):
     # and user just updating other fields meaning the values needs to be copied from prev release
     whitelist = ArrayField(models.CharField(max_length=50), default=None)
     autoscale = JSONField(default={}, blank=True)
+    label = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -133,6 +134,38 @@ class AppSettings(UuidAuditedModel):
             if changes:
                 self.summary += ["{} {}".format(self.owner, changes)]
 
+    def update_label(self, previous_settings):
+        data = getattr(previous_settings, 'label', {}).copy()
+        new = getattr(self, 'label', {}).copy()
+        if not previous_settings:
+            return
+
+        # if nothing changed copy the settings from previous
+        if not new and data:
+            setattr(self, 'label', data)
+        elif data != new:
+            for k, v in new.items():
+                if v is not None:
+                    data[k] = v
+                else:
+                    if k not in data:
+                        raise UnprocessableEntity('{} does not exist under {}'.format(k, 'label'))  # noqa
+                    del data[k]
+            setattr(self, 'label', data)
+
+            diff = dict_diff(self.label, getattr(previous_settings, 'label', {}))
+            added = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('added', {})])))  # noqa
+            added = 'added label ' + added if added else ''
+            changed = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('changed', {})])))  # noqa
+            changed = 'changed label ' + changed if changed else ''
+            deleted = ', '.join(list(map(lambda x: 'default' if x == '' else x, [k for k in diff.get('deleted', {})])))  # noqa
+            deleted = 'deleted label ' + deleted if deleted else ''
+            changes = ', '.join(i for i in (added, changed, deleted) if i)
+            if changes:
+                if self.summary:
+                    self.summary += ' and '
+                self.summary += ["{} {}".format(self.owner, changes)]
+
     def save(self, *args, **kwargs):
         self.summary = []
         previous_settings = None
@@ -146,6 +179,7 @@ class AppSettings(UuidAuditedModel):
             self.update_routable(previous_settings)
             self.update_whitelist(previous_settings)
             self.update_autoscale(previous_settings)
+            self.update_label(previous_settings)
         except (UnprocessableEntity, NotFound):
             raise
         except Exception as e:

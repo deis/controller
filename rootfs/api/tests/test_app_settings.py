@@ -265,3 +265,55 @@ class TestAppSettings(DeisTransactionTestCase):
             {'autoscale': {'cmd': {'min': 4, 'cpu_percent': 45}}}
         )
         self.assertEqual(response.status_code, 400, response.data)
+
+    def test_settings_labels(self, mock_requests):
+        """
+        Test that labels can be applied
+        """
+        app_id = self.create_app()
+
+        # create
+        base_labels = {
+            'label':
+                {
+                    'git_repo': 'https://github.com/deis/controller',
+                    'team': 'frontend',
+                    'empty': ''
+                }
+        }
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            base_labels
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['label'], base_labels['label'])
+
+        # update
+        labels = {'label': {'team': 'backend'}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            labels
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['label']['team'], labels['label']['team'])
+        self.assertEqual(response.data['label']['git_repo'], base_labels['label']['git_repo'])
+        self.assertEqual(response.data['label']['empty'], base_labels['label']['empty'])
+
+        # remove
+        labels = {'label': {'git_repo': None}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            labels
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['label']['team'], 'backend')
+        self.assertFalse('git_repo' in response.data['label'])
+        self.assertEqual(response.data['label']['empty'], base_labels['label']['empty'])
+
+        # error on remove non-exist label
+        labels = {'label': {'git_repo': None}}
+        response = self.client.post(
+            '/v2/apps/{app_id}/settings'.format(**locals()),
+            labels
+        )
+        self.assertEqual(response.status_code, 422, response.data)

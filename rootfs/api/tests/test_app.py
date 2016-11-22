@@ -330,11 +330,19 @@ class AppTest(DeisTestCase):
         owner_token = Token.objects.get(user=owner).key
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + owner_token)
 
-        app_id = self.create_app()
+        collaborator = User.objects.get(username='autotest3')
+
+        app = App.objects.create(owner=owner)
+
+        # pretend the owner and a collaborator added some config to the app to ensure
+        # resources owned by the owner are transferred, but not resources owned by the
+        # collaborator.
+        config1 = Config.objects.create(owner=owner, app=app, values={'FOO': 'bar'})
+        config2 = Config.objects.create(owner=collaborator, app=app, values={'CAR': 'star'})
 
         # Transfer App
-        url = '/v2/apps/{}'.format(app_id)
-        new_owner = User.objects.get(username='autotest3')
+        url = '/v2/apps/{}'.format(app.id)
+        new_owner = User.objects.get(username='autotest4')
         new_owner_token = Token.objects.get(user=new_owner).key
         body = {'owner': new_owner.username}
         response = self.client.post(url, body)
@@ -349,6 +357,18 @@ class AppTest(DeisTestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['owner'], new_owner.username)
+
+        # At this point config1.owner field is still the old owner, but the value in the database
+        # was updated to the new owner when we performed the transfer. The object's updated values
+        # needs to be reloaded from the database to get an accurate idea who owns the object.
+        # https://docs.djangoproject.com/en/dev/ref/models/instances/#django.db.models.Model.refresh_from_db
+        config1.refresh_from_db()
+        config2.refresh_from_db()
+
+        # New owner also is given ownership to all resources owned by the original user, but not
+        # resources created by other users
+        self.assertEqual(config1.owner, new_owner)
+        self.assertEqual(config2.owner, collaborator)
 
         # Collaborators can't transfer
         body = {'username': owner.username}

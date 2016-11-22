@@ -243,12 +243,18 @@ class AppViewSet(BaseDeisViewSet):
 
     def update(self, request, **kwargs):
         app = self.get_object()
+        old_owner = app.owner
 
         if request.data.get('owner'):
             if self.request.user != app.owner and not self.request.user.is_superuser:
                 raise PermissionDenied()
             new_owner = get_object_or_404(User, username=request.data['owner'])
             app.owner = new_owner
+            # ensure all downstream objects that are owned by this user and are part of this app
+            # is also updated
+            for downstream_model in [models.AppSettings, models.Build, models.Config,
+                                     models.Domain, models.Release, models.TLS]:
+                downstream_model.objects.filter(owner=old_owner, app=app).update(owner=new_owner)
         app.save()
         return Response(status=status.HTTP_200_OK)
 

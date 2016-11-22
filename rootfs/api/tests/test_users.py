@@ -16,7 +16,7 @@ class TestUsers(DeisTestCase):
             response = self.client.get(url,
                                        HTTP_AUTHORIZATION='token {}'.format(token))
             self.assertEqual(response.status_code, 200, response.data)
-            self.assertEqual(len(response.data['results']), 3)
+            self.assertEqual(len(response.data['results']), 4)
 
     def test_non_super_user_cannot_list(self):
         user = User.objects.get(username='autotest2')

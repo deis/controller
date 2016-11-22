@@ -339,7 +339,7 @@ class Deployment(Resource):
                 if additional_timeout:
                     timeout += additional_timeout
                     # add 10 minutes to timeout to allow a pull image operation to finish
-                    self.log(namespace, 'Kubernetes has been pulling the image for {}s'.format(seconds))  # noqa
+                    self.log(namespace, 'Kubernetes has been pulling the image for {}s'.format(waited))  # noqa
                     self.log(namespace, 'Increasing timeout by {}s to allow a pull image operation to finish for pods'.format(additional_timeout))  # noqa
 
                 self.log(namespace, "waited {}s and {} pods are in service".format(waited, availablePods))  # noqa

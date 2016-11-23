@@ -211,6 +211,16 @@ class App(UuidAuditedModel):
             except KubeException:
                 self._scheduler.ns.create(namespace)
 
+            if settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC != '':
+                quota_name = '{}-quota'.format(namespace)
+                self.log(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
+                quota_spec = json.loads(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
+                self.log('creating Quota {} for namespace {}'.format(quota_name, namespace), level=logging.DEBUG)
+                try:
+                    self._scheduler.quota.get(namespace, quota_name)
+                except KubeException:
+                    self._scheduler.quota.create(namespace, quota_name, data=quota_spec)
+
             try:
                 self._scheduler.svc.get(namespace, service)
             except KubeException:

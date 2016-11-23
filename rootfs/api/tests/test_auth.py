@@ -6,7 +6,8 @@ Run the tests with "./manage.py test api"
 from django.contrib.auth.models import User
 from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
-from api.tests import DeisTestCase
+from api.tests import TEST_ROOT, DeisTestCase
+from api.models import Certificate
 
 
 class AuthTest(DeisTestCase):
@@ -241,6 +242,18 @@ class AuthTest(DeisTestCase):
         response = self.client.delete(url, {'username': str(self.admin)},
                                       HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
         self.assertEqual(response.status_code, 409)
+
+        # user can not be deleted if it has a downstream object owned by them, like a certificate
+        domain_name = 'foo.com'
+        with open('{}/certs/{}.key'.format(TEST_ROOT, domain_name)) as f:
+            key = f.read()
+        with open('{}/certs/{}.cert'.format(TEST_ROOT, domain_name)) as f:
+            cert = f.read()
+
+        Certificate.objects.create(owner=self.admin, certificate=cert, key=key)
+        response = self.client.delete(url, {'username': str(self.admin)},
+                                      HTTP_AUTHORIZATION='token {}'.format(self.admin_token))
+        self.assertEqual(response.status_code, 409, response.data)
 
     def test_passwd(self):
         """Test that a registered user can change the password."""

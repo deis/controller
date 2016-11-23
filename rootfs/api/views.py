@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 from guardian.shortcuts import assign_perm, get_objects_for_user, \
     get_users_with_perms, remove_perm
 from django.views.generic import View
+from django.db.models.deletion import ProtectedError
 from rest_framework import mixins, renderers, status
 from rest_framework.exceptions import PermissionDenied, NotFound, AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
@@ -89,8 +90,11 @@ class UserManagementViewSet(GenericViewSet):
             msg = '{} still has applications assigned. Delete or transfer ownership'.format(str(target_obj))  # noqa
             raise AlreadyExists(msg)
 
-        target_obj.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            target_obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ProtectedError as e:
+            raise AlreadyExists(e)
 
     def passwd(self, request, **kwargs):
         if not request.data.get('new_password'):

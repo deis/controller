@@ -4,6 +4,7 @@ Unit tests for the Deis scheduler module.
 Run the tests with './manage.py test scheduler'
 """
 from scheduler.tests import TestCase
+from scheduler import KubeHTTPException
 
 
 class QuotaTest(TestCase):
@@ -25,3 +26,10 @@ class QuotaTest(TestCase):
         data = response.json()
         self.assertEqual(data.get('spec', {}), quota['spec'])
         self.assertEqual(data['metadata']['namespace'], namespace_name)
+
+    def test_create_with_nonexistent_namespace(self):
+        with self.assertRaises(
+            KubeHTTPException,
+            msg='failed to create quota test1 for namespace ghost-namespace: 404 Not Found'
+        ):
+            self.scheduler.quota.create('ghost-namespace', 'test1', data={})

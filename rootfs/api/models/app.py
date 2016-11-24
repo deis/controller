@@ -203,6 +203,7 @@ class App(UuidAuditedModel):
         # create required minimum resources in k8s for the application
         namespace = self.id
         service = self.id
+        quota_name = '{}-quota'.format(self.id)
         try:
             self.log('creating Namespace {} and services'.format(namespace), level=logging.DEBUG)
             # Create essential resources
@@ -212,8 +213,6 @@ class App(UuidAuditedModel):
                 self._scheduler.ns.create(namespace)
 
             if settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC != '':
-                quota_name = '{}-quota'.format(namespace)
-                self.log(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
                 quota_spec = json.loads(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
                 self.log('creating Quota {} for namespace {}'.format(quota_name, namespace),
                          level=logging.DEBUG)

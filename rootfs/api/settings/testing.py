@@ -1,5 +1,7 @@
 import random
 import string
+
+from api.settings.production import DATABASES
 from api.settings.production import *  # noqa
 
 # A boolean that turns on/off debug mode.

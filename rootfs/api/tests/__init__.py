@@ -35,6 +35,7 @@ def fake_responses(request, context):
     time.sleep(random.uniform(1, 4))
     return response['text']
 
+
 url = 'http://{}:{}'.format(settings.ROUTER_HOST, settings.ROUTER_PORT)
 adapter = requests_mock.Adapter()
 adapter.register_uri('GET', url + '/', text=fake_responses)

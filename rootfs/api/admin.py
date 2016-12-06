@@ -23,6 +23,8 @@ class AppAdmin(GuardedModelAdmin):
     date_hierarchy = 'created'
     list_display = ('id', 'owner')
     list_filter = ('owner',)
+
+
 admin.site.register(App, AppAdmin)
 
 
@@ -33,6 +35,8 @@ class BuildAdmin(admin.ModelAdmin):
     date_hierarchy = 'created'
     list_display = ('created', 'owner', 'app')
     list_filter = ('owner', 'app')
+
+
 admin.site.register(Build, BuildAdmin)
 
 
@@ -43,6 +47,8 @@ class ConfigAdmin(admin.ModelAdmin):
     date_hierarchy = 'created'
     list_display = ('created', 'owner', 'app')
     list_filter = ('owner', 'app')
+
+
 admin.site.register(Config, ConfigAdmin)
 
 
@@ -53,6 +59,8 @@ class DomainAdmin(admin.ModelAdmin):
     date_hierarchy = 'created'
     list_display = ('owner', 'app', 'domain')
     list_filter = ('owner', 'app')
+
+
 admin.site.register(Domain, DomainAdmin)
 
 
@@ -63,6 +71,8 @@ class KeyAdmin(admin.ModelAdmin):
     date_hierarchy = 'created'
     list_display = ('id', 'owner', '__str__')
     list_filter = ('owner',)
+
+
 admin.site.register(Key, KeyAdmin)
 
 
@@ -74,4 +84,6 @@ class ReleaseAdmin(admin.ModelAdmin):
     list_display = ('created', 'version', 'owner', 'app')
     list_display_links = ('created', 'version')
     list_filter = ('owner', 'app')
+
+
 admin.site.register(Release, ReleaseAdmin)

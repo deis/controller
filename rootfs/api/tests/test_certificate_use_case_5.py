@@ -158,7 +158,8 @@ class CertificateUseCase5Test(DeisTestCase):
                 name=certificate['name'],
                 owner=self.user,
                 common_name=domain,
-                certificate=certificate['cert']
+                certificate=certificate['cert'],
+                key=certificate['key']
             )
 
             # Remove certificate

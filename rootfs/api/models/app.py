@@ -56,9 +56,10 @@ def validate_id_is_docker_compatible(value):
     """
     Check that the value follows the kubernetes name constraints
     """
-    match = re.match(r'^[a-z0-9-]+$', value)
+    match = re.match(r'^[a-z][a-z0-9-]*$', value)
     if not match:
-        raise ValidationError("App name can only contain a-z (lowercase), 0-9 and hyphens")
+        raise ValidationError("App name must start with an alphabetic character and can only "
+                              + "contain a-z (lowercase), 0-9 and hyphens.")
 
 
 def validate_app_structure(value):

@@ -47,7 +47,7 @@ class AuditedModel(models.Model):
     @property
     def _scheduler(self):
         mod = importlib.import_module(settings.SCHEDULER_MODULE)
-        return mod.SchedulerClient(settings.SCHEDULER_URL)
+        return mod.SchedulerClient(settings.SCHEDULER_URL, settings.K8S_API_VERIFY_TLS)
 
     def _fetch_service_config(self, app):
         try:

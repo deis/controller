@@ -9,6 +9,8 @@ app_pull_policy: "Always"
 # disabled - turns off open registration
 # admin_only - allows for registration by an admin only.
 registration_mode: "enabled"
+# Option to disable ssl verification to connect to k8s api server
+k8s_api_verify_tls: "true"
 
 global:
   # Set the storage backend

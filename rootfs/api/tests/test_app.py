@@ -151,16 +151,24 @@ class AppTest(DeisTestCase):
         response = self.client.post('/v2/apps', {'id': 'camelCase'})
         self.assertContains(
             response,
-            'App name must start with an alphabetic character and can only contain a-z (lowercase)'
-            + ', 0-9 and hyphens.',
+            'App name must start with an alphabetic character, cannot end with a hyphen and can '
+            + 'only contain a-z (lowercase), 0-9 and hyphens.',
             status_code=400
         )
 
         response = self.client.post('/v2/apps', {'id': '123name-starts-with-numbers'})
         self.assertContains(
             response,
-            'App name must start with an alphabetic character and can only contain a-z (lowercase)'
-            + ', 0-9 and hyphens.',
+            'App name must start with an alphabetic character, cannot end with a hyphen and can '
+            + 'only contain a-z (lowercase), 0-9 and hyphens.',
+            status_code=400
+        )
+
+        response = self.client.post('/v2/apps', {'id': 'name-ends-with-hyphen-'})
+        self.assertContains(
+            response,
+            'App name must start with an alphabetic character, cannot end with a hyphen and can '
+            + 'only contain a-z (lowercase), 0-9 and hyphens.',
             status_code=400
         )
 

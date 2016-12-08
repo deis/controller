@@ -113,7 +113,7 @@ class UuidAuditedModel(AuditedModel):
         abstract = True
 
 
-from .app import App, validate_id_is_docker_compatible, validate_reserved_names, validate_app_structure  # noqa
+from .app import App, validate_app_id, validate_reserved_names, validate_app_structure  # noqa
 from .appsettings import AppSettings  # noqa
 from .build import Build  # noqa
 from .certificate import Certificate, validate_certificate  # noqa

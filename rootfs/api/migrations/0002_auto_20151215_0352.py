@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='app',
             name='id',
-            field=models.SlugField(max_length=24, unique=True, null=True, validators=[api.models.validate_id_is_docker_compatible, api.models.validate_reserved_names]),
+            field=models.SlugField(max_length=24, unique=True, null=True, validators=[api.models.validate_app_id, api.models.validate_reserved_names]),
         ),
         migrations.AlterField(
             model_name='app',

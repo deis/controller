@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
                 ('uuid', api.fields.UuidField(auto_created=True, primary_key=True, serialize=False, editable=False, max_length=32, unique=True, verbose_name='UUID')),
                 ('created', models.DateTimeField(auto_now_add=True)),
                 ('updated', models.DateTimeField(auto_now=True)),
-                ('id', models.SlugField(max_length=24, unique=True, null=True, validators=[api.models.validate_id_is_docker_compatible, api.models.validate_reserved_names])),
+                ('id', models.SlugField(max_length=24, unique=True, null=True, validators=[api.models.validate_app_id, api.models.validate_reserved_names])),
                 ('structure', jsonfield.fields.JSONField(default={}, blank=True, validators=[api.models.validate_app_structure])),
                 ('owner', models.ForeignKey(to=settings.AUTH_USER_MODEL)),
             ],

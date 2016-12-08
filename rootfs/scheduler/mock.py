@@ -907,7 +907,7 @@ def session():
 
 
 class MockSchedulerClient(KubeHTTPClient):
-    def __init__(self, url):
+    def __init__(self, url, k8s_api_verify_tls=True):
         super().__init__(url)
 
         # set version data

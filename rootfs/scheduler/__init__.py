@@ -17,7 +17,7 @@ session = None
 resource_mapping = OrderedDict()
 
 
-def get_session():
+def get_session(k8s_api_verify_tls):
     global session
     if session is None:
         with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as token_file:
@@ -28,7 +28,10 @@ def get_session():
             'Content-Type': 'application/json',
             'User-Agent': user_agent('Deis Controller', deis_version)
         }
-        session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+        if k8s_api_verify_tls:
+            session.verify = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+        else:
+            session.verify = False
     return session
 
 
@@ -36,10 +39,10 @@ class KubeHTTPClient(object):
     # ISO-8601 which is used by kubernetes
     DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
-    def __init__(self, url):
+    def __init__(self, url, k8s_api_verify_tls=True):
         global resource_mapping
         self.url = url
-        self.session = get_session()
+        self.session = get_session(k8s_api_verify_tls)
 
         # map the various k8s Resources to an internal property
         from scheduler.resources import Resource  # lazy load

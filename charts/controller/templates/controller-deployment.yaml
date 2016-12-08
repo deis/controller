@@ -58,6 +58,8 @@ spec:
             # NOTE(bacongobbler): use deis/registry_proxy to work around Docker --insecure-registry requirements
             - name: "DEIS_REGISTRY_SERVICE_HOST"
               value: "localhost"
+            - name: "K8S_API_VERIFY_TLS"
+              value: "{{ .Values.k8s_api_verify_tls }}"
             - name: "DEIS_REGISTRY_SERVICE_PORT"
               value: "{{ .Values.global.host_port }}"
             - name: "APP_STORAGE"

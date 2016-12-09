@@ -42,16 +42,16 @@ spec:
           ports:
             - containerPort: 8000
               name: http
-{{- if or (.Values.limits_cpu) (.Values.limits_memory)}}
+{{- if or (.Values.limits_cpu) (.Values.limits_memory) }}
           resources:
             limits:
 {{- if (.Values.limits_cpu) }}
               cpu: {{.Values.limits_cpu}}
-{{- end}}
+{{- end }}
 {{- if (.Values.limits_memory) }}
               memory: {{.Values.limits_memory}}
-{{- end}}
-{{- end}}
+{{- end }}
+{{- end }}
           env:
             - name: REGISTRATION_MODE
               value: {{ .Values.registration_mode }}
@@ -75,6 +75,15 @@ spec:
                   key: image
             - name: "IMAGE_PULL_POLICY"
               value: "{{ .Values.app_pull_policy }}"
+{{- if (.Values.deploy_hook_urls) }}
+            - name: DEIS_DEPLOY_HOOK_URLS
+              value: "{{ .Values.deploy_hook_urls }}"
+            - name: DEIS_DEPLOY_HOOK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: deploy-hook-key
+                  key: secret-key
+{{- end }}
             - name: DEIS_SECRET_KEY
               valueFrom:
                 secretKeyRef:

@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from datetime import datetime
 import logging
+from packaging.version import Version
 import requests
 import requests.exceptions
 from requests_toolbelt import user_agent
@@ -77,13 +78,13 @@ class KubeHTTPClient(object):
         return object.__getattribute__(self, name)
 
     def version(self):
-        """Get Kubernetes version as a float"""
+        """Get Kubernetes version"""
         response = self.http_get('/version')
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(response, 'fetching Kubernetes version')
 
         data = response.json()
-        return float('{}.{}'.format(data['major'], data['minor']))
+        return Version('{}.{}'.format(data['major'], data['minor']))
 
     @staticmethod
     def parse_date(date):

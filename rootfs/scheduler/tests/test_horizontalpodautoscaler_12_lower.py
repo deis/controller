@@ -3,13 +3,15 @@ Unit tests for the Deis scheduler module.
 
 Run the tests with './manage.py test scheduler'
 """
+from packaging.version import Version
 from unittest import mock
+
 from scheduler import KubeHTTPException, KubeException
 from scheduler.tests import TestCase
 from scheduler.utils import generate_random_name
 
 
-@mock.patch('scheduler.KubeHTTPClient.version', lambda *args: 1.2)
+@mock.patch('scheduler.KubeHTTPClient.version', lambda *args: Version('1.2'))
 class HorizontalPodAutoscalersTest(TestCase):
     """Tests scheduler horizontalpodautoscaler calls"""
 

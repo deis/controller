@@ -88,7 +88,7 @@ class AuditedModel(models.Model):
         component = "%s.deis.io/" % component
 
         # add component to data and flatten
-        data = {"%s%s" % (component, key): value for key, value in list(data.items())}
+        data = {"%s%s" % (component, key): value for key, value in list(data.items()) if value}
         svc['metadata']['annotations'].update(morph.flatten(data))
 
         # Update the k8s service for the application with new service information

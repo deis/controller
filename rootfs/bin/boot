@@ -16,12 +16,16 @@ python --version
 mkdir -p /app/data/logs
 chmod -R 777 /app/data/logs
 
-# HACK(bacongobbler): explicitly add the docker socket to the deis group
-chgrp deis /var/run/docker.sock
-
-# allow deis user group permission to Docker socket
-groupadd -g "$(stat -c "%g" /var/run/docker.sock)" docker || true
-usermod -a -G docker deis || true
+# modify deis user groups to grant access to Docker socket
+DOCKER_SOCKET_GID=$(stat -c "%g" /var/run/docker.sock)
+DOCKER_SOCKET_GROUP=$(getent group "$DOCKER_SOCKET_GID" | cut -d : -f 1 || :)
+if [[ -z "$DOCKER_SOCKET_GROUP" ]]; then
+  DOCKER_SOCKET_GROUP=docker
+  groupadd -g "$DOCKER_SOCKET_GID" "$DOCKER_SOCKET_GROUP"
+fi
+if [[ "$DOCKER_SOCKET_GROUP" != "deis" ]]; then
+  usermod -a -G "$DOCKER_SOCKET_GROUP" deis
+fi
 
 echo ""
 echo "Django checks:"

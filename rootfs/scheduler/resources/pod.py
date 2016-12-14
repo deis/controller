@@ -485,10 +485,12 @@ class Pod(Resource):
             'involvedObject.namespace': pod['metadata']['namespace'],
             'involvedObject.uid': pod['metadata']['uid']
         }
-        events = self.ns.events(pod['metadata']['namespace'], fields=fields).json()
+        events = self.ns.events(pod['metadata']['namespace'], fields=fields).json()['items']
+        if not events:
+            events = []
         # make sure that events are sorted
-        events['items'].sort(key=lambda x: x['lastTimestamp'])
-        return events['items']
+        events.sort(key=lambda x: x['lastTimestamp'])
+        return events
 
     def _handle_pod_errors(self, pod, reason, message):
         """
@@ -568,8 +570,10 @@ class Pod(Resource):
         or throws errors as needed
         """
         timeout = 0
-        pods = self.get(namespace, labels=labels).json()
-        for pod in pods['items']:
+        pods = self.get(namespace, labels=labels).json()['items']
+        if not pods:
+            pods = []
+        for pod in pods:
             # only care about pods that are not starting or in the starting phases
             if pod['status']['phase'] not in ['Pending', 'ContainerCreating']:
                 continue
@@ -612,14 +616,16 @@ class Pod(Resource):
         delta = current - desired
         self.log(namespace, "waiting for {} pods to be terminated ({}s timeout)".format(delta, timeout))  # noqa
         for waited in range(timeout):
-            pods = self.get(namespace, labels=labels).json()
-            count = len(pods['items'])
+            pods = self.get(namespace, labels=labels).json()['items']
+            if not pods:
+                pods = []
+            count = len(pods)
 
             # see if any pods are past their terminationGracePeriodsSeconds (as in stuck)
             # seems to be a problem in k8s around that:
             # https://github.com/kubernetes/kubernetes/search?q=terminating&type=Issues
             # these will be eventually GC'ed by k8s, ignoring them for now
-            for pod in pods['items']:
+            for pod in pods:
                 # remove pod if it is passed the graceful termination period
                 if self.deleted(pod):
                     count -= 1
@@ -655,8 +661,10 @@ class Pod(Resource):
                 self.log(namespace, 'Increasing timeout by {}s to allow a pull image operation to finish for pods'.format(additional_timeout))  # noqa
 
             count = 0  # ready pods
-            pods = self.get(namespace, labels=labels).json()
-            for pod in pods['items']:
+            pods = self.get(namespace, labels=labels).json()['items']
+            if not pods:
+                pods = []
+            for pod in pods:
                 # now that state is running time to see if probes are passing
                 if self.ready(pod):
                     count += 1
@@ -691,8 +699,10 @@ class Pod(Resource):
         Detects if any pod is in the Running phase but not Ready and handles
         any potential issues around that mainly failed healthcheks
         """
-        pods = self.get(namespace, labels=labels).json()
-        for pod in pods['items']:
+        pods = self.get(namespace, labels=labels).json()['items']
+        if not pods:
+            pods = []
+        for pod in pods:
             # only care about pods that are in running phase
             if pod['status']['phase'] != 'Running':
                 continue

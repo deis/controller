@@ -281,9 +281,10 @@ class App(UuidAuditedModel):
                 desired = 0
                 labels = self._scheduler_filter(**kwargs)
                 # fetch RS (which represent Deployments)
-                controllers = self._scheduler.rs.get(kwargs['id'], labels=labels)
-
-                for controller in controllers.json()['items']:
+                controllers = self._scheduler.rs.get(kwargs['id'], labels=labels).json()['items']
+                if not controllers:
+                    controllers = []
+                for controller in controllers:
                     desired += controller['spec']['replicas']
         except KubeException:
             # Nothing was found
@@ -737,6 +738,8 @@ class App(UuidAuditedModel):
                 pods = [self._scheduler.pod.get(self.id, kwargs['name']).json()]
             else:
                 pods = self._scheduler.pod.get(self.id, labels=labels).json()['items']
+                if not pods:
+                    pods = []
 
             data = []
             for p in pods:

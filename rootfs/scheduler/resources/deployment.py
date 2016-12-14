@@ -224,7 +224,7 @@ class Deployment(Resource):
         # fetch the latest RS for Deployment and use the start time to compare to deploy timeout
         replicasets = self.rs.get(namespace, labels=labels).json()['items']
         # the labels should ensure that only 1 replicaset due to the version label
-        if len(replicasets) != 1:
+        if replicasets and len(replicasets) != 1:
             # if more than one then sort by start time to newest is first
             replicasets.sort(key=lambda x: x['metadata']['creationTimestamp'], reverse=True)
 
@@ -356,7 +356,8 @@ class Deployment(Resource):
         # if there is no batch information available default to available nodes for app
         if not batches:
             # figure out how many nodes the application can go on
-            steps = len(self.node.get(labels=tags).json()['items'])
+            nodes = self.node.get(labels=tags).json()['items']
+            steps = len(nodes) if nodes else 0
         else:
             steps = int(batches)
 

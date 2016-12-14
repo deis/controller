@@ -263,8 +263,10 @@ class Release(UuidAuditedModel):
         # Cleanup controllers
         labels = {'heritage': 'deis'}
         controller_removal = []
-        controllers = self._scheduler.rc.get(self.app.id, labels=labels).json()
-        for controller in controllers['items']:
+        controllers = self._scheduler.rc.get(self.app.id, labels=labels).json()['items']
+        if not controllers:
+            controllers = []
+        for controller in controllers:
             current_version = controller['metadata']['labels']['version']
             # skip the latest release
             if current_version == latest_version:
@@ -289,8 +291,10 @@ class Release(UuidAuditedModel):
 
         # Remove stray pods
         labels = {'heritage': 'deis'}
-        pods = self._scheduler.pod.get(self.app.id, labels=labels).json()
-        for pod in pods['items']:
+        pods = self._scheduler.pod.get(self.app.id, labels=labels).json()['items']
+        if not pods:
+            pods = []
+        for pod in pods:
             if self._scheduler.pod.deleted(pod):
                 continue
 
@@ -319,8 +323,10 @@ class Release(UuidAuditedModel):
         # Find all ReplicaSets
         versions = []
         labels = {'heritage': 'deis', 'app': namespace}
-        replicasets = self._scheduler.rs.get(namespace, labels=labels).json()
-        for replicaset in replicasets['items']:
+        replicasets = self._scheduler.rs.get(namespace, labels=labels).json()['items']
+        if not replicasets:
+            replicasets = []
+        for replicaset in replicasets:
             if (
                 'version' not in replicaset['metadata']['labels'] or
                 replicaset['metadata']['labels']['version'] in versions
@@ -338,8 +344,10 @@ class Release(UuidAuditedModel):
             'version__notin': versions
         }
         self.app.log('Cleaning up orphaned env var secrets for application {}'.format(namespace), level=logging.DEBUG)  # noqa
-        secrets = self._scheduler.secret.get(namespace, labels=labels).json()
-        for secret in secrets['items']:
+        secrets = self._scheduler.secret.get(namespace, labels=labels).json()['items']
+        if not secrets:
+            secrets = []
+        for secret in secrets:
             self._scheduler.secret.delete(namespace, secret['metadata']['name'])
 
     def _delete_release_in_scheduler(self, namespace, version):
@@ -358,8 +366,10 @@ class Release(UuidAuditedModel):
         # see if the app config has deploy timeout preference, otherwise use global
         timeout = self.config.values.get('DEIS_DEPLOY_TIMEOUT', settings.DEIS_DEPLOY_TIMEOUT)
 
-        controllers = self._scheduler.rc.get(namespace, labels=labels).json()
-        for controller in controllers['items']:
+        controllers = self._scheduler.rc.get(namespace, labels=labels).json()['items']
+        if not controllers:
+            controllers = []
+        for controller in controllers:
             # Deployment takes care of this in the API, RC does not
             # Have the RC scale down pods and delete itself
             self._scheduler.rc.scale(namespace, controller['metadata']['name'], 0, timeout)

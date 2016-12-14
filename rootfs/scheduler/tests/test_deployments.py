@@ -124,6 +124,12 @@ class DeploymentsTest(TestCase):
         self.assertEqual(response.status_code, 200, data)
 
     def test_get_deployments(self):
+        # test when no deployments exist
+        response = self.scheduler.deployment.get(self.namespace)
+        data = response.json()
+        self.assertEqual(response.status_code, 200, data)
+        self.assertIn('items', data)
+        self.assertEqual(data['items'], None)
         # test success
         name = self.create()
         response = self.scheduler.deployment.get(self.namespace)

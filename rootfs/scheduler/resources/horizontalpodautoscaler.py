@@ -1,4 +1,6 @@
 import json
+from packaging.version import parse
+
 from scheduler.resources import Resource
 from scheduler.exceptions import KubeException, KubeHTTPException
 
@@ -11,7 +13,7 @@ class HorizontalPodAutoscaler(Resource):
     def api_version(self):
         # API location changes between versions
         # http://kubernetes.io/docs/user-guide/horizontal-pod-autoscaling/#api-object
-        if self.version() >= 1.3:
+        if self.version() >= parse("1.3.0"):
             return 'autoscaling/v1'
 
         # 1.2 and older
@@ -69,7 +71,7 @@ class HorizontalPodAutoscaler(Resource):
             }
         }
 
-        if self.version() >= 1.3:
+        if self.version() >= parse("1.3.0"):
             manifest['spec']['targetCPUUtilizationPercentage'] = cpu_percent
 
             manifest['spec']['scaleTargetRef'] = {
@@ -77,7 +79,7 @@ class HorizontalPodAutoscaler(Resource):
                 'kind': target['kind'],
                 'name': target['metadata']['name'],
             }
-        elif self.version() <= 1.2:
+        elif self.version() <= parse("1.2.0"):
             # api changed between version
             manifest['spec']['cpuUtilization'] = {
                 'targetPercentage': cpu_percent
@@ -149,10 +151,10 @@ class HorizontalPodAutoscaler(Resource):
         # ideally it would use the resources wait commands but they vary
         for _ in range(30):
             # fetch resource attached to it
-            if self.version() >= 1.3:
+            if self.version() >= parse("1.3.0"):
                 resource_kind = hpa['spec']['scaleTargetRef']['kind'].lower()
                 resource_name = hpa['spec']['scaleTargetRef']['name']
-            elif self.version() <= 1.2:
+            elif self.version() <= parse("1.2.0"):
                 resource_kind = hpa['spec']['scaleRef']['kind'].lower()
                 resource_name = hpa['spec']['scaleRef']['name']
 

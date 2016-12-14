@@ -80,7 +80,7 @@ class CacheLock(object):
 resources = [
     'namespaces', 'nodes', 'pods', 'replicationcontrollers',
     'secrets', 'services', 'events', 'deployments', 'replicasets',
-    'horizontalpodautoscalers', 'scale',
+    'horizontalpodautoscalers', 'scale', 'resourcequotas'
 ]
 
 

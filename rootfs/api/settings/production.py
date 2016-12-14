@@ -299,6 +299,9 @@ KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLO
 # How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL
 KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS = int(os.environ.get('KUBERNETES_POD_TERMINATION_GRACE_PERIOD_SECONDS', 30))  # noqa
 
+# Default quota spec for application namespace
+KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC = os.environ.get('KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC', '')  # noqa
+
 # registry settings
 REGISTRY_HOST = os.environ.get('DEIS_REGISTRY_SERVICE_HOST', '127.0.0.1')
 REGISTRY_PORT = os.environ.get('DEIS_REGISTRY_SERVICE_PORT', 5000)

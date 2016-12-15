@@ -5,7 +5,7 @@ metadata:
   labels:
     heritage: deis
   annotations:
-    component.deis.io/version: {{ .Values.docker_tag }}
+    component.deis.io/version: {{ .Values.controller.docker_tag }}
 spec:
   replicas: 1
   strategy:
@@ -24,8 +24,8 @@ spec:
       serviceAccount: deis-controller
       containers:
         - name: deis-controller
-          image: quay.io/{{.Values.org}}/controller:{{.Values.docker_tag}}
-          imagePullPolicy: {{.Values.pull_policy}}
+          image: quay.io/{{.Values.controller.org}}/controller:{{.Values.controller.docker_tag}}
+          imagePullPolicy: {{.Values.controller.pull_policy}}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -42,24 +42,24 @@ spec:
           ports:
             - containerPort: 8000
               name: http
-{{- if or (.Values.limits_cpu) (.Values.limits_memory)}}
+{{- if or (.Values.controller.limits_cpu) (.Values.controller.limits_memory)}}
           resources:
             limits:
-{{- if (.Values.limits_cpu) }}
-              cpu: {{.Values.limits_cpu}}
+{{- if (.Values.controller.limits_cpu) }}
+              cpu: {{.Values.controller.limits_cpu}}
 {{- end}}
-{{- if (.Values.limits_memory) }}
-              memory: {{.Values.limits_memory}}
+{{- if (.Values.controller.limits_memory) }}
+              memory: {{.Values.controller.limits_memory}}
 {{- end}}
 {{- end}}
           env:
             - name: REGISTRATION_MODE
-              value: {{ .Values.registration_mode }}
+              value: {{ .Values.controller.registration_mode }}
             # NOTE(bacongobbler): use deis/registry_proxy to work around Docker --insecure-registry requirements
             - name: "DEIS_REGISTRY_SERVICE_HOST"
               value: "localhost"
             - name: "K8S_API_VERIFY_TLS"
-              value: "{{ .Values.k8s_api_verify_tls }}"
+              value: "{{ .Values.controller.k8s_api_verify_tls }}"
             - name: "DEIS_REGISTRY_SERVICE_PORT"
               value: "{{ .Values.global.host_port }}"
             - name: "APP_STORAGE"
@@ -74,7 +74,7 @@ spec:
                   name: slugrunner-config
                   key: image
             - name: "IMAGE_PULL_POLICY"
-              value: "{{ .Values.app_pull_policy }}"
+              value: "{{ .Values.controller.app_pull_policy }}"
             - name: DEIS_SECRET_KEY
               valueFrom:
                 secretKeyRef:

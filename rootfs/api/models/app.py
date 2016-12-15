@@ -52,13 +52,14 @@ def get_session():
 
 
 # http://kubernetes.io/v1.1/docs/design/identifiers.html
-def validate_id_is_docker_compatible(value):
+def validate_app_id(value):
     """
     Check that the value follows the kubernetes name constraints
     """
-    match = re.match(r'^[a-z0-9-]+$', value)
+    match = re.match(r'[a-z]([a-z0-9-]*[a-z0-9])?$', value)
     if not match:
-        raise ValidationError("App name can only contain a-z (lowercase), 0-9 and hyphens")
+        raise ValidationError("App name must start with an alphabetic character, cannot end with a"
+                              + " hyphen and can only contain a-z (lowercase), 0-9 and hyphens.")
 
 
 def validate_app_structure(value):
@@ -87,7 +88,7 @@ class App(UuidAuditedModel):
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     id = models.SlugField(max_length=24, unique=True, null=True,
-                          validators=[validate_id_is_docker_compatible,
+                          validators=[validate_app_id,
                                       validate_reserved_names])
     structure = JSONField(default={}, blank=True, validators=[validate_app_structure])
 

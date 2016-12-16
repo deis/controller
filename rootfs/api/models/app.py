@@ -9,7 +9,6 @@ import logging
 import random
 import re
 import requests
-from requests_toolbelt import user_agent
 import string
 import time
 from urllib.parse import urljoin
@@ -19,7 +18,7 @@ from django.db import models
 from rest_framework.exceptions import ValidationError, NotFound
 from jsonfield import JSONField
 
-from api import __version__ as deis_version
+from api.models import get_session
 from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
 
 from api.utils import generate_app_name, async_run
@@ -32,23 +31,6 @@ from api.models.appsettings import AppSettings
 from scheduler import KubeHTTPException, KubeException
 
 logger = logging.getLogger(__name__)
-
-session = None
-
-
-def get_session():
-    global session
-    if session is None:
-        session = requests.Session()
-        session.headers = {
-            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
-            'User-Agent': user_agent('Deis Controller', deis_version),
-        }
-        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
-        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
-        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
-        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
-    return session
 
 
 # http://kubernetes.io/v1.1/docs/design/identifiers.html

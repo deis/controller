@@ -2,6 +2,9 @@ org: "deisci"
 pull_policy: "Always"
 docker_tag: canary
 app_pull_policy: "Always"
+# A comma-separated list of URLs to send app release information to
+# See https://deis.com/docs/workflow/managing-workflow/deploy-hooks
+deploy_hook_urls: ""
 # limits_cpu: "100m"
 # limits_memory: "50Mi"
 # Possible values are:

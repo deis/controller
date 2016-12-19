@@ -3,25 +3,48 @@
 """
 Data models for the Deis API.
 """
+import hashlib
+import hmac
 import importlib
 import logging
-import uuid
 import morph
 import re
+import urllib.parse
+import uuid
 
 from django.conf import settings
 from django.db import models
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-
 from rest_framework.exceptions import ValidationError
 from rest_framework.authtoken.models import Token
+import requests
+from requests_toolbelt import user_agent
 
+from api import __version__ as deis_version
 from api.exceptions import DeisException, AlreadyExists, ServiceUnavailable, UnprocessableEntity  # noqa
 from api.utils import dict_merge
 from scheduler import KubeException
 
+
 logger = logging.getLogger(__name__)
+
+session = None
+
+
+def get_session():
+    global session
+    if session is None:
+        session = requests.Session()
+        session.headers = {
+            # https://toolbelt.readthedocs.org/en/latest/user-agent.html#user-agent-constructor
+            'User-Agent': user_agent('Deis Controller', deis_version),
+        }
+        # `mount` a custom adapter that retries failed connections for HTTP and HTTPS requests.
+        # http://docs.python-requests.org/en/latest/api/#requests.adapters.HTTPAdapter
+        session.mount('http://', requests.adapters.HTTPAdapter(max_retries=10))
+        session.mount('https://', requests.adapters.HTTPAdapter(max_retries=10))
+    return session
 
 
 def validate_label(value):
@@ -165,16 +188,48 @@ def _log_instance_removed(**kwargs):
         logger.info(message)
 
 
-# special case: log the release summary
-def _log_release_created(**kwargs):
+# special case: log the release summary and send release info to each deploy hook
+def _hook_release_created(**kwargs):
     if kwargs.get('created'):
         release = kwargs['instance']
         # append release lifecycle logs to the app
         release.app.log(release.summary)
 
+        for deploy_hook in settings.DEIS_DEPLOY_HOOK_URLS:
+            url = deploy_hook
+            params = {
+                'app': release.app,
+                'release': 'v{}'.format(release.version),
+                'release_summary': release.summary,
+                'sha': '',
+                'user': release.owner,
+            }
+            if release.build is not None:
+                params['sha'] = release.build.sha
+
+            # order of the query arguments is important when computing the HMAC auth secret
+            params = sorted(params.items())
+            url += '?{}'.format(urllib.parse.urlencode(params))
+
+            headers = {}
+            if settings.DEIS_DEPLOY_HOOK_SECRET_KEY is not None:
+                headers['Authorization'] = hmac.new(
+                    settings.DEIS_DEPLOY_HOOK_SECRET_KEY.encode('utf-8'),
+                    url.encode('utf-8'),
+                    hashlib.sha1
+                ).hexdigest()
+
+            try:
+                get_session().post(url, headers=headers)
+                # just notify with the base URL, disregard the added URL query
+                release.app.log('Deploy hook sent to {}'.format(deploy_hook))
+            except requests.RequestException as e:
+                release.app.log('An error occurred while sending the deploy hook to {}: {}'.format(
+                    deploy_hook, e), logging.ERROR)
+
 
 # Log significant app-related events
-post_save.connect(_log_release_created, sender=Release, dispatch_uid='api.models.log')
+post_save.connect(_hook_release_created, sender=Release, dispatch_uid='api.models.log')
 
 post_save.connect(_log_instance_created, sender=Build, dispatch_uid='api.models.log')
 post_save.connect(_log_instance_added, sender=Certificate, dispatch_uid='api.models.log')

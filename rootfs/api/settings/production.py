@@ -298,6 +298,13 @@ DEIS_DEPLOY_BATCHES = int(os.environ.get('DEIS_DEPLOY_BATCHES', 0))
 # where it roughly goes BATCHES * TIMEOUT = global timeout
 DEIS_DEPLOY_TIMEOUT = int(os.environ.get('DEIS_DEPLOY_TIMEOUT', 120))
 
+try:
+    DEIS_DEPLOY_HOOK_URLS = os.environ['DEIS_DEPLOY_HOOK_URLS'].split(',')
+except KeyError:
+    DEIS_DEPLOY_HOOK_URLS = []
+
+DEIS_DEPLOY_HOOK_SECRET_KEY = os.environ.get('DEIS_DEPLOY_HOOK_SECRET_KEY', None)
+
 KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', None)  # noqa
 
 # How long k8s waits for a pod to finish work after a SIGTERM before sending SIGKILL

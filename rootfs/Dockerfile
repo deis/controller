@@ -9,12 +9,13 @@ RUN adduser --system \
 
 COPY requirements.txt /app/requirements.txt
 
-RUN buildDeps='gcc git libffi-dev libpq-dev python3-dev python3-pip python3-wheel python3-setuptools'; \
+RUN buildDeps='gcc git libffi-dev libpq-dev libldap2-dev libsasl2-dev python3-dev python3-pip python3-wheel python3-setuptools'; \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         $buildDeps \
         sudo \
         libpq5 \
+        libldap-2.4 \
         python3-minimal \
         # cryptography package needs pkg_resources
         python3-pkg-resources && \

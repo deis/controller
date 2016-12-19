@@ -4,6 +4,9 @@ Django settings for the Deis project.
 from distutils.util import strtobool
 import os.path
 import tempfile
+import ldap
+
+from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
 
 # A boolean that turns on/off debug mode.
 # https://docs.djangoproject.com/en/1.9/ref/settings/#debug
@@ -106,6 +109,7 @@ INSTALLED_APPS = (
 )
 
 AUTHENTICATION_BACKENDS = (
+    "django_auth_ldap.backend.LDAPBackend",
     "django.contrib.auth.backends.ModelBackend",
     "guardian.backends.ObjectPermissionBackend",
 )
@@ -346,3 +350,48 @@ DATABASES = {
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
+
+# LDAP settings taken from environment variables.
+LDAP_ENDPOINT = os.environ.get('LDAP_ENDPOINT', '')
+LDAP_BIND_DN = os.environ.get('LDAP_BIND_DN', '')
+LDAP_BIND_PASSWORD = os.environ.get('LDAP_BIND_PASSWORD', '')
+LDAP_USER_BASEDN = os.environ.get('LDAP_USER_BASEDN', '')
+LDAP_USER_FILTER = os.environ.get('LDAP_USER_FILTER', 'username')
+LDAP_GROUP_BASEDN = os.environ.get('LDAP_GROUP_BASEDN', '')
+LDAP_GROUP_FILTER = os.environ.get('LDAP_GROUP_FILTER', '')
+
+# Django LDAP backend configuration.
+# See https://pythonhosted.org/django-auth-ldap/reference.html
+# for variables' details.
+# In order to debug LDAP configuration it is possible to enable
+# verbose logging from auth-ldap plugin:
+# https://pythonhosted.org/django-auth-ldap/logging.html
+
+AUTH_LDAP_SERVER_URI = LDAP_ENDPOINT
+AUTH_LDAP_BIND_DN = LDAP_BIND_DN
+AUTH_LDAP_BIND_PASSWORD = LDAP_BIND_PASSWORD
+AUTH_LDAP_USER_SEARCH = LDAPSearch(
+    base_dn=LDAP_USER_BASEDN,
+    scope=ldap.SCOPE_SUBTREE,
+    filterstr="(%s=%%(user)s)" % LDAP_USER_FILTER
+)
+AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
+    base_dn=LDAP_GROUP_BASEDN,
+    scope=ldap.SCOPE_SUBTREE,
+    filterstr="(%s)" % LDAP_GROUP_FILTER
+)
+AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
+AUTH_LDAP_USER_ATTR_MAP = {
+    "first_name": "givenName",
+    "last_name": "sn",
+    "email": "mail",
+    "username": LDAP_USER_FILTER,
+}
+AUTH_LDAP_GLOBAL_OPTIONS = {
+    ldap.OPT_X_TLS_REQUIRE_CERT: False,
+    ldap.OPT_REFERRALS: False
+}
+AUTH_LDAP_ALWAYS_UPDATE_USER = True
+AUTH_LDAP_MIRROR_GROUPS = True
+AUTH_LDAP_FIND_GROUP_PERMS = True
+AUTH_LDAP_CACHE_GROUPS = False

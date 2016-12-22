@@ -116,6 +116,7 @@ AUTHENTICATION_BACKENDS = (
 ANONYMOUS_USER_ID = -1
 LOGIN_URL = '/v2/auth/login/'
 LOGIN_REDIRECT_URL = '/'
+STATIC_URL = '/static/'
 
 # Security settings
 CORS_ORIGIN_ALLOW_ALL = True

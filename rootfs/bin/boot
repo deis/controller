@@ -49,4 +49,4 @@ echo ""
 echo deis-controller starting...
 
 # spawn web processes via the circus monitor
-sudo -E -u deis circusd /app/deis/circus.ini
+circusd /app/deis/circus.ini

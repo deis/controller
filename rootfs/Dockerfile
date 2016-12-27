@@ -22,6 +22,9 @@ RUN buildDeps='gcc libffi-dev libpq-dev libldap2-dev libsasl2-dev python3-dev py
     ln -s /usr/bin/python3 /usr/bin/python && \
     mkdir -p /configs && chown -R deis:deis /configs && \
     pip3 install --disable-pip-version-check --no-cache-dir -r /app/requirements.txt && \
+	export KUBECTL_VERSION=v1.5.2 && \
+	curl -sSL https://storage.googleapis.com/kubernetes-release/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl -o /usr/local/bin/kubectl && \
+	chmod +x /usr/local/bin/kubectl && \
     # cleanup
     apt-get purge -y --auto-remove $buildDeps && \
     apt-get autoremove -y && \

@@ -16,7 +16,7 @@ psycopg2==2.6.2
 pyldap==2.4.25.1
 pyOpenSSL==16.2.0
 pytz==2016.10
-requests==2.12.3
+requests==2.12.4
 requests-toolbelt==0.7.0
 jsonschema==2.5.1
 idna==2.1

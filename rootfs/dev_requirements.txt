@@ -1,5 +1,5 @@
 # Run "make coverage" or "make test-unit" for the % of code exercised during tests
-coverage==4.2.0
+coverage==4.3.1
 
 # Run "make flake8" to check python syntax and style
 flake8==3.2.1

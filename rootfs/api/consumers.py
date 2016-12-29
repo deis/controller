@@ -2,8 +2,8 @@
 import logging
 from pprint import pformat
 
-from channels.sessions import enforce_ordering
-from django.shortcuts import get_object_or_404
+from channels.exceptions import WebsocketCloseException
+from channels.generic.websockets import WebsocketConsumer
 from rest_framework.exceptions import PermissionDenied
 
 from .authentication import MessageRequest
@@ -14,34 +14,33 @@ from .permissions import is_app_user
 logger = logging.getLogger(__name__)
 
 
-@enforce_ordering(slight=True)
-def ws_connect(message, app_id):
-    logger.debug("ws_connect(\n{}\n)".format(pformat(message.content)))
-    request = MessageRequest(message)
-    app = get_object_or_404(App, id=app_id)
-    # check the user is authorized for this app
-    if not is_app_user(request, app):
-        raise PermissionDenied()
-    # TODO: store the user in a channel session
-    # TODO: create the app "run" pod and connect to it
-    logger.debug("User: {}\nApp: {}".format(request.user, app))
-    # logger.debug("Channel: {}".format(message.reply_channel))
+class PtyConsumer(WebsocketConsumer):
 
+    def connect(self, message, **kwargs):
+        logger.debug("connect(\n{}\n)".format(pformat(message.content)))
+        # call superclass to complete connection setup
+        super(PtyConsumer, self).connect(message, **kwargs)
+        try:
+            app = App.objects.get(id=kwargs.get('app_id'))
+            if not is_app_user(MessageRequest(message), app):
+                raise PermissionDenied()
+        except:
+            raise WebsocketCloseException(code=3404)
+        # TODO: create the app "run" pod and connect to it
+        # command = 'ls'
+        # app.run(request.user, command, interactive=True)
 
-@enforce_ordering(slight=True)
-def ws_message(message, app_id):
-    logger.debug("ws_message(\n{}\n)".format(pformat(message.content)))
-    # TODO: relay message to the app "run" pod
-    # ASGI WebSocket packet-received and send-packet message types
-    # both have a "text" key for their textual data.
-    message.reply_channel.send({
-        "text": message.content['text'],
-    })
-    logger.debug("Channel: {}".format(message.reply_channel))
+    def receive(self, text=None, bytes=None, **kwargs):
+        """
+        Called when a message is received with either text or bytes
+        filled out.
+        """
+        logger.debug("receive(\n{}\n)".format(text))
+        # TODO: relay message to the app "run" pod
+        # Just echo back the text sent, for now.
+        self.send(text=text, bytes=bytes)
 
-
-@enforce_ordering(slight=True)
-def ws_disconnect(message, app_id):
-    logger.debug("ws_disconnect(\n{}\n)".format(pformat(message.content)))
-    # TODO: destroy the app "run" pod
-    logger.debug("Channel: {}".format(message.reply_channel))
+    def disconnect(self, message, **kwargs):
+        logger.debug("disconnect(\n{}\n)".format(pformat(message.content)))
+        # TODO: destroy the app "run" pod
+        logger.debug("Channel: {}".format(message.reply_channel))

@@ -717,7 +717,7 @@ class App(UuidAuditedModel):
         # cast content to string since it comes as bytes via the requests object
         return str(r.content.decode('utf-8'))
 
-    def run(self, user, command):
+    def run(self, user, command, interactive=False):
         def pod_name(size=5, chars=string.ascii_lowercase + string.digits):
             return ''.join(random.choice(chars) for _ in range(size))
 

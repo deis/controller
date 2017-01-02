@@ -106,7 +106,7 @@ urlpatterns = [
     url(r'^auth/tokens/$',
         views.TokenManagementViewSet.as_view({'post': 'regenerate'})),
     # admin sharing
-    url(r'^admin/perms/(?P<username>[-_\w]+)/?$',
+    url(r'^admin/perms/(?P<username>[\w.@+-]+)/?$',
         views.AdminPermsViewSet.as_view({'delete': 'destroy'})),
     url(r'^admin/perms/?$',
         views.AdminPermsViewSet.as_view({'get': 'list', 'post': 'create'})),

@@ -134,7 +134,7 @@ class TestAdminPerms(DeisTestCase):
         self.assertTrue(response.data['is_superuser'])
 
         submit = {
-            'username': 'second',
+            'username': 'second.lastname',
             'password': 'password',
             'email': 'autotest@deis.io',
         }
@@ -148,12 +148,12 @@ class TestAdminPerms(DeisTestCase):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + token)
         # grant user 2 the superuser perm
         url = '/v2/admin/perms'
-        body = {'username': 'second'}
+        body = {'username': 'second.lastname'}
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 201, response.data)
 
         # revoke the superuser perm
-        response = self.client.delete(url + '/second')
+        response = self.client.delete(url + '/second.lastname')
         self.assertEqual(response.status_code, 204, response.data)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)

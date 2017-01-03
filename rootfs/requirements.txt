@@ -7,8 +7,10 @@ django-guardian==1.4.6
 djangorestframework==3.5.3
 docker-py==1.10.6
 gunicorn==19.6.0
+idna==2.2
 jmespath==0.9.0
 jsonfield==1.0.3
+jsonschema==2.5.1
 morph==0.1.2
 ndg-httpsclient==0.4.2
 packaging==16.8
@@ -18,5 +20,3 @@ pyOpenSSL==16.2.0
 pytz==2016.10
 requests==2.12.4
 requests-toolbelt==0.7.0
-jsonschema==2.5.1
-idna==2.1

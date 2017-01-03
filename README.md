@@ -37,16 +37,9 @@ The Deis project welcomes contributions from all developers. The high level proc
 
 In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.2 and higher.
 
-### Helm Classic
+### Workflow Installation
 
-After you have a working Kubernetes cluster, install [helm classic](http://helm.sh) and run the following commands to add the Deis chart repository and install Deis to your new cluster:
-
-```console
-helmc repo add deis https://github.com/deis/charts
-helmc fetch deis/workflow-dev
-helmc generate -x manifests workflow-dev
-helmc install workflow-dev
-```
+After you have a working Kubernetes cluster, you're ready to [install Workflow](https://deis.com/docs/workflow/installing-workflow/).
 
 ### Postgresql
 

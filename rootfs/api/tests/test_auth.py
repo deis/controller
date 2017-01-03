@@ -6,6 +6,8 @@ Run the tests with "./manage.py test api"
 from django.contrib.auth.models import User
 from django.test.utils import override_settings
 from rest_framework.authtoken.models import Token
+from unittest import mock
+
 from api.tests import TEST_ROOT, DeisTestCase
 from api.models import Certificate
 
@@ -371,3 +373,10 @@ class AuthTest(DeisTestCase):
 
         response = self.client.post(url, {})
         self.assertEqual(response.status_code, 401, response.data)
+
+    @mock.patch('django_auth_ldap.backend.logger')
+    def test_auth_no_ldap_by_default(self, mock_logger):
+        """Ensure that LDAP authentication is disabled by default."""
+        self.test_auth()
+        # NOTE(bacongobbler): Using https://github.com/deis/controller/issues/1189 as a test case
+        mock_logger.warning.assert_not_called()

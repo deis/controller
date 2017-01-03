@@ -3,4 +3,7 @@ comment:
   layout: header, diff
 coverage:
   status:
+    project:
+      default:
+        threshold: 0.2
     changes: false

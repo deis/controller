@@ -130,7 +130,8 @@ class CertificateUseCase3Test(DeisTestCase):
                 name=certificate['name'],
                 owner=self.user,
                 common_name=domain,
-                certificate=certificate['cert']
+                certificate=certificate['cert'],
+                key=certificate['key']
             )
             url = '/v2/certs/{}'.format(certificate['name'])
             response = self.client.delete(url)

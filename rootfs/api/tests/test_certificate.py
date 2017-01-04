@@ -145,7 +145,8 @@ class CertificateTest(DeisTestCase):
             name='random-test-cert',
             owner=self.user,
             common_name='autotest.example.com',
-            certificate=self.cert
+            certificate=self.cert,
+            key=self.key
         )
         url = '/v2/certs/random-test-cert'
         response = self.client.delete(url)
@@ -174,6 +175,31 @@ class CertificateTest(DeisTestCase):
                 name='random-test-cert',
                 certificate='i am bad data',
                 key='i am bad data as well'
+            )
+
+    def test_create_invalid_key(self):
+        """Upload a private key that can't be loaded by pyopenssl"""
+        response = self.client.post(
+            self.url,
+            {
+                'name': 'random-test-cert',
+                'certificate': self.cert,
+                'key': 'I am Groot.'
+            }
+        )
+        self.assertEqual(response.status_code, 400, response.data)
+        # match partial since right now the rest is pyopenssl errors
+        self.assertIn('Could not load private key', response.data['key'][0])
+
+    def test_load_invalid_key(self):
+        """Inject a private key that can't be loaded by pyopenssl"""
+
+        with self.assertRaises(SuspiciousOperation):
+            Certificate.objects.create(
+                owner=self.user,
+                name='random-test-cert',
+                certificate=self.cert,
+                key='I am Groot.'
             )
 
     def test_certs_fetch_limit(self):

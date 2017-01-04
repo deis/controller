@@ -144,7 +144,8 @@ class CertificateUseCase1Test(DeisTestCase):
         Certificate.objects.create(
             owner=self.user,
             name=self.name,
-            certificate=self.cert
+            certificate=self.cert,
+            key=self.key
         )
 
         url = '/v2/certs/{}'.format(self.name)

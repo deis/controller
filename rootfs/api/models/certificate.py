@@ -66,9 +66,16 @@ def get_subj_alt_name(peer_cert):
 
 def validate_certificate(value):
     try:
-        crypto.load_certificate(crypto.FILETYPE_PEM, value)
+        return crypto.load_certificate(crypto.FILETYPE_PEM, value)
     except crypto.Error as e:
         raise ValidationError('Could not load certificate: {}'.format(e))
+
+
+def validate_private_key(value):
+    try:
+        return crypto.load_privatekey(crypto.FILETYPE_PEM, value)
+    except crypto.Error as e:
+        raise ValidationError('Could not load private key: {}'.format(e))
 
 
 class Certificate(AuditedModel):
@@ -79,7 +86,7 @@ class Certificate(AuditedModel):
     name = models.CharField(max_length=253, unique=True, validators=[validate_label])
     # there is no upper limit on the size of an x.509 certificate
     certificate = models.TextField(validators=[validate_certificate])
-    key = models.TextField()
+    key = models.TextField(validators=[validate_private_key])
     # X.509 certificates allow any string of information as the common name.
     common_name = models.TextField(editable=False, unique=False, null=True)
     # A list of DNS records if certificate has SubjectAltName
@@ -106,14 +113,14 @@ class Certificate(AuditedModel):
     def __str__(self):
         return self.name
 
-    def _get_certificate(self):
-        try:
-            return crypto.load_certificate(crypto.FILETYPE_PEM, self.certificate)
-        except crypto.Error as e:
-            raise SuspiciousOperation(e)
-
     def save(self, *args, **kwargs):
-        certificate = self._get_certificate()
+        try:
+            certificate = validate_certificate(self.certificate)
+            # NOTE(bacongobbler): we want to load the key here to ensure that it is valid before
+            # saving it to the database.
+            validate_private_key(self.key)
+        except ValidationError as e:
+            raise SuspiciousOperation(e)
         if not self.common_name:
             self.common_name = certificate.get_subject().CN
 

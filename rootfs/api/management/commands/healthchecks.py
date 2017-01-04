@@ -1,5 +1,4 @@
 from django.core.management.base import BaseCommand
-from django.conf import settings
 import django.db
 import sys
 
@@ -14,7 +13,5 @@ class Command(BaseCommand):
             print("Database is alive!")
         except Exception as e:
             print("There was a problem connecting to the database")
-            if settings.DEBUG:
-                print(str(e))
-
+            print(str(e))
             sys.exit(1)

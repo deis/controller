@@ -732,7 +732,7 @@ class Pod(Resource):
             self.log(namespace, log)
             raise KubeException(log)
         else:
-            raise RuntimeError('Unable to start pods, no events in namespace found.')  # noqa
+            return None
 
     def _get_namespace_events(self, namespace, event_type='Warning'):
         """

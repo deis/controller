@@ -75,6 +75,8 @@ spec:
                   key: image
             - name: "IMAGE_PULL_POLICY"
               value: "{{ .Values.app_pull_policy }}"
+            - name: "TZ"
+              value: "{{ default 'UTC' .Values.time_zone }}"
 {{- if (.Values.deploy_hook_urls) }}
             - name: DEIS_DEPLOY_HOOK_URLS
               value: "{{ .Values.deploy_hook_urls }}"

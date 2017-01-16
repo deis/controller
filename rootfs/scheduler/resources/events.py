@@ -42,5 +42,3 @@ class Events(Resource):
             raise KubeHTTPException(response, 'create Event for namespace {}'.format(namespace))  # noqa
 
         return response
-
-

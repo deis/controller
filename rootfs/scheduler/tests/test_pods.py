@@ -37,8 +37,7 @@ class PodsTest(TestCase):
     def test_create_failure(self):
         with self.assertRaises(
             KubeHTTPException,
-            msg='failed to create Pod doesnotexist in Namespace {}: 404 Not Found'.format(
-                self.namespace)  # noqa
+            msg='failed to create Pod doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
             self.create('doesnotexist', 'doesnotexist')
 
@@ -49,8 +48,7 @@ class PodsTest(TestCase):
         # test failure
         with self.assertRaises(
             KubeHTTPException,
-            msg='failed to delete Pod foo in Namespace {}: 404 Not Found'.format(
-                self.namespace)  # noqa
+            msg='failed to delete Pod foo in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
             self.scheduler.pod.delete(self.namespace, 'foo')
 
@@ -76,8 +74,7 @@ class PodsTest(TestCase):
         # test failure
         with self.assertRaises(
             KubeHTTPException,
-            msg='failed to get Pod doesnotexist in Namespace {}: 404 Not Found'.format(
-                self.namespace)  # noqa
+            msg='failed to get Pod doesnotexist in Namespace {}: 404 Not Found'.format(self.namespace)  # noqa
         ):
             self.scheduler.pod.get(self.namespace, 'doesnotexist')
 
@@ -123,8 +120,7 @@ class PodsTest(TestCase):
 
         # on a newly created pod has been deleted with ready state on a container
         pod['metadata']['deletionTimestamp'] = 'fake'
-        self.assertEqual(self.scheduler.pod.readiness_status(pod),
-                         'Terminating')
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
         del pod['metadata']['deletionTimestamp']
 
         # now say the app container is not Ready
@@ -138,14 +134,12 @@ class PodsTest(TestCase):
         # verify Terminating status
         del container['state']['running']
         container['state']['terminated'] = 'fake'
-        self.assertEqual(self.scheduler.pod.readiness_status(pod),
-                         'Terminating')
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
 
         # test metdata terminating
         del container['state']['terminated']
         pod['metadata']['deletionTimestamp'] = 'fake'
-        self.assertEqual(self.scheduler.pod.readiness_status(pod),
-                         'Terminating')
+        self.assertEqual(self.scheduler.pod.readiness_status(pod), 'Terminating')
         del pod['metadata']['deletionTimestamp']
 
         # inject fake state
@@ -167,26 +161,22 @@ class PodsTest(TestCase):
         # only pod but no other probe
         pod['status']['phase'] = 'Running'
         # fake out functions for failure
-        with mock.patch(
-            'scheduler.resources.pod.Pod.readiness_status') as ready:
+        with mock.patch('scheduler.resources.pod.Pod.readiness_status') as ready:
             ready.return_value = 'Starting'
 
             # only readiness is ready so overall ready status is False
             self.assertFalse(self.scheduler.pod.ready(pod))
 
-            with mock.patch(
-                'scheduler.resources.pod.Pod.liveness_status') as liveness:
+            with mock.patch('scheduler.resources.pod.Pod.liveness_status') as liveness:
                 liveness.return_value = False
 
                 # all things have lined up, go time
                 self.assertFalse(self.scheduler.pod.ready(pod))
 
         # fake out other functions since they are tested by themselves
-        with mock.patch(
-            'scheduler.resources.pod.Pod.readiness_status') as ready:
+        with mock.patch('scheduler.resources.pod.Pod.readiness_status') as ready:
             ready.return_value = 'Running'
-            with mock.patch(
-                'scheduler.resources.pod.Pod.liveness_status') as liveness:
+            with mock.patch('scheduler.resources.pod.Pod.liveness_status') as liveness:
                 # keep liveness as failing for now
                 liveness.return_value = False
 
@@ -207,8 +197,7 @@ class PodsTest(TestCase):
 
         # set deleted 10 minutes in the past
         ts_deleted = datetime.utcnow() - timedelta(minutes=10)
-        pod['metadata']['deletionTimestamp'] = ts_deleted.strftime(
-            self.scheduler.DATETIME_FORMAT)
+        pod['metadata']['deletionTimestamp'] = ts_deleted.strftime(self.scheduler.DATETIME_FORMAT)
         self.assertTrue(self.scheduler.pod.deleted(pod))
 
     def test_limits_failure(self):
@@ -219,4 +208,3 @@ class PodsTest(TestCase):
         with self.assertRaisesRegex(KubeException,
                                     'Message:{}.*'.format(message)):
             self.scheduler.pod._handle_not_ready_pods(self.namespace, {})
-

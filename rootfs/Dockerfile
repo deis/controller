@@ -28,7 +28,7 @@ RUN buildDeps='gcc git libffi-dev libpq-dev libldap2-dev libsasl2-dev python3-de
     apt-get clean -y && \
     # package up license files if any by appending to existing tar
     COPYRIGHT_TAR='/usr/share/copyrights.tar'; \
-    gunzip $COPYRIGHT_TAR.gz; tar -rf $COPYRIGHT_TAR /usr/share/doc/*/copyright; gzip $COPYRIGHT_TAR && \
+    gunzip -f $COPYRIGHT_TAR.gz; tar -rf $COPYRIGHT_TAR /usr/share/doc/*/copyright; gzip $COPYRIGHT_TAR && \
     rm -rf \
         /usr/share/doc \
         /usr/share/man \

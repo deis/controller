@@ -27,7 +27,7 @@ check-docker:
 build: docker-build
 
 docker-build: check-docker
-	docker build --rm -t ${IMAGE} rootfs
+	docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
 deploy: check-kubectl docker-build docker-push

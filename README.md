@@ -63,7 +63,7 @@ brew install pyenv
 ```
 pyenv install 3.5.0
 # if you have build issues, ensure Xcode CLI tools are installed:https://github.com/yyuu/pyenv/issues/451#issuecomment-151336786
-python local 3.5.0 # use Python 3.5.0 in your current directory
+pyenv local 3.5.0 # use Python 3.5.0 in your current directory
 ```
 
 Or via your package manager. For example, on Debian Jessie:

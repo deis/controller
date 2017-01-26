@@ -45,9 +45,9 @@ After you have a working Kubernetes cluster, you're ready to [install Workflow](
 
 The application and tests use PostgreSQL. To start a local instance via Docker, run `make postgres` and set the following in your shell:
 ```
-  export PGHOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
-  export PGPORT=5432
-  export PGUSER=postgres
+  export DEIS_DATABASE_SERVICE_HOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
+  export DEIS_DATABASE_SERVICE_PORT=5432
+  export DEIS_DATABASE_USER=postgres
 ```
 
 ### Python

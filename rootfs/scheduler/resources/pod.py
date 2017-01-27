@@ -182,7 +182,7 @@ class Pod(Resource):
         env = kwargs.get('envs', {})
         manifest = {
             "name": "slug-downloader",
-            "image": "quay.io/deis/base:v0.3.5",
+            "image": "quay.io/deis/base:v0.3.6",
             "imagePullPolicy": "IfNotPresent",
             "command": ["/bin/bash"],
             "args": ["-c", "curl https://storage.googleapis.com/object-storage-cli/bb8e054/objstorage-bb8e054-linux-amd64 -o /bin/objstorage && chmod +x /bin/objstorage && GET_PATH=/slugdir/slug.tgz && export BUCKET_FILE=/var/run/secrets/deis/objectstore/creds/builder-bucket && if [ $BUILDER_STORAGE == minio ]; then mkdir -p /app/objectstore/minio && echo git > /app/objectstore/minio/builder-bucket && export BUCKET_FILE=/app/objectstore/minio/builder-bucket; elif [ $BUILDER_STORAGE == azure ] || [ $BUILDER_STORAGE == swift ]; then export CONTAINER_FILE=/var/run/secrets/deis/objectstore/creds/builder-container; fi && objstorage --storage-type=$BUILDER_STORAGE download $SLUG_URL $GET_PATH && tar -xzf $GET_PATH -C /slugdir && rm $GET_PATH"],  # noqa

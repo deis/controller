@@ -237,6 +237,12 @@ class Deployment(Resource):
             self.log(namespace, 'Deploy operation for Deployment {} in has expired. Rolling back to last good known release'.format(name), level='DEBUG')  # noqa
             return False, True
 
+        try:
+            self._check_for_failed_events(namespace, labels=labels)
+        except KubeException as e:
+            self.log(namespace, e)
+            return False, True
+
         return True, False
 
     def are_replicas_ready(self, namespace, name):

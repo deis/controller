@@ -5,7 +5,7 @@ Run the tests with './manage.py test scheduler'
 """
 from unittest import mock
 from datetime import datetime, timedelta
-from scheduler import KubeHTTPException, KubeException
+from scheduler import KubeHTTPException
 from scheduler.tests import TestCase
 from scheduler.utils import generate_random_name
 
@@ -199,12 +199,3 @@ class PodsTest(TestCase):
         ts_deleted = datetime.utcnow() - timedelta(minutes=10)
         pod['metadata']['deletionTimestamp'] = ts_deleted.strftime(self.scheduler.DATETIME_FORMAT)
         self.assertTrue(self.scheduler.pod.deleted(pod))
-
-    def test_limits_failure(self):
-        message = generate_random_name()
-        self.scheduler.ev.create(self.namespace,
-                                 '{}'.format(generate_random_name()),
-                                 message, type='Warning')
-        with self.assertRaisesRegex(KubeException,
-                                    'Message:{}.*'.format(message)):
-            self.scheduler.pod._handle_not_ready_pods(self.namespace, {})

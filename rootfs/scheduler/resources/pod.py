@@ -719,42 +719,6 @@ class Pod(Resource):
                     message = "\n".join([x.strip() for x in event['message'].split("\n")])
                     raise KubeException(message)
 
-        # Handle cases when no one pods is started (quota check fialed)
-        # If quota is enabled in a namespace for compute resources like cpu and
-        # memory, users must specify requests or limits for those values;
-        # otherwise, the quota system may reject pod creation.
-        # http://kubernetes.io/docs/admin/resourcequota/
-        # or when scale process trigger overuse case for some pods:
-        # For example: used 3/3 pods, but user scale to 4
-        events = self._get_namespace_events(namespace)
-        if len(events) != 0:
-            log = self._get_formatted_messages(events)
-            self.log(namespace, log)
-            raise KubeException(log)
-        else:
-            return None
-
-    def _get_namespace_events(self, namespace, event_type='Warning'):
-        """
-        Get events of namespace by event_type (default Warning)
-        http://kubernetes.io/docs/api-reference/v1/definitions/#_v1_event
-        """
-        response = self.ns.events(namespace).json()
-        events = response.get('items', [])
-        return list(filter(lambda event: event.get('type', '') == event_type,
-                           events))
-
-    @staticmethod
-    def _get_formatted_messages(events):
-        """
-        Format each event by string and join all events to one string
-        """
-        message_format = 'Message:{message}, lastTimestamp:{lastTimestamp}, reason: {reason}, count: {count}'  # noqa
-        output = []
-        for event in events:
-            output.append(message_format.format(**event))
-        return '\n'.join(output)
-
     def deploy_probe_timeout(self, timeout, namespace, labels, containers):
         """
         Added in additional timeouts based on readiness and liveness probe

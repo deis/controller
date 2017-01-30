@@ -288,17 +288,23 @@ class BuildTest(DeisTransactionTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
-        # verify web is still there
+        # verify web is not there
         url = "/v2/apps/{app_id}/pods/web".format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data['results']), 0)
 
+        # verify cmd is there
+        url = "/v2/apps/{app_id}/pods/cmd".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+
         # look at the app structure
         url = "/v2/apps/{app_id}".format(**locals())
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.json()['structure'], {'web': 0, 'worker': 0})
+        self.assertEqual(response.json()['structure'], {'cmd': 1, 'web': 0, 'worker': 0})
 
     @override_settings(DEIS_DEPLOY_PROCFILE_MISSING_REMOVE=False)
     def test_build_no_remove_process(self, mock_requests):

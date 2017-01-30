@@ -449,13 +449,28 @@ class App(UuidAuditedModel):
         # use create to make sure minimum resources are created
         self.create()
 
+        # set processes structure to default if app is new.
         if self.structure == {}:
             self.structure = self._default_structure(release)
             self.save()
-
-        app_settings = self.appsettings_set.latest()
+        # reset canonical process types if build type has changed.
+        else:
+            # find the previous release's build type
+            prev_release = release.previous()
+            if prev_release and prev_release.build:
+                if prev_release.build.type != release.build.type:
+                    structure = self.structure.copy()
+                    # zero out canonical pod counts
+                    for proctype in ['cmd', 'web']:
+                        if proctype in structure:
+                            structure[proctype] = 0
+                    # update with the default process type.
+                    structure.update(self._default_structure(release))
+                    self.structure = structure
+                    self.save()
 
         # deploy application to k8s. Also handles initial scaling
+        app_settings = self.appsettings_set.latest()
         deploys = {}
         for scale_type, replicas in self.structure.items():
             deploys[scale_type] = self._gather_app_settings(release, app_settings, scale_type, replicas)  # noqa
@@ -874,9 +889,8 @@ class App(UuidAuditedModel):
                 # delete the annotation
                 service['metadata']['labels'].pop('router.deis.io/routable', None)
 
-            # Set app type if there is not one available
-            if 'type' not in service['spec']['selector']:
-                service['spec']['selector']['type'] = app_type
+            # Set app type selector
+            service['spec']['selector']['type'] = app_type
 
             # Find if target port exists already, update / create as required
             if routable:

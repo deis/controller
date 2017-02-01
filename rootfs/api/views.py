@@ -238,7 +238,9 @@ class AppViewSet(BaseDeisViewSet):
         app = self.get_object()
         if not request.data.get('command'):
             raise DeisException("command is a required field")
-        rc, output = app.run(self.request.user, request.data['command'], image=request.data.get('image'))
+        rc, output = app.run(self.request.user,
+                             request.data['command'],
+                             image=request.data.get('image'))
         return Response({'exit_code': rc, 'output': str(output)})
 
     def update(self, request, **kwargs):

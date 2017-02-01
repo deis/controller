@@ -696,9 +696,9 @@ class App(UuidAuditedModel):
         app_settings = self.appsettings_set.latest()
         # use slugrunner image for app if buildpack app otherwise use normal image
         if image is None:
-            if release.build.type == 'buildpack'
+            if release.build.type == 'buildpack':
                 image = settings.SLUGRUNNER_IMAGE
-            else
+            else:
                 image = release.image
 
         data = self._gather_app_settings(release, app_settings, process_type='run', replicas=1)

@@ -291,6 +291,28 @@ class AppTest(DeisTestCase):
         self.assertEqual(response.data['exit_code'], 0)
         self.assertEqual(response.data['output'], 'mock')
 
+    @mock.patch('api.models.App.deploy', mock_none)
+    @mock.patch('api.models.Release.publish', mock_none)
+    def test_run_with_undeployed_image(self, mock_requests):
+        """
+        A user should be able to run a one off command with an undeployed image
+        """
+        app_id = self.create_app()
+
+        # create build
+        body = {'image': 'autotest/example'}
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # run command
+        with mock.patch('scheduler.KubeHTTPClient.run') as kube_run:
+            url = '/v2/apps/{}/run'.format(app_id)
+            image = 'autotest/example:canary'
+            body = {'image': image, 'command': 'ls -al'}
+            response = self.client.post(url, body)
+            self.assertEqual(image, kube_run.call_args[0][2])
+
     def test_run_failure(self, mock_requests):
         """Raise a KubeException via scheduler.run"""
         app_id = self.create_app()

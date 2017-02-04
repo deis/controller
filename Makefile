@@ -27,7 +27,7 @@ check-docker:
 build: docker-build
 
 docker-build: check-docker
-	docker build --rm -t ${IMAGE} rootfs
+	docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
 deploy: check-kubectl docker-build docker-push
@@ -46,9 +46,9 @@ postgres: check-docker
 	docker start postgres || docker run --restart="always" -d -p 5432:5432 --name postgres postgres:9.3
 	docker exec postgres createdb -U postgres deis 2>/dev/null || true
 	@echo "To use postgres for local development:"
-	@echo "    export PGHOST=`docker-machine ip $$(docker-machine active) 2>/dev/null || echo 127.0.0.1`"
-	@echo "    export PGPORT=5432"
-	@echo "    export PGUSER=postgres"
+	@echo "    export DEIS_DATABASE_SERVICE_HOST=`docker-machine ip $$(docker-machine active) 2>/dev/null || echo 127.0.0.1`"
+	@echo "    export DEIS_DATABASE_SERVICE_PORT=5432"
+	@echo "    export DEIS_DATABASE_USER=postgres"
 
 setup-venv:
 	python3 -m venv venv

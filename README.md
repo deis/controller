@@ -45,25 +45,25 @@ After you have a working Kubernetes cluster, you're ready to [install Workflow](
 
 The application and tests use PostgreSQL. To start a local instance via Docker, run `make postgres` and set the following in your shell:
 ```
-  export PGHOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
-  export PGPORT=5432
-  export PGUSER=postgres
+  export DEIS_DATABASE_SERVICE_HOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
+  export DEIS_DATABASE_SERVICE_PORT=5432
+  export DEIS_DATABASE_USER=postgres
 ```
 
 ### Python
 
-Python 3.5 is a minimum requirement and can be installed via `pyenv`:
+Python 3.5.2 is a minimum requirement and can be installed via `pyenv`:
 
 ```
 brew install pyenv
 ```
 
 - After installing, ensure [`eval "$(pyenv init -)"` is added to your shell startup.](https://github.com/yyuu/pyenv/#homebrew-on-mac-os-x)
-- Install and use Python 3.5:
+- Install and use Python 3.5.2:
 ```
-pyenv install 3.5.0
+pyenv install 3.5.2
 # if you have build issues, ensure Xcode CLI tools are installed:https://github.com/yyuu/pyenv/issues/451#issuecomment-151336786
-python local 3.5.0 # use Python 3.5.0 in your current directory
+pyenv local 3.5.2 # use Python 3.5.2 in your current directory
 ```
 
 Or via your package manager. For example, on Debian Jessie:

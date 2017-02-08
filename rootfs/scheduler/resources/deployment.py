@@ -237,6 +237,12 @@ class Deployment(Resource):
             self.log(namespace, 'Deploy operation for Deployment {} in has expired. Rolling back to last good known release'.format(name), level='DEBUG')  # noqa
             return False, True
 
+        try:
+            self._check_for_failed_events(namespace, labels=labels)
+        except KubeException as e:
+            self.log(namespace, e)
+            return False, True
+
         return True, False
 
     def are_replicas_ready(self, namespace, name):
@@ -326,6 +332,9 @@ class Deployment(Resource):
         timeout = len(batches) * deploy_timeout
         self.log(namespace, 'This deployments overall timeout is {}s - batch timout is {}s and there are {} batches to deploy with a total of {} pods'.format(timeout, deploy_timeout, len(batches), replicas))  # noqa
 
+        # check for failed events(when quota exceeded for example)
+        self._check_for_failed_events(namespace, labels=labels)
+
         waited = 0
         while waited < timeout:
             ready, availablePods = self.are_replicas_ready(namespace, name)
@@ -351,6 +360,39 @@ class Deployment(Resource):
         ready, _ = self.are_replicas_ready(namespace, name)
         if not ready:
             self.pod._handle_not_ready_pods(namespace, labels)
+
+    def _check_for_failed_events(self, namespace, labels):
+        """
+        Request for new ReplicaSet of Deployment and search for failed events involved by that RS
+        Raises: KubeException when RS have events with FailedCreate reason
+        """
+        response = self.rs.get(namespace, labels=labels)
+        data = response.json()
+        fields = {
+            'involvedObject.kind': 'ReplicaSet',
+            'involvedObject.name': data['items'][0]['metadata']['name'],
+            'involvedObject.namespace': namespace,
+            'involvedObject.uid': data['items'][0]['metadata']['uid'],
+        }
+        events_list = self.ns.events(namespace, fields=fields).json()
+        events = events_list.get('items', [])
+        if events is not None and len(events) != 0:
+            for event in events:
+                if event['reason'] == 'FailedCreate':
+                    log = self._get_formatted_messages(events)
+                    self.log(namespace, log)
+                    raise KubeException(log)
+
+    @staticmethod
+    def _get_formatted_messages(events):
+        """
+        Format each event by string and join all events to one string
+        """
+        message_format = 'Message:{message}, lastTimestamp:{lastTimestamp}, reason: {reason}, count: {count}'  # noqa
+        output = []
+        for event in events:
+            output.append(message_format.format(**event))
+        return '\n'.join(output)
 
     def _get_deploy_steps(self, batches, tags):
         # if there is no batch information available default to available nodes for app

@@ -551,7 +551,7 @@ def filter_data(filters, path):
             continue
 
         # check if item has labels
-        if 'labels' not in item['metadata']:
+        if 'labels' not in item['metadata'] and item['kind'] != 'Event':
             continue
 
         # Do extra filtering based on labelSelector

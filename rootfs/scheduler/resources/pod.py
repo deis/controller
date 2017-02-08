@@ -719,8 +719,6 @@ class Pod(Resource):
                     message = "\n".join([x.strip() for x in event['message'].split("\n")])
                     raise KubeException(message)
 
-        return None
-
     def deploy_probe_timeout(self, timeout, namespace, labels, containers):
         """
         Added in additional timeouts based on readiness and liveness probe

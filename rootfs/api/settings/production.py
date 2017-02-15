@@ -241,6 +241,9 @@ TEMPDIR = tempfile.mkdtemp(prefix='deis')
 # names which apps cannot reserve for routing
 DEIS_RESERVED_NAMES = os.environ.get('RESERVED_NAMES', '').replace(' ', '').split(',')
 
+# the k8s namespace in which the controller and workflow were installed.
+WORKFLOW_NAMESPACE = os.environ.get('WORKFLOW_NAMESPACE', 'deis')
+
 # default scheduler settings
 SCHEDULER_MODULE = 'scheduler'
 SCHEDULER_URL = "https://{}:{}".format(

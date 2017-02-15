@@ -992,7 +992,8 @@ class App(UuidAuditedModel):
             username = registry.get('username')
             password = registry.get('password')
         elif settings.REGISTRY_LOCATION == 'off-cluster':
-            secret = self._scheduler.secret.get('deis', 'registry-secret').json()
+            secret = self._scheduler.secret.get(
+                settings.WORKFLOW_NAMESPACE, 'registry-secret').json()
             username = secret['data']['username']
             password = secret['data']['password']
             hostname = secret['data']['hostname']
@@ -1105,5 +1106,6 @@ class App(UuidAuditedModel):
         try:
             self._scheduler.secret.get(self.id, 'objectstorage-keyfile')
         except KubeException:
-            secret = self._scheduler.secret.get('deis', 'objectstorage-keyfile').json()
+            secret = self._scheduler.secret.get(
+                settings.WORKFLOW_NAMESPACE, 'objectstorage-keyfile').json()
             self._scheduler.secret.create(self.id, 'objectstorage-keyfile', secret['data'])

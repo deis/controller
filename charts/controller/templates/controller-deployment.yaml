@@ -125,6 +125,10 @@ spec:
                   key: password
             - name: RESERVED_NAMES
               value: "deis, deis-builder, deis-workflow-manager, grafana"
+            - name: WORKFLOW_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           volumeMounts:
             - mountPath: /var/run/docker.sock
               name: docker-socket

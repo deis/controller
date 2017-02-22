@@ -190,7 +190,7 @@ class BuildSerializer(serializers.ModelSerializer):
         """Metadata options for a :class:`BuildSerializer`."""
         model = models.Build
         fields = ['owner', 'app', 'image', 'sha', 'procfile', 'dockerfile', 'created',
-                  'updated', 'uuid']
+                  'updated', 'uuid', 'deploy_now']
 
     def validate_procfile(self, data):
         for key, value in data.items():

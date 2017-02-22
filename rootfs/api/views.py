@@ -419,6 +419,18 @@ class ReleaseViewSet(AppResourceViewSet):
         qs = self.get_queryset(**kwargs)
         return get_object_or_404(qs, version=self.kwargs['version'])
 
+    def deploy(self, request, **kwargs):
+        """
+        Deploy a release
+        """
+        version = request.data.get('version')
+        release = self.get_app().release_set.filter(version=version, failed=False).latest()
+        try:
+            self.get_app().deploy(release)
+            return Response(status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(e, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     def rollback(self, request, **kwargs):
         """
         Create a new release as a copy of the state of the compiled slug and config vars of a

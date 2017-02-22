@@ -114,7 +114,7 @@ class ReleaseTest(DeisTransactionTestCase):
         response = self.client.get(url)
         for key in response.data.keys():
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'build', 'config',
-                                'summary', 'version', 'failed'])
+                                'summary', 'version', 'failed', 'deployed'])
         expected = {
             'owner': self.user.username,
             'app': app_id,
@@ -124,6 +124,30 @@ class ReleaseTest(DeisTransactionTestCase):
             'version': 2
         }
         self.assertDictContainsSubset(expected, response.data)
+
+    def test_release_deploy(self, mock_requests):
+        app_id = self.create_app()
+        app = App.objects.get(id=app_id)
+        # create another release with a different build
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        body = {'image': 'autotest/example:canary', 'deploy_now': False}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        # release should not be deployed for now
+        url = '/v2/apps/{app_id}/releases/v2'.format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.data['deployed'], False)
+        self.assertEqual(response.status_code, 200, response.data)
+        # deploy a release
+        url = '/v2/apps/{app_id}/releases/deploy'.format(**locals())
+        body = {'version': 2}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 200, response.data)
+        # release should now be deployed
+        url = '/v2/apps/{app_id}/releases/v2'.format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.data['deployed'], True)
+        self.assertEqual(response.status_code, 200, response.data)
 
     def test_release_rollback(self, mock_requests):
         app_id = self.create_app()

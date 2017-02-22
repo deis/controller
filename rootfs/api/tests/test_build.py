@@ -12,7 +12,7 @@ from django.test.utils import override_settings
 from unittest import mock
 from rest_framework.authtoken.models import Token
 
-from api.models import Build, App
+from api.models import Build, App, Release
 from registry.dockerclient import RegistryException
 from scheduler import KubeException
 
@@ -57,6 +57,8 @@ class BuildTest(DeisTransactionTestCase):
         build_id = str(response.data['uuid'])
         build1 = response.data
         self.assertEqual(response.data['image'], body['image'])
+        release = Release.objects.filter(build=build1['uuid']).last()
+        self.assertEqual(release.deployed, True)
 
         # read the build
         url = "/v2/apps/{app_id}/builds/{build_id}".format(**locals())
@@ -73,6 +75,19 @@ class BuildTest(DeisTransactionTestCase):
         build3 = response.data
         self.assertEqual(response.data['image'], body['image'])
         self.assertNotEqual(build2['uuid'], build3['uuid'])
+        release = Release.objects.filter(build=build3['uuid']).last()
+        self.assertEqual(release.deployed, True)
+
+        # post a new build but do not deploy
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {'image': 'autotest/example', 'deploy_now': False}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+        build4 = response.data
+        self.assertEqual(response.data['image'], body['image'])
+        self.assertNotEqual(build2['uuid'], build4['uuid'])
+        release = Release.objects.filter(build=build4['uuid']).last()
+        self.assertEqual(release.deployed, False)
 
         # disallow put/patch/delete
         response = self.client.put(url)
@@ -93,7 +108,7 @@ class BuildTest(DeisTransactionTestCase):
 
         for key in response.data:
             self.assertIn(key, ['uuid', 'owner', 'created', 'updated', 'app', 'dockerfile',
-                                'image', 'procfile', 'sha'])
+                                'image', 'procfile', 'sha', 'deploy_now'])
         expected = {
             'owner': self.user.username,
             'app': app_id,

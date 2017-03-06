@@ -38,7 +38,7 @@ class ConfigTest(DeisTransactionTestCase):
 
     def tearDown(self):
         # Restore default tags to empty string
-        settings.DEIS_DEFAULT_CONIFG_TAGS = ''
+        settings.DEIS_DEFAULT_CONFIG_TAGS = ''
         # make sure every test has a clean slate for k8s mocking
         cache.clear()
 

@@ -11,7 +11,7 @@ deploy_hook_urls: ""
 # enabled - allows for open registration
 # disabled - turns off open registration
 # admin_only - allows for registration by an admin only.
-registration_mode: "enabled"
+registration_mode: "admin_only"
 # Option to disable ssl verification to connect to k8s api server
 k8s_api_verify_tls: "true"
 

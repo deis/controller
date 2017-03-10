@@ -720,6 +720,18 @@ class BuildTest(DeisTransactionTestCase):
             'sha': 'a'*40,
             'procfile': {
                 'web': 'node server.js',
+                'Worker-test1': 'node worker.js'
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 400, response.data)
+
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
                 '-': 'node worker.js'
             }
         }
@@ -767,7 +779,7 @@ class BuildTest(DeisTransactionTestCase):
             'sha': 'a'*40,
             'procfile': {
                 'web': 'node server.js',
-                'Worker-test1': 'node worker.js'
+                'worker-test1': 'node worker.js'
             }
         }
         response = self.client.post(url, body)

@@ -16,9 +16,10 @@ from rest_framework import serializers
 
 from api import models
 
-# proc type name is alphanumeric
+# proc type name is lowercase alphanumeric
 # https://docs-v2.readthedocs.io/en/latest/using-workflow/process-types-and-the-procfile/#declaring-process-types
-PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-zA-Z0-9]+(\-[a-zA-Z0-9]+)*)$')
+PROCTYPE_MATCH = re.compile(r'^(?P<type>[a-z0-9]+(\-[a-z0-9]+)*)$')
+PROCTYPE_MISMATCH_MSG = "Process types can only contain lowercase alphanumeric characters"
 MEMLIMIT_MATCH = re.compile(
     r'^(?P<mem>(([0-9]+(MB|KB|GB|[BKMG])|0)(/([0-9]+(MB|KB|GB|[BKMG])))?))$', re.IGNORECASE)
 CPUSHARE_MATCH = re.compile(
@@ -197,7 +198,7 @@ class BuildSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Command can't be empty for process type")
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain alphanumeric")
+                raise serializers.ValidationError(PROCTYPE_MISMATCH_MSG)
 
         return data
 
@@ -271,7 +272,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain alphanumeric")
+                raise serializers.ValidationError(PROCTYPE_MISMATCH_MSG)
 
             if not re.match(MEMLIMIT_MATCH, str(value)):
                 raise serializers.ValidationError(
@@ -286,7 +287,7 @@ class ConfigSerializer(serializers.ModelSerializer):
                 continue
 
             if not re.match(PROCTYPE_MATCH, key):
-                raise serializers.ValidationError("Process types can only contain alphanumeric")
+                raise serializers.ValidationError(PROCTYPE_MISMATCH_MSG)
 
             shares = re.match(CPUSHARE_MATCH, str(value))
             if not shares:

@@ -512,7 +512,9 @@ class PodTest(DeisTransactionTestCase):
         # ensure we can override the cmd process type in a Procfile
         build.procfile['cmd'] = 'node server.js'
         build.save()
-        self.assertEqual(app._get_command('cmd'), ["node server.js"])
+        self.assertEqual(app._get_entrypoint('cmd'), [])
+        self.assertEqual(app._get_command('cmd'), ["node", "server.js"])
+        self.assertEqual(app._get_entrypoint('worker'), ["/bin/bash", "-c"])
         self.assertEqual(app._get_command('worker'), ["node worker.js"])
 
         # for backwards compatibility if no Procfile is supplied

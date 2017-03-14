@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from jsonfield import JSONField
+import json
 
 from api.models.release import Release
 from api.models import UuidAuditedModel
@@ -91,7 +92,14 @@ class Config(UuidAuditedModel):
     def set_tags(self, previous_config):
         """verify the tags exist on any nodes as labels"""
         if not self.tags:
-            return
+            if settings.DEIS_DEFAULT_CONFIG_TAGS:
+                try:
+                    tags = json.loads(settings.DEIS_DEFAULT_CONFIG_TAGS)
+                    self.tags = tags
+                except json.JSONDecodeError as e:
+                    return
+            else:
+                return
 
         # Get all nodes with label selectors
         nodes = self._scheduler.node.get(labels=self.tags).json()
@@ -174,6 +182,6 @@ class Config(UuidAuditedModel):
             self.set_registry()
             self.set_tags(previous_config)
         except Config.DoesNotExist:
-            pass
+            self.set_tags({'tags': {}})
 
         return super(Config, self).save(**kwargs)

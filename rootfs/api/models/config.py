@@ -92,7 +92,7 @@ class Config(UuidAuditedModel):
     def set_tags(self, previous_config):
         """verify the tags exist on any nodes as labels"""
         if not self.tags:
-            if settings.DEIS_DEFAULT_CONFIG_TAGS != '':
+            if settings.DEIS_DEFAULT_CONFIG_TAGS:
                 try:
                     tags = json.loads(settings.DEIS_DEFAULT_CONFIG_TAGS)
                     self.tags = tags

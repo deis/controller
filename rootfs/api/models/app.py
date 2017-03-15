@@ -123,7 +123,13 @@ class App(UuidAuditedModel):
             # FIXME: remove slugrunner's hardcoded entrypoint
             release = self.release_set.filter(failed=False).latest()
             if release.build.dockerfile or not release.build.sha:
-                return [release.build.procfile[container_type]]
+                cmd = release.build.procfile[container_type]
+                # if the entrypoint is `/bin/bash -c`, we want to supply the list
+                # as a script. Otherwise, we want to send it as a list of arguments.
+                if self._get_entrypoint(container_type) == ['/bin/bash', '-c']:
+                    return [cmd]
+                else:
+                    return cmd.split()
 
             return ['start', container_type]
         # if the key is not present or if a parent attribute is None

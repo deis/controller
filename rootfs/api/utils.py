@@ -171,15 +171,14 @@ def async_run(tasks):
     executor.shutdown(wait=True)
 
 
-@asyncio.coroutine
-def async_task(params, loop):
+async def async_task(params, loop):
     """
-    performs an async task
+    Perform a task asynchronously.
     """
     # get the calling function
     logger.debug('Running {}'.format(params))
     # This executes a task in its own thread (in parallel)
-    yield from loop.run_in_executor(None, params)
+    await loop.run_in_executor(None, params)
     logger.debug('Finished running {}'.format(params))
 
 

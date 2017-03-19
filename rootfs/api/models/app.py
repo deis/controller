@@ -632,7 +632,7 @@ class App(UuidAuditedModel):
             req_timeout = 3
 
         # Give the router max of 10 tries or max 30 seconds to become healthy
-        # Uses time module to account for the timout value of 3 seconds
+        # Uses time module to account for the timeout value of 3 seconds
         start = time.time()
         failed = False
         headers = {
@@ -651,7 +651,7 @@ class App(UuidAuditedModel):
                 time.sleep(1)  # just a bit of a buffer
                 continue
 
-            # 30 second timeout (timout per request * 10)
+            # 30 second timeout (timeout per request * 10)
             if (time.time() - start) > (req_timeout * 10):
                 break
 

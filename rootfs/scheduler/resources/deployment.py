@@ -330,7 +330,7 @@ class Deployment(Resource):
 
         # a rough calculation that figures out an overall timeout
         timeout = len(batches) * deploy_timeout
-        self.log(namespace, 'This deployments overall timeout is {}s - batch timout is {}s and there are {} batches to deploy with a total of {} pods'.format(timeout, deploy_timeout, len(batches), replicas))  # noqa
+        self.log(namespace, 'This deployments overall timeout is {}s - batch timeout is {}s and there are {} batches to deploy with a total of {} pods'.format(timeout, deploy_timeout, len(batches), replicas))  # noqa
 
         # check for failed events(when quota exceeded for example)
         self._check_for_failed_events(namespace, labels=labels)

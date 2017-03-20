@@ -5,20 +5,12 @@ branches:
   only:
     - master
 services:
-  - postgresql
   - docker
 env:
   - DOCKER_BUILD_FLAGS="--pull --no-cache"
 sudo: required
-addons:
-  postgresql: "9.4"
 cache: pip
-before_install:
-  - createdb -U postgres deis
-install:
-  - pip install -r rootfs/requirements.txt
-  - pip install -r rootfs/dev_requirements.txt
 script:
   - make test
 after_success:
-  - pushd rootfs/ && codecov && popd
+  - make upload-coverage

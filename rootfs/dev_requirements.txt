@@ -9,7 +9,7 @@ codecov==2.0.5
 
 # mock out python-requests, mostly k8s
 # requests-mock==1.0.0
--e git+https://github.com/helgi/requests-mock.git@class_adapter#egg=request_mock
+git+https://github.com/helgi/requests-mock.git@class_adapter#egg=request_mock
 
 # tail a log and pipe into tbgrep to find all tracebacks
 tbgrep==0.3.0

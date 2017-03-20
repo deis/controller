@@ -32,6 +32,7 @@ _tests/example-*/
 # coverage reports
 .coverage
 coverage.out
+coverage.xml
 htmlcov/
 
 # python virtual environments for testing

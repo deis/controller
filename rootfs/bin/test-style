@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#
+# This script is designed to be run inside the container
+#
+
+# fail hard and fast even on pipelines
+set -eou pipefail
+
+flake8 --show-source

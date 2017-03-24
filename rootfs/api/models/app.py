@@ -191,6 +191,7 @@ class App(UuidAuditedModel):
 
         # create required minimum resources in k8s for the application
         namespace = self.id
+        ingress = self.id
         service = self.id
         quota_name = '{}-quota'.format(self.id)
         try:
@@ -200,7 +201,6 @@ class App(UuidAuditedModel):
                 self._scheduler.ns.get(namespace)
             except KubeException:
                 self._scheduler.ns.create(namespace)
-
             if settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC != '':
                 quota_spec = json.loads(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
                 self.log('creating Quota {} for namespace {}'.format(quota_name, namespace),
@@ -224,6 +224,18 @@ class App(UuidAuditedModel):
 
             raise ServiceUnavailable('Kubernetes resources could not be created') from e
 
+        try:
+            # In order to create an ingress, we must first have a namespace.
+            if settings.EXPERIMENTAL_NATIVE_INGRESS:
+                try:
+                    self._scheduler.ingress.get(ingress)
+                except KubeException:
+                    self.log("creating Ingress {}".format(namespace), level=logging.INFO)
+                    self._scheduler.ingress.create(ingress,
+                                                   namespace,
+                                                   settings.EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME)
+        except KubeException as e:
+            raise ServiceUnavailable('Could not create Ingress in Kubernetes') from e
         try:
             self.appsettings_set.latest()
         except AppSettings.DoesNotExist:

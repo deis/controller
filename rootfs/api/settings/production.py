@@ -260,6 +260,10 @@ random_secret = 'CHANGEME_sapm$s%upvsw5l_zuy_&29rkywd^78ff(qi*#@&*^'
 SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', random_secret)
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
 
+# experimental native ingress
+EXPERIMENTAL_NATIVE_INGRESS = bool(os.environ.get('EXPERIMENTAL_NATIVE_INGRESS', 0))
+EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME = os.environ.get('EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME', '')
+
 # k8s image policies
 SLUGRUNNER_IMAGE = os.environ.get('SLUGRUNNER_IMAGE_NAME', 'quay.io/deisci/slugrunner:canary')  # noqa
 IMAGE_PULL_POLICY = os.environ.get('IMAGE_PULL_POLICY', "IfNotPresent")  # noqa

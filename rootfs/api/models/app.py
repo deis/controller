@@ -227,6 +227,8 @@ class App(UuidAuditedModel):
         try:
             # In order to create an ingress, we must first have a namespace.
             if settings.EXPERIMENTAL_NATIVE_INGRESS:
+                if ingress == "":
+                    raise ServiceUnavailable('Empty hostname')
                 try:
                     self._scheduler.ingress.get(ingress)
                 except KubeException:

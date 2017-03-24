@@ -25,9 +25,6 @@ class Ingress(Resource):
     def create(self, ingress, namespace, hostname):
         url = "/apis/extensions/v1beta1/namespaces/%s/ingresses" % namespace
 
-        if hostname == "":
-            raise KubeHTTPException("empty hostname value")
-
         data = {
             "kind": "Ingress",
             "apiVersion": "extensions/v1beta1",

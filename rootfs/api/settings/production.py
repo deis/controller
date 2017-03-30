@@ -261,7 +261,8 @@ SECRET_KEY = os.environ.get('DEIS_SECRET_KEY', random_secret)
 BUILDER_KEY = os.environ.get('DEIS_BUILDER_KEY', random_secret)
 
 # experimental native ingress
-EXPERIMENTAL_NATIVE_INGRESS = bool(os.environ.get('EXPERIMENTAL_NATIVE_INGRESS', 0))
+EXPERIMENTAL_NATIVE_INGRESS = bool(strtobool(
+    os.environ.get('EXPERIMENTAL_NATIVE_INGRESS', 'false')))
 EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME = os.environ.get('EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME', '')
 
 # k8s image policies

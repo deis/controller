@@ -14,6 +14,10 @@ deploy_hook_urls: ""
 registration_mode: "admin_only"
 # Option to disable ssl verification to connect to k8s api server
 k8s_api_verify_tls: "true"
+# The public resolvable hostname to build your cluster with.
+#
+# This will be the hostname that is used to build endpoints such as "deis.$HOSTNAME"
+platform_domain: ""
 
 global:
   # Set the storage backend
@@ -45,3 +49,9 @@ global:
   host_port: 5555
   # Prefix for the imagepull secret created when using private registry
   secret_prefix: "private-registry"
+  # Experimental feature to toggle using kubernetes ingress instead of the Deis router.
+  #
+  # Valid values are:
+  # - true: The deis controller will now create Kubernetes ingress rules for each app, and ingress rules will automatically be created for the controller itself.
+  # - false: The default mode, and the default behavior of Deis workflow.
+  experimental_native_ingress: false

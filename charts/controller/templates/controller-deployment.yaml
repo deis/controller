@@ -58,6 +58,11 @@ spec:
             # NOTE(bacongobbler): use deis/registry_proxy to work around Docker --insecure-registry requirements
             - name: "DEIS_REGISTRY_SERVICE_HOST"
               value: "127.0.0.1"
+            # Environmental variable value for $EXPERIMENTAL_NATIVE_INGRESS
+            - name: "EXPERIMENTAL_NATIVE_INGRESS"
+              value: "{{ .Values.global.experimental_native_ingress }}"
+            - name: "EXPERIMENTAL_NATIVE_INGRESS_HOSTNAME"
+              value: "{{ .Values.platform_domain }}"
             - name: "K8S_API_VERIFY_TLS"
               value: "{{ .Values.k8s_api_verify_tls }}"
             - name: "DEIS_REGISTRY_SERVICE_PORT"

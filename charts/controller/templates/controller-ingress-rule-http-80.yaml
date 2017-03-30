@@ -1,0 +1,21 @@
+{{ if .Values.global.experimental_native_ingress }}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  namespace: "deis"
+  name: "controller-api-server-ingress-http"
+  labels:
+    app: "controller"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  rules:
+  - host: deis.{{ .Values.platform_domain }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: deis-controller
+          servicePort: 80
+{{- end }}

@@ -68,10 +68,6 @@ test-unit:
 		&& coverage run manage.py test --settings=api.settings.testing --noinput registry api scheduler.tests \
 		&& coverage report -m
 
-test-unit-quick:
-	cd rootfs \
-		&& ./manage.py test --settings=api.settings.testing --noinput --parallel ${TEST_PROCS} registry api scheduler.tests
-
 test-functional:
 	@echo "Implement functional tests in _tests directory"
 

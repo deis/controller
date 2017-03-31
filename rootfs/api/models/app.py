@@ -20,14 +20,12 @@ from jsonfield import JSONField
 
 from api.models import get_session
 from api.models import UuidAuditedModel, AlreadyExists, DeisException, ServiceUnavailable
-
-from api.utils import generate_app_name, async_run
 from api.models.config import Config
 from api.models.domain import Domain
 from api.models.release import Release
 from api.models.tls import TLS
 from api.models.appsettings import AppSettings
-
+from api.utils import generate_app_name, async_run
 from scheduler import KubeHTTPException, KubeException
 
 logger = logging.getLogger(__name__)
@@ -69,7 +67,7 @@ class App(UuidAuditedModel):
     """
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    id = models.SlugField(max_length=24, unique=True, null=True,
+    id = models.SlugField(max_length=63, unique=True, null=True,
                           validators=[validate_app_id,
                                       validate_reserved_names])
     structure = JSONField(default={}, blank=True, validators=[validate_app_structure])

@@ -70,6 +70,21 @@ class AppTest(DeisTestCase):
         response = self.client.delete(url)
         self.assertEqual(response.status_code, 204, response.data)
 
+    def test_app_name_length(self, mock_requests):
+        """
+        Test that the app name length cannot be longer than the maximum length dictated by
+        Kubernetes' maximum service name length.
+        """
+        name = 'a' * 64
+        body = {'id': name}
+        response = self.client.post('/v2/apps', body)
+        print(response)
+        self.assertEqual(
+            response.data,
+            {'id': ['Ensure this field has no more than 63 characters.']}
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_response_data(self, mock_requests):
         """Test that the serialized response contains only relevant data."""
         body = {'id': 'app-{}'.format(random.randrange(1000, 10000))}

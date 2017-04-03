@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#
+# This script is designed to be run inside the container
+#
+
+# fail hard and fast even on pipelines
+set -eou pipefail
+
+sudo -u postgres "$PGBIN"/pg_ctl -D "$PGDATA" -l /tmp/logfile start
+python3 manage.py check
+coverage run manage.py test --settings=api.settings.testing --noinput registry api scheduler.tests
+coverage report -m

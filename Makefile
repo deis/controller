@@ -6,7 +6,7 @@ SHORT_NAME ?= $(COMPONENT)
 
 include versioning.mk
 
-SHELLCHECK_PREFIX := docker run --rm -v ${CURDIR}:/workdir -w /workdir quay.io/deis/shell-dev shellcheck
+SHELLCHECK_PREFIX := docker run -v ${CURDIR}:/workdir -w /workdir quay.io/deis/shell-dev shellcheck
 SHELL_SCRIPTS = $(wildcard rootfs/bin/*) $(shell find "rootfs" -name '*.sh') $(wildcard _scripts/*.sh)
 
 # Test processes used in quick unit testing
@@ -30,6 +30,9 @@ docker-build: check-docker
 	docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
+docker-build-test: check-docker
+	docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE}.test -f rootfs/Dockerfile.test rootfs
+
 deploy: check-kubectl docker-build docker-push
 	kubectl --namespace=deis patch deployment deis-$(COMPONENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(IMAGE)"}]'
 
@@ -42,31 +45,14 @@ commit-hook:
 full-clean: check-docker
 	docker images -q $(IMAGE_PREFIX)$(COMPONENT) | xargs docker rmi -f
 
-postgres: check-docker
-	docker start postgres || docker run --restart="always" -d -p 5432:5432 --name postgres postgres:9.3
-	docker exec postgres createdb -U postgres deis 2>/dev/null || true
-	@echo "To use postgres for local development:"
-	@echo "    export DEIS_DATABASE_SERVICE_HOST=`docker-machine ip $$(docker-machine active) 2>/dev/null || echo 127.0.0.1`"
-	@echo "    export DEIS_DATABASE_SERVICE_PORT=5432"
-	@echo "    export DEIS_DATABASE_USER=postgres"
+test: test-style test-unit test-functional
 
-setup-venv:
-	python3 -m venv venv
-	venv/bin/pip3 install --disable-pip-version-check -q -r rootfs/requirements.txt -r rootfs/dev_requirements.txt
-
-test: test-style test-check test-unit test-functional
-
-test-check:
-	cd rootfs && python manage.py check
-
-test-style:
-	cd rootfs && flake8 --show-source
+test-style: docker-build-test
+	docker run -v ${CURDIR}:/test -w /test/rootfs ${IMAGE}.test /test/rootfs/bin/test-style
 	${SHELLCHECK_PREFIX} $(SHELL_SCRIPTS)
 
-test-unit:
-	cd rootfs \
-		&& coverage run manage.py test --settings=api.settings.testing --noinput registry api scheduler.tests \
-		&& coverage report -m
+test-unit: docker-build-test
+	docker run -v ${CURDIR}:/test -w /test/rootfs ${IMAGE}.test /test/rootfs/bin/test-unit
 
 test-functional:
 	@echo "Implement functional tests in _tests directory"
@@ -74,4 +60,8 @@ test-functional:
 test-integration:
 	@echo "Check https://github.com/deis/workflow-e2e for the complete integration test suite"
 
-.PHONY: build clean commit-hook full-clean postgres setup-venv test test-style test-unit test-functional
+upload-coverage:
+	$(eval CI_ENV := $(shell curl -s https://codecov.io/env | bash))
+	docker run ${CI_ENV} -v ${CURDIR}:/test -w /test/rootfs ${IMAGE}.test codecov --required
+
+.PHONY: check-kubectl check-docker build docker-build docker-build-test deploy clean commit-hook full-clean test test-style test-unit test-functional test-integration upload-coverage

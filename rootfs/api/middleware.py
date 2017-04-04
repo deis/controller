@@ -1,7 +1,7 @@
 """
 HTTP middleware for the Deis REST API.
 
-See https://docs.djangoproject.com/en/1.10/topics/http/middleware/
+See https://docs.djangoproject.com/en/1.11/topics/http/middleware/
 """
 
 from api import __version__
@@ -11,6 +11,7 @@ class APIVersionMiddleware(object):
     """
     Include that REST API version with each response.
     """
+
     def __init__(self, get_response):
         self.get_response = get_response
 

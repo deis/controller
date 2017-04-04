@@ -9,16 +9,16 @@ import ldap
 from django_auth_ldap.config import LDAPSearch, GroupOfNamesType
 
 # A boolean that turns on/off debug mode.
-# https://docs.djangoproject.com/en/1.9/ref/settings/#debug
+# https://docs.djangoproject.com/en/1.11/ref/settings/#debug
 DEBUG = bool(os.environ.get('DEIS_DEBUG', False))
 
 # If set to True, Django's normal exception handling of view functions
 # will be suppressed, and exceptions will propagate upwards
-# https://docs.djangoproject.com/en/1.9/ref/settings/#debug-propagate-exceptions
+# https://docs.djangoproject.com/en/1.11/ref/settings/#debug-propagate-exceptions
 DEBUG_PROPAGATE_EXCEPTIONS = False
 
 # Silence two security messages around SSL as router takes care of them
-# https://docs.djangoproject.com/en/1.9/ref/checks/#security
+# https://docs.djangoproject.com/en/1.11/ref/checks/#security
 SILENCED_SYSTEM_CHECKS = [
     'security.W004',
     'security.W008'
@@ -27,7 +27,7 @@ SILENCED_SYSTEM_CHECKS = [
 CONN_MAX_AGE = 60 * 3
 
 # SECURITY: change this to allowed fqdn's to prevent host poisioning attacks
-# https://docs.djangoproject.com/en/1.6/ref/settings/#allowed-hosts
+# https://docs.djangoproject.com/en/1.11/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = ['*']
 
 # Local time zone for this installation. Choices can be found here:
@@ -42,7 +42,7 @@ LANGUAGE_CODE = 'en-us'
 
 # If you set this to False, Django will make some optimizations so as not
 # to load the internationalization machinery.
-# https://docs.djangoproject.com/en/1.9/ref/settings/#use-i18n
+# https://docs.djangoproject.com/en/1.11/ref/settings/#use-i18n
 USE_I18N = False
 
 # If you set this to False, Django will not format dates, numbers and
@@ -140,7 +140,7 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 
 # Honor HTTPS from a trusted proxy
-# see https://docs.djangoproject.com/en/1.6/ref/settings/#secure-proxy-ssl-header
+# see https://docs.djangoproject.com/en/1.11/ref/settings/#secure-proxy-ssl-header
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # standard datetime format used for logging, model timestamps, etc.
@@ -353,7 +353,7 @@ DATABASES = {
         'PASSWORD': os.environ.get('DEIS_DATABASE_PASSWORD', ''),
         'HOST': os.environ.get('DEIS_DATABASE_SERVICE_HOST', ''),
         'PORT': os.environ.get('DEIS_DATABASE_SERVICE_PORT', 5432),
-        # https://docs.djangoproject.com/en/1.9/ref/databases/#persistent-connections
+        # https://docs.djangoproject.com/en/1.11/ref/databases/#persistent-connections
         'CONN_MAX_AGE': 600,
     }
 }

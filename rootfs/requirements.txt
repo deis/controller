@@ -18,6 +18,6 @@ pyasn1==0.2.3
 psycopg2==2.7.1
 pyldap==2.4.28
 pyOpenSSL==16.2.0
-pytz==2016.10
+pytz==2017.2
 requests==2.13.0
 requests-toolbelt==0.7.1

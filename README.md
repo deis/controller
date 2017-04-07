@@ -23,59 +23,30 @@ The Controller is the central API server for [Deis Workflow][workflow]. It is in
 
 # Development
 
-The Deis project welcomes contributions from all developers. The high level process for development matches many other open source projects. See below for an outline.
+The Deis project welcomes contributions from all developers. The high-level process for development matches many other open source projects. See below for an outline.
 
 * Fork this repository
 * Make your changes
 * [Submit a pull request][prs] (PR) to this repository with your changes, and unit tests whenever possible.
   * If your PR fixes any [issues][issues], make sure you write Fixes #1234 in your PR description (where #1234 is the number of the issue you're closing)
-* The Deis core contributors will review your code. After each of them sign off on your code, they'll label your PR with LGTM1 and LGTM2 (respectively). Once that happens, the contributors will merge it
+* Deis project maintainers will review your code.
+* After two maintainers approve it, they will merge your PR.
 
 ## Prerequisites
 
+### Docker
+
+Unit tests and code linters for controller run in a Docker container with your local code directory
+mounted in. You need [Docker][] to run `make test`.
+
 ### Kubernetes
 
-In order to do development on this component, you'll need a working Kubernetes cluster. If you don't have one, follow the [installation instructions][install-k8s] and note that Controller currently targets version 1.2 and higher.
+You'll want to test your code changes interactively in a working Kubernetes cluster. Follow the
+[installation instructions][install-k8s] if you need Kubernetes.
 
 ### Workflow Installation
 
 After you have a working Kubernetes cluster, you're ready to [install Workflow](https://deis.com/docs/workflow/installing-workflow/).
-
-### Postgresql
-
-The application and tests use PostgreSQL. To start a local instance via Docker, run `make postgres` and set the following in your shell:
-```
-  export DEIS_DATABASE_SERVICE_HOST=`docker-machine ip $(docker-machine active) 2>/dev/null || echo 127.0.0.1`
-  export DEIS_DATABASE_SERVICE_PORT=5432
-  export DEIS_DATABASE_USER=postgres
-```
-
-### Python
-
-Python 3.5.2 is a minimum requirement and can be installed via `pyenv`:
-
-```
-brew install pyenv
-```
-
-- After installing, ensure [`eval "$(pyenv init -)"` is added to your shell startup.](https://github.com/yyuu/pyenv/#homebrew-on-mac-os-x)
-- Install and use Python 3.5.2:
-```
-pyenv install 3.5.2
-# if you have build issues, ensure Xcode CLI tools are installed:https://github.com/yyuu/pyenv/issues/451#issuecomment-151336786
-pyenv local 3.5.2 # use Python 3.5.2 in your current directory
-```
-
-Or via your package manager. For example, on Debian Jessie:
-
-```
-apt-get install python3 python3-dev python3-venv
-```
-
-With the correct Python in place the quickest way to get up and running is to run `make setup-venv` which will install the Python specific dependencies via [PIP](https://pip.pypa.io/en/stable/) inside an isolated [virtualenv][virtualenv].
-Running `python --version` to verify the correct version is recommend.
-
-Follow the linked documentation to learn about [virtualenv][virtualenv] and how to `activate` and `deactivate` the environment.
 
 ## Testing Your Code
 
@@ -114,8 +85,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 
 [install-k8s]: http://kubernetes.io/gettingstarted/
-[repl-controller]: http://kubernetes.io/docs/user-guide/replication-controller/
 [issues]: https://github.com/deis/controller/issues
 [prs]: https://github.com/deis/controller/pulls
 [workflow]: https://github.com/deis/workflow
-[virtualenv]: https://docs.python.org/3/library/venv.html
+[Docker]: https://www.docker.com/

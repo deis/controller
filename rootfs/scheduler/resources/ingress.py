@@ -55,7 +55,7 @@ class Ingress(Resource):
         return response
 
     def delete(self, namespace, ingress):
-        url = self.api("/namespaces/{}/ingresses/{}", namespace, ingress)
+        url = "/apis/extensions/v1beta1/namespaces/%s/ingresses/%s" % (namespace, ingress)
         response = self.http_delete(url)
         if self.unhealthy(response.status_code):
             raise KubeHTTPException(response, 'delete Ingress "{}"', namespace)

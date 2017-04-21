@@ -127,7 +127,7 @@ class Pod(Resource):
         spec['restartPolicy'] = kwargs.get('restartPolicy', 'Always')
 
         # apply tags as needed to restrict pod to particular node(s)
-        spec['nodeSelector'] = kwargs.get('tags', {})
+        spec['nodeSelector'] = kwargs.get('tags', {'role': 'worker'})
 
         # How long until a pod is forcefully terminated. 30 is kubernetes default
         spec['terminationGracePeriodSeconds'] = kwargs.get('pod_termination_grace_period_seconds', 30)  # noqa

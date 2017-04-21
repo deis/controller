@@ -140,14 +140,21 @@ class Pod(Resource):
                 'secret': {
                     'secretName': 'objectstorage-keyfile'
                 }
+            }, {
+                'name': 'slugdir',
+                'emptyDir': {}
             }]
 
             # added to kwargs to send to the container function
             kwargs['volumeMounts'] = [{
-                'name': 'objectstorage-keyfile',
-                'mountPath': '/var/run/secrets/deis/objectstore/creds',
-                'readOnly': True
+                'name': 'slugdir',
+                'mountPath': '/app'
             }]
+
+            container_manifest = self._get_init_container_manifest(**kwargs)
+            if 'annotations' not in manifest['metadata']:
+                manifest['metadata']['annotations'] = {}
+            manifest['metadata']['annotations']['pod.beta.kubernetes.io/init-containers'] = '[{}]'.format(str(container_manifest).replace("'","\""))  # noqa
 
         # create the base container
         container = {}
@@ -169,6 +176,34 @@ class Pod(Resource):
 
         spec['containers'] = [container]
 
+        return manifest
+
+    def _get_init_container_manifest(self, **kwargs):
+        env = kwargs.get('envs', {})
+        manifest = {
+            "name": "slug-downloader",
+            "image": "quay.io/deis/base:v0.3.5",
+            "imagePullPolicy": "IfNotPresent",
+            "command": ["/bin/bash"],
+            "args": ["-c", "curl https://storage.googleapis.com/object-storage-cli/bb8e054/objstorage-bb8e054-linux-amd64 -o /bin/objstorage && chmod +x /bin/objstorage && GET_PATH=/slugdir/slug.tgz && export BUCKET_FILE=/var/run/secrets/deis/objectstore/creds/builder-bucket && if [ $BUILDER_STORAGE == minio ]; then mkdir -p /app/objectstore/minio && echo git > /app/objectstore/minio/builder-bucket && export BUCKET_FILE=/app/objectstore/minio/builder-bucket; elif [ $BUILDER_STORAGE == azure ] || [ $BUILDER_STORAGE == swift ]; then export CONTAINER_FILE=/var/run/secrets/deis/objectstore/creds/builder-container; fi && objstorage --storage-type=$BUILDER_STORAGE download $SLUG_URL $GET_PATH && tar -xzf $GET_PATH -C /slugdir && rm $GET_PATH"],  # noqa
+            "volumeMounts": [
+                {
+                    "name": "slugdir",
+                    "mountPath": "/slugdir"
+                },
+                {
+                    "name": "objectstorage-keyfile",
+                    "mountPath": "/var/run/secrets/deis/objectstore/creds"
+                }
+            ]
+        }
+        manifest['env'] = []
+        for key in ['BUILDER_STORAGE', 'DEIS_MINIO_SERVICE_PORT', 'DEIS_MINIO_SERVICE_HOST', 'SLUG_URL']:  # noqa
+            item = {
+                "name": key,
+                "value": env.get(key, {})
+            }
+            manifest["env"].append(item)
         return manifest
 
     def _set_container(self, namespace, container_name, data, **kwargs):

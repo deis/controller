@@ -717,7 +717,7 @@ class App(UuidAuditedModel):
         # cast content to string since it comes as bytes via the requests object
         return str(r.content.decode('utf-8'))
 
-    def run(self, user, command):
+    def run(self, user, command, image=None):
         def pod_name(size=5, chars=string.ascii_lowercase + string.digits):
             return ''.join(random.choice(chars) for _ in range(size))
 
@@ -728,7 +728,11 @@ class App(UuidAuditedModel):
 
         app_settings = self.appsettings_set.latest()
         # use slugrunner image for app if buildpack app otherwise use normal image
-        image = settings.SLUGRUNNER_IMAGE if release.build.type == 'buildpack' else release.image
+        if image is None:
+            if release.build.type == 'buildpack':
+                image = settings.SLUGRUNNER_IMAGE
+            else:
+                image = release.image
 
         data = self._gather_app_settings(release, app_settings, process_type='run', replicas=1)
 

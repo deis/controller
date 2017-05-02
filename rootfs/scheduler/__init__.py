@@ -312,7 +312,7 @@ class KubeHTTPClient(object):
 
         try:
             # give pod 20 minutes to execute (after it got into ready state)
-            # this is a fairly arbitrary limit but the gunicorn worker / LBs
+            # this is a fairly arbitrary limit but the daphne worker / LBs
             # will make this timeout around 20 anyway.
             # TODO: Revisit in the future so it can run longer
             state = 'up'  # pod is still running

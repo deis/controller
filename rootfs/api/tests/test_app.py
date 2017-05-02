@@ -743,8 +743,8 @@ class AppTest(DeisTestCase):
 
 
 FAKE_LOG_DATA = bytes("""
-2013-08-15 12:41:25 [33454] [INFO] Starting gunicorn 17.5
-2013-08-15 12:41:25 [33454] [INFO] Listening at: http://0.0.0.0:5000 (33454)
-2013-08-15 12:41:25 [33454] [INFO] Using worker: sync
-2013-08-15 12:41:25 [33457] [INFO] Booting worker with pid 33457
+2016-12-09 18:50:48 circus[24] [INFO] Starting master on pid 24
+2016-12-09 18:50:48 circus[24] [INFO] Arbiter now waiting for commands
+2016-12-09 18:50:48 circus[24] [INFO] interface started
+2016-12-09 18:50:48 circus[24] [INFO] worker started
 """, 'utf-8')

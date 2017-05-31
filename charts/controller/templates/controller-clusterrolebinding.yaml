@@ -1,0 +1,19 @@
+{{- if (.Values.global.use_rbac) -}}
+{{- if (.Capabilities.APIVersions.Has (include "rbacAPIVersion" .)) -}}
+kind: ClusterRoleBinding
+apiVersion: {{ template "rbacAPIVersion" . }}
+metadata:
+  name: deis:deis-controller
+  labels:
+    app: deis-controller
+    heritage: deis
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: deis:deis-controller
+subjects:
+- kind: ServiceAccount
+  name: deis-controller
+  namespace: {{ .Release.Namespace }}
+{{- end -}}
+{{- end -}}

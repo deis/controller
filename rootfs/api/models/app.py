@@ -571,6 +571,10 @@ class App(UuidAuditedModel):
         # cleanup old release objects from kubernetes
         release.cleanup_old()
 
+        # mark release as deployed
+        release.deployed = True
+        release.save()
+
     def _check_deployment_in_progress(self, deploys, force_deploy=False):
         if force_deploy:
             return

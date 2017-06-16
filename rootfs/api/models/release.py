@@ -24,6 +24,7 @@ class Release(UuidAuditedModel):
     version = models.PositiveIntegerField()
     summary = models.TextField(blank=True, null=True)
     failed = models.BooleanField(default=False)
+    deployed = models.BooleanField(default=True)
 
     config = models.ForeignKey('Config', on_delete=models.CASCADE)
     build = models.ForeignKey('Build', null=True, on_delete=models.CASCADE)
@@ -70,7 +71,7 @@ class Release(UuidAuditedModel):
             # Build Pack - Registry URL not prepended since slugrunner image will download slug
             return self.build.image
 
-    def new(self, user, config, build, summary=None, source_version='latest'):
+    def new(self, user, config, build, summary=None, source_version='latest', deployed=False):
         """
         Create a new application release using the provided Build and Config
         on behalf of a user.
@@ -82,7 +83,8 @@ class Release(UuidAuditedModel):
         # create new release and auto-increment version
         release = Release.objects.create(
             owner=user, app=self.app, config=config,
-            build=build, version=new_version, summary=summary
+            build=build, version=new_version, summary=summary,
+            deployed=deployed
         )
 
         try:
@@ -229,7 +231,8 @@ class Release(UuidAuditedModel):
                 build=prev.build,
                 config=prev.config,
                 summary="{} rolled back to v{}".format(user, version),
-                source_version='v{}'.format(version)
+                source_version='v{}'.format(version),
+                deployed=True
             )
 
             if self.build is not None:

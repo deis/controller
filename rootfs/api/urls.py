@@ -25,6 +25,8 @@ urlpatterns = [
         views.BuildViewSet.as_view({'get': 'list', 'post': 'create'})),
     url(r"^apps/(?P<id>{})/releases/v(?P<version>[0-9]+)/?$".format(settings.APP_URL_REGEX),
         views.ReleaseViewSet.as_view({'get': 'retrieve'})),
+    url(r"^apps/(?P<id>{})/releases/deploy/?$".format(settings.APP_URL_REGEX),
+        views.ReleaseViewSet.as_view({'post': 'deploy'})),
     url(r"^apps/(?P<id>{})/releases/rollback/?$".format(settings.APP_URL_REGEX),
         views.ReleaseViewSet.as_view({'post': 'rollback'})),
     url(r"^apps/(?P<id>{})/releases/?$".format(settings.APP_URL_REGEX),

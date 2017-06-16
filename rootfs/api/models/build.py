@@ -17,6 +17,7 @@ class Build(UuidAuditedModel):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     app = models.ForeignKey('App', on_delete=models.CASCADE)
     image = models.TextField()
+    deploy_now = models.BooleanField(default=True)
 
     # optional fields populated by builder
     sha = models.CharField(max_length=40, blank=True)
@@ -62,7 +63,8 @@ class Build(UuidAuditedModel):
                 config=latest_release.config,
                 source_version=self.version
             )
-            self.app.deploy(new_release)
+            if self.deploy_now is True:
+                self.app.deploy(new_release)
             return new_release
         except Exception as e:
             # check if the exception is during create or publish

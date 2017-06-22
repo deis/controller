@@ -424,6 +424,40 @@ class Release(UuidAuditedModel):
                     changes = 'changed limits for '+', '.join(changes)
                     self.summary += "{} {}".format(self.config.owner, changes)
 
+                # if the lifecycle_post_start hooks changed, log the dict diff
+                changes = []
+                old_lifecycle_post_start = old_config.lifecycle_post_start if old_config else {}
+                diff = dict_diff(self.config.lifecycle_post_start, old_lifecycle_post_start)
+                # try to be as succinct as possible
+                added = ', '.join(k for k in diff.get('added', {}))
+                added = 'added lifecycle_post_start  ' + added if added else ''
+                changed = ', '.join(k for k in diff.get('changed', {}))
+                changed = 'changed lifecycle_post_start ' + changed if changed else ''
+                deleted = ', '.join(k for k in diff.get('deleted', {}))
+                deleted = 'deleted lifecycle_post_start ' + deleted if deleted else ''
+                changes = ', '.join(i for i in (added, changed, deleted) if i)
+                if changes:
+                    if self.summary:
+                        self.summary += ' and '
+                    self.summary += "{} {}".format(self.config.owner, changes)
+
+                # if the lifecycle_post_start hooks changed, log the dict diff
+                changes = []
+                old_lifecycle_post_start = old_config.lifecycle_post_start if old_config else {}
+                diff = dict_diff(self.config.lifecycle_post_start, old_lifecycle_post_start)
+                # try to be as succinct as possible
+                added = ', '.join(k for k in diff.get('added', {}))
+                added = 'added lifecycle_post_start  ' + added if added else ''
+                changed = ', '.join(k for k in diff.get('changed', {}))
+                changed = 'changed lifecycle_post_start ' + changed if changed else ''
+                deleted = ', '.join(k for k in diff.get('deleted', {}))
+                deleted = 'deleted lifecycle_post_start ' + deleted if deleted else ''
+                changes = ', '.join(i for i in (added, changed, deleted) if i)
+                if changes:
+                    if self.summary:
+                        self.summary += ' and '
+                    self.summary += "{} {}".format(self.config.owner, changes)
+
                 # if the tags changed, log the dict diff
                 changes = []
                 old_tags = old_config.tags if old_config else {}

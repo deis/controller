@@ -1082,6 +1082,8 @@ class App(UuidAuditedModel):
             'app_type': process_type,
             'build_type': release.build.type,
             'healthcheck': healthcheck,
+            'lifecycle_post_start': config.lifecycle_post_start,
+            'lifecycle_pre_stop': config.lifecycle_pre_stop,
             'routable': routable,
             'deploy_batches': batches,
             'deploy_timeout': deploy_timeout,

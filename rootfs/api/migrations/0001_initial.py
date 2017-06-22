@@ -73,6 +73,8 @@ class Migration(migrations.Migration):
                 ('updated', models.DateTimeField(auto_now=True)),
                 ('values', jsonfield.fields.JSONField(default={}, blank=True)),
                 ('memory', jsonfield.fields.JSONField(default={}, blank=True)),
+                ('lifecycle_post_start', jsonfield.fields.JSONField(default={}, blank=True)),
+                ('lifecycle_pre_stop', jsonfield.fields.JSONField(default={}, blank=True)),
                 ('cpu', jsonfield.fields.JSONField(default={}, blank=True)),
                 ('tags', jsonfield.fields.JSONField(default={}, blank=True)),
                 ('app', models.ForeignKey(to='api.App')),

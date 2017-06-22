@@ -210,6 +210,8 @@ class ConfigSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
     values = JSONFieldSerializer(required=False, binary=True)
     memory = JSONFieldSerializer(required=False, binary=True)
+    lifecycle_post_start = JSONFieldSerializer(required=False, binary=True)
+    lifecycle_pre_stop = JSONFieldSerializer(required=False, binary=True)
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)

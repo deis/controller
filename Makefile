@@ -33,7 +33,7 @@ docker-build: check-docker
 docker-build-test: check-docker
 	docker build ${DOCKER_BUILD_FLAGS} -t ${IMAGE}.test -f rootfs/Dockerfile.test rootfs
 
-deploy: check-kubectl docker-build docker-push
+deploy: docker-build docker-push
 	kubectl --namespace=deis patch deployment deis-$(COMPONENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(IMAGE)"}]'
 
 clean: check-docker

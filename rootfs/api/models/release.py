@@ -441,17 +441,17 @@ class Release(UuidAuditedModel):
                         self.summary += ' and '
                     self.summary += "{} {}".format(self.config.owner, changes)
 
-                # if the lifecycle_post_start hooks changed, log the dict diff
+                # if the lifecycle_pre_stop hooks changed, log the dict diff
                 changes = []
-                old_lifecycle_post_start = old_config.lifecycle_post_start if old_config else {}
-                diff = dict_diff(self.config.lifecycle_post_start, old_lifecycle_post_start)
+                old_lifecycle_pre_stop = old_config.lifecycle_pre_stop if old_config else {}
+                diff = dict_diff(self.config.lifecycle_pre_stop, old_lifecycle_pre_stop)
                 # try to be as succinct as possible
                 added = ', '.join(k for k in diff.get('added', {}))
-                added = 'added lifecycle_post_start  ' + added if added else ''
+                added = 'added lifecycle_pre_stop  ' + added if added else ''
                 changed = ', '.join(k for k in diff.get('changed', {}))
-                changed = 'changed lifecycle_post_start ' + changed if changed else ''
+                changed = 'changed lifecycle_pre_stop ' + changed if changed else ''
                 deleted = ', '.join(k for k in diff.get('deleted', {}))
-                deleted = 'deleted lifecycle_post_start ' + deleted if deleted else ''
+                deleted = 'deleted lifecycle_pre_stop ' + deleted if deleted else ''
                 changes = ', '.join(i for i in (added, changed, deleted) if i)
                 if changes:
                     if self.summary:

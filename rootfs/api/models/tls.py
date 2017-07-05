@@ -18,6 +18,17 @@ class TLS(UuidAuditedModel):
     def __str__(self):
         return "{}-{}".format(self.app.id, str(self.uuid)[:7])
 
+    def _load_service_config(self, app, component):
+        config = super()._load_service_config(app, component)
+
+        # See if the ssl.enforce annotation is available
+        if 'ssl' not in config:
+            config['ssl'] = {}
+        if 'enforce' not in config['ssl']:
+            config['ssl']['enforce'] = 'false'
+
+        return config
+
     def _check_previous_tls_settings(self):
         try:
             previous_tls_settings = self.app.tls_set.latest()
@@ -40,12 +51,6 @@ class TLS(UuidAuditedModel):
         # get config for the service
         config = self._load_service_config(app, 'router')
 
-        # See if the ssl.enforce annotation is available
-        if 'ssl' not in config:
-            config['ssl'] = {}
-        if 'enforce' not in config['ssl']:
-            config['ssl']['enforce'] = 'false'
-
         # convert from bool to string
         config['ssl']['enforce'] = str(https_enforced)
 
@@ -53,3 +58,17 @@ class TLS(UuidAuditedModel):
 
         # Save to DB
         return super(TLS, self).save(*args, **kwargs)
+
+    def sync(self):
+        try:
+            app = str(self.app)
+
+            config = self._load_service_config(app, 'router')
+            if (
+                config['ssl']['enforce'] != str(self.https_enforced) and
+                self.https_enforced is not None
+            ):
+                config['ssl']['enforce'] = str(self.https_enforced)
+                self._save_service_config(app, 'router', config)
+        except TLS.DoesNotExist:
+            pass

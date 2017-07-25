@@ -291,7 +291,7 @@ class Pod(Resource):
             lifecycle = defaultdict(dict)
 
             if lifecycle_post_start:
-                lifecycle["postStart"] = {               
+                lifecycle["postStart"] = {
                         'exec': {
                             "command": [
                                 "/bin/bash",
@@ -301,7 +301,7 @@ class Pod(Resource):
                         }
                 }
             if lifecycle_pre_stop:
-                lifecycle["preStop"] = {               
+                lifecycle["preStop"] = {
                         'exec': {
                             "command": [
                                 "/bin/bash",

@@ -17,7 +17,7 @@ packaging==16.8
 pyasn1==0.2.3
 psycopg2==2.7.1
 pyldap==2.4.37
-pyOpenSSL==17.0.0
+pyOpenSSL==17.2.0
 pytz==2017.2
 requests==2.14.2
 requests-toolbelt==0.8.0

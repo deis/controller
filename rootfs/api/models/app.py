@@ -198,7 +198,11 @@ class App(UuidAuditedModel):
             try:
                 self._scheduler.ns.get(namespace)
             except KubeException:
-                self._scheduler.ns.create(namespace)
+                try:
+                    self._scheduler.ns.create(namespace)
+                except KubeException as e:
+                    raise ServiceUnavailable('Could not create the Namespace in Kubernetes') from e
+
             if settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC != '':
                 quota_spec = json.loads(settings.KUBERNETES_NAMESPACE_DEFAULT_QUOTA_SPEC)
                 self.log('creating Quota {} for namespace {}'.format(quota_name, namespace),

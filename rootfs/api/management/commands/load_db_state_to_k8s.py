@@ -48,6 +48,7 @@ class Command(BaseCommand):
             try:
                 app.save()
                 app.config_set.latest().save()
+                app.tls_set.latest().sync()
             except DeisException as error:
                 print('ERROR: Problem saving to model {} for {}'
                       'due to {}'.format(str(App.__name__), str(app), str(error)))

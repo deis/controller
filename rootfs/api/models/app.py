@@ -71,6 +71,7 @@ class App(UuidAuditedModel):
                           validators=[validate_app_id,
                                       validate_reserved_names])
     structure = JSONField(default={}, blank=True, validators=[validate_app_structure])
+    procfile_structure = JSONField(default={}, blank=True, validators=[validate_app_structure])
 
     class Meta:
         verbose_name = 'Application'
@@ -408,6 +409,7 @@ class App(UuidAuditedModel):
         if new_structure != self.structure:
             # save new structure to the database
             self.structure = new_structure
+            self.procfile_structure = release.build.procfile
             self.save()
 
             try:
@@ -474,6 +476,7 @@ class App(UuidAuditedModel):
         # set processes structure to default if app is new.
         if self.structure == {}:
             self.structure = self._default_structure(release)
+            self.procfile_structure = self._default_structure(release)
             self.save()
         # reset canonical process types if build type has changed.
         else:
@@ -489,7 +492,17 @@ class App(UuidAuditedModel):
                     # update with the default process type.
                     structure.update(self._default_structure(release))
                     self.structure = structure
+                    # if procfile structure exists then we use it
+                    if release.build.procfile and \
+                       release.build.sha and not \
+                       release.build.dockerfile:
+                        self.procfile_structure = release.build.procfile
                     self.save()
+
+        # always set the procfile structure for any new release
+        if release.build.procfile:
+            self.procfile_structure = release.build.procfile
+            self.save()
 
         # deploy application to k8s. Also handles initial scaling
         app_settings = self.appsettings_set.latest()

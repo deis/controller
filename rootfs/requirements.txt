@@ -15,7 +15,7 @@ morph==0.1.2
 ndg-httpsclient==0.4.2
 packaging==16.8
 pyasn1==0.3.2
-psycopg2==2.7.1
+psycopg2==2.7.3
 pyldap==2.4.37
 pyOpenSSL==17.2.0
 pytz==2017.2

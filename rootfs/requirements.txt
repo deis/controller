@@ -7,7 +7,7 @@ django-guardian==1.4.9
 djangorestframework==3.6.3
 docker-py==1.10.6
 gunicorn==19.7.1
-idna==2.5
+idna==2.6
 jmespath==0.9.3
 jsonfield==2.0.2
 jsonschema==2.6.0

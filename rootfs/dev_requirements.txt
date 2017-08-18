@@ -2,7 +2,7 @@
 coverage==4.4.1
 
 # Run "make test-style" to check python syntax and style
-flake8==3.3.0
+flake8==3.4.1
 
 # code coverage report at https://codecov.io/github/deis/controller
 codecov==2.0.9

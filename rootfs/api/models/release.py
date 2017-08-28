@@ -24,6 +24,7 @@ class Release(UuidAuditedModel):
     version = models.PositiveIntegerField()
     summary = models.TextField(blank=True, null=True)
     failed = models.BooleanField(default=False)
+    exception = models.TextField(blank=True, null=True)
 
     config = models.ForeignKey('Config', on_delete=models.CASCADE)
     build = models.ForeignKey('Build', null=True, on_delete=models.CASCADE)
@@ -243,6 +244,8 @@ class Release(UuidAuditedModel):
             if 'new_release' in locals():
                 new_release.failed = True
                 new_release.summary = "{} performed roll back to a release that failed".format(self.owner)  # noqa
+                # Get the exception that has occured
+                new_release.exception = "error: {}".format(str(e))
                 new_release.save()
             raise DeisException(str(e)) from e
 

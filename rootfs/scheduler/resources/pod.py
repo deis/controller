@@ -224,6 +224,8 @@ class Pod(Resource):
 
         self._set_health_checks(data, env, **kwargs)
 
+        self._set_lifecycle_hooks(data, env, **kwargs)
+
     def _set_resources(self, container, kwargs):
         """ Set CPU/memory resource management manifest """
         app_type = kwargs.get("app_type")
@@ -277,6 +279,38 @@ class Pod(Resource):
             container.update(healthchecks)
         elif kwargs.get('routable', False):
             self._default_readiness_probe(container, kwargs.get('build_type'), env.get('PORT', None))  # noqa
+
+    def _set_lifecycle_hooks(self, container, env, **kwargs):
+        app_type = kwargs.get("app_type")
+        lifecycle_post_start = kwargs.get('lifecycle_post_start', {})
+        lifecycle_post_start = lifecycle_post_start.get(app_type)
+        lifecycle_pre_stop = kwargs.get('lifecycle_pre_stop', {})
+        lifecycle_pre_stop = lifecycle_pre_stop.get(app_type)
+        lifecycle = defaultdict(dict)
+        if lifecycle_post_start or lifecycle_pre_stop:
+            lifecycle = defaultdict(dict)
+
+            if lifecycle_post_start:
+                lifecycle["postStart"] = {
+                        'exec': {
+                            "command": [
+                                "/bin/bash",
+                                "-c",
+                                "{0}".format(lifecycle_post_start)
+                            ]
+                        }
+                }
+            if lifecycle_pre_stop:
+                lifecycle["preStop"] = {
+                        'exec': {
+                            "command": [
+                                "/bin/bash",
+                                "-c",
+                                "{0}".format(lifecycle_pre_stop)
+                            ]
+                        }
+                }
+            container["lifecycle"] = dict(lifecycle)
 
     def _default_readiness_probe(self, container, build_type, port=None):
         # Update only the application container with the health check
@@ -344,6 +378,15 @@ class Pod(Resource):
             },
         }
         return readinessprobe
+
+    def _set_custom_termination_period(self, container, period_seconds=900):
+        """
+        Applies a custom terminationGracePeriod only if provided as env variable.
+        """
+        terminationperiod = {
+            'terminationGracePeriodSeconds': int(period_seconds)
+        }
+        container.update(terminationperiod)
 
     def delete(self, namespace, name):
         # get timeout info from pod

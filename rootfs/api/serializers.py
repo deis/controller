@@ -172,11 +172,12 @@ class AppSerializer(serializers.ModelSerializer):
 
     owner = serializers.ReadOnlyField(source='owner.username')
     structure = serializers.JSONField(required=False)
+    procfile_structure = serializers.JSONField(required=False)
 
     class Meta:
         """Metadata options for a :class:`AppSerializer`."""
         model = models.App
-        fields = ['uuid', 'id', 'owner', 'structure', 'created', 'updated']
+        fields = ['uuid', 'id', 'owner', 'structure', 'procfile_structure', 'created', 'updated']
 
 
 class BuildSerializer(serializers.ModelSerializer):
@@ -210,6 +211,8 @@ class ConfigSerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source='owner.username')
     values = JSONFieldSerializer(required=False, binary=True)
     memory = JSONFieldSerializer(required=False, binary=True)
+    lifecycle_post_start = JSONFieldSerializer(required=False, binary=True)
+    lifecycle_pre_stop = JSONFieldSerializer(required=False, binary=True)
     cpu = JSONFieldSerializer(required=False, binary=True)
     tags = JSONFieldSerializer(required=False, binary=True)
     registry = JSONFieldSerializer(required=False, binary=True)

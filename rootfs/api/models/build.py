@@ -72,6 +72,8 @@ class Build(UuidAuditedModel):
             if 'new_release' in locals():
                 new_release.failed = True
                 new_release.summary = "{} deployed {} which failed".format(self.owner, str(self.uuid)[:7])  # noqa
+                # Get the exception that has occured
+                new_release.exception = "error: {}".format(str(e))
                 new_release.save()
             else:
                 self.delete()

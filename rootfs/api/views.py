@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.authtoken.models import Token
+from google_auth.models import regenerate_app_token, get_google_auth_user_by_email
 
 from api import authentication, models, permissions, serializers, viewsets
 from api.models import AlreadyExists, ServiceUnavailable, DeisException, UnprocessableEntity
@@ -137,9 +138,7 @@ class TokenManagementViewSet(GenericViewSet,
         if 'all' in request.data:
             for user in User.objects.all():
                 if not user.is_anonymous:
-                    token = Token.objects.get(user=user)
-                    token.delete()
-                    Token.objects.create(user=user)
+                    refresh_token(user)
             return Response("")
 
         if 'username' in request.data:
@@ -147,11 +146,18 @@ class TokenManagementViewSet(GenericViewSet,
                                     username=request.data['username'])
             self.check_object_permissions(self.request, obj)
 
-        token = Token.objects.get(user=obj)
-        token.delete()
-        token = Token.objects.create(user=obj)
-        return Response({'token': token.key})
+        token = refresh_token(obj)
+        return Response({'token': token})
 
+def refresh_token(user):
+    if settings.GOOGLE_AUTH_CLIENT_ID:
+        google_auth_user = get_google_auth_user_by_email(user.email)
+        new_token = regenerate_app_token(google_auth_user.app_token)
+        return new_token
+    token = Token.objects.get(user=user)
+    token.delete()
+    t = Token.objects.create(user=user)
+    return t.key
 
 class BaseDeisViewSet(viewsets.OwnerViewSet):
     """

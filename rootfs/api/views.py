@@ -149,6 +149,7 @@ class TokenManagementViewSet(GenericViewSet,
         token = refresh_token(obj)
         return Response({'token': token})
 
+
 def refresh_token(user):
     if settings.GOOGLE_AUTH_CLIENT_ID:
         google_auth_user = get_google_auth_user_by_email(user.email)
@@ -158,6 +159,7 @@ def refresh_token(user):
     token.delete()
     t = Token.objects.create(user=user)
     return t.key
+
 
 class BaseDeisViewSet(viewsets.OwnerViewSet):
     """

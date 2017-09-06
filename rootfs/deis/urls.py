@@ -11,6 +11,7 @@ from api.views import LivenessCheckView
 from api.views import ReadinessCheckView
 
 urlpatterns = [
+    url(r'^google_auth/', include('google_auth.urls')),
     url(r'^healthz$', LivenessCheckView.as_view()),
     url(r'^readiness$', ReadinessCheckView.as_view()),
     url(r'^v2/', include('api.urls')),

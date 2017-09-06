@@ -105,7 +105,9 @@ INSTALLED_APPS = (
     'rest_framework',
     'rest_framework.authtoken',
     # Deis apps
-    'api'
+    'api',
+    # Google Auth
+    'google_auth'
 )
 
 AUTHENTICATION_BACKENDS = (
@@ -359,6 +361,19 @@ DATABASES = {
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
+
+# OAuth
+GOOGLE_AUTH_CLIENT_ID = os.environ.get('GOOGLE_AUTH_CLIENT_ID', '')
+GOOGLE_AUTH_CLIENT_SECRET = os.environ.get('GOOGLE_AUTH_CLIENT_SECRET', '')
+GOOGLE_AUTH_AUTHORIZED_DOMAINS= os.environ.get('GOOGLE_AUTH_AUTHORIZED_DOMAINS', '')
+GOOGLE_AUTH_SCOPE = os.environ.get('GOOGLE_AUTH_SCOPE', '')
+GOOGLE_AUTH_REDIRECT_URL = os.environ.get('GOOGLE_AUTH_REDIRECT_URL', '')
+
+if GOOGLE_AUTH_CLIENT_ID:
+    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
+            "google_auth.authentication.GoogleAuthAuthentication",
+            )
+    AUTHENTICATION_BACKENDS = ("google_auth.authentication.GoogleAuthBackend",) + AUTHENTICATION_BACKENDS
 
 # LDAP settings taken from environment variables.
 LDAP_ENDPOINT = os.environ.get('LDAP_ENDPOINT', '')

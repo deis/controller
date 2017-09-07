@@ -58,7 +58,7 @@ test-functional:
 	@echo "Implement functional tests in _tests directory"
 
 test-integration:
-	@echo "Check https://github.com/deis/workflow-e2e for the complete integration test suite"
+	@echo "Check https://github.com/deisthree/workflow-e2e for the complete integration test suite"
 
 upload-coverage:
 	$(eval CI_ENV := $(shell curl -s https://codecov.io/env | bash))

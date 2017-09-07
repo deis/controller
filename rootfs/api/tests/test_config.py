@@ -340,7 +340,7 @@ class ConfigTest(DeisTransactionTestCase):
     def test_config_owner_is_requesting_user(self, mock_requests):
         """
         Ensure that setting the config value is owned by the requesting user
-        See https://github.com/deis/deis/issues/2650
+        See https://github.com/deisthree/deis/issues/2650
         """
         response = self.test_admin_can_create_config_on_other_apps()
         self.assertEqual(response.data['owner'], self.user.username)

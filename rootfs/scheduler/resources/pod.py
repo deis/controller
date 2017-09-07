@@ -290,11 +290,11 @@ class Pod(Resource):
     http://kubernetes.io/docs/user-guide/pod-states/#container-probes
 
     /runner/init is the entry point of the slugrunner.
-    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/Dockerfile#L20
+    https://github.com/deisthree/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/Dockerfile#L20
     Once it downloads the slug it starts running using `exec` which means the pid 1
     will point to the slug/application command instead of entry point once the application has
     started.
-    https://github.com/deis/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/runner/init#L90
+    https://github.com/deisthree/slugrunner/blob/01eac53f1c5f1d1dfa7570bbd6b9e45c00441fea/rootfs/runner/init#L90
 
     This should be added only for the build pack apps when a custom liveness probe is not set to
     make sure that the pod is ready only when the slug is downloaded and started running.

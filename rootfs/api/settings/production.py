@@ -370,9 +370,8 @@ GOOGLE_AUTH_SCOPE = os.environ.get('GOOGLE_AUTH_SCOPE', '')
 GOOGLE_AUTH_REDIRECT_URL = os.environ.get('GOOGLE_AUTH_REDIRECT_URL', '')
 
 if GOOGLE_AUTH_CLIENT_ID:
-    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
-            "google_auth.authentication.GoogleAuthAuthentication",
-            )
+    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] =  ("google_auth.authentication.GoogleAuthAuthentication",) + \
+            REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES']
     AUTHENTICATION_BACKENDS = ("google_auth.authentication.GoogleAuthBackend",) + \
         AUTHENTICATION_BACKENDS
 

@@ -1,7 +1,7 @@
 """
 RESTful view classes for presenting Deis API objects.
 """
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
@@ -232,7 +232,15 @@ class AppViewSet(BaseDeisViewSet):
     def logs(self, request, **kwargs):
         app = self.get_object()
         try:
-            logs = app.logs(request.query_params.get('log_lines', str(settings.LOG_LINES)))
+            tail = False
+            if request.query_params.get('tail', 'false') == 'true':
+                tail = True
+            logs = app.logs(
+                log_lines=request.query_params.get('log_lines', str(settings.LOG_LINES)),
+                tail=tail
+            )
+            if tail:
+                return StreamingHttpResponse(logs, content_type='text/plain')
             return HttpResponse(logs, status=status.HTTP_200_OK, content_type='text/plain')
         except NotFound:
             return HttpResponse(status=status.HTTP_204_NO_CONTENT)

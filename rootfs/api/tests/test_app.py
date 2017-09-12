@@ -136,6 +136,12 @@ class AppTest(DeisTestCase):
         response = self.client.get(url)
         self.assertContains(response, FAKE_LOG_DATA, status_code=200)
 
+        # test logs - success accessing deis-logger with tail
+        mock_response.status_code = 200
+        mock_response.iter_lines = lambda **kwargs: iter([FAKE_LOG_DATA])
+        response = self.client.get(url, {'tail': 'true'})
+        self.assertContains(response, FAKE_LOG_DATA, status_code=200)
+
         # test logs - HTTP request error while accessing deis-logger
         mock_get.side_effect = requests.exceptions.RequestException('Boom!')
         response = self.client.get(url)

@@ -694,13 +694,17 @@ class App(UuidAuditedModel):
         )
 
     @backoff.on_exception(backoff.expo, ServiceUnavailable, max_tries=3)
-    def logs(self, log_lines=str(settings.LOG_LINES)):
+    def logs(self, log_lines=str(settings.LOG_LINES), tail=False):
         """Return aggregated log data for this application."""
         try:
             url = "http://{}:{}/logs/{}?log_lines={}".format(settings.LOGGER_HOST,
                                                              settings.LOGGER_PORT,
                                                              self.id, log_lines)
-            r = requests.get(url)
+            if tail:
+                url = "http://{}:{}/logs/{}/tail".format(settings.LOGGER_HOST,
+                                                         settings.LOGGER_PORT,
+                                                         self.id)
+            r = requests.get(url, stream=tail)
         # Handle HTTP request errors
         except requests.exceptions.RequestException as e:
             msg = "Error accessing deis-logger using url '{}': {}".format(url, e)
@@ -719,6 +723,9 @@ class App(UuidAuditedModel):
             raise ServiceUnavailable('Error accessing deis-logger')
 
         # cast content to string since it comes as bytes via the requests object
+
+        if tail:
+            return r.iter_lines(decode_unicode=True)
         return str(r.content.decode('utf-8'))
 
     def run(self, user, command):

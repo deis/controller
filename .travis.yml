@@ -8,7 +8,7 @@ env:
 services:
 - docker
 script:
-- echo go
+- make test
 after_success:
 - docker login -u $DOCKER_USER -p $DOCKER_PASSWORD $DOCKER_REGISTRY
 - make docker-build docker-push

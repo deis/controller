@@ -725,7 +725,14 @@ class App(UuidAuditedModel):
         # cast content to string since it comes as bytes via the requests object
 
         if tail:
-            return r.iter_lines(decode_unicode=True)
+            def stream_reponse():
+                if r.encoding is None:
+                    r.encoding = 'utf-8'
+                for line in r.iter_lines(decode_unicode=True):
+                    if line:
+                        yield line
+                        yield '\n'
+            return stream_reponse()
         return str(r.content.decode('utf-8'))
 
     def run(self, user, command):

@@ -694,7 +694,7 @@ class App(UuidAuditedModel):
         )
 
     @backoff.on_exception(backoff.expo, ServiceUnavailable, max_tries=3)
-    def logs(self, log_lines=str(settings.LOG_LINES), tail=False):
+    def logs(self, log_lines=str(settings.LOG_LINES), tail=False, process=None):
         """Return aggregated log data for this application."""
         try:
             url = "http://{}:{}/logs/{}?log_lines={}".format(settings.LOGGER_HOST,
@@ -704,6 +704,8 @@ class App(UuidAuditedModel):
                 url = "http://{}:{}/logs/{}/tail".format(settings.LOGGER_HOST,
                                                          settings.LOGGER_PORT,
                                                          self.id)
+                if process:
+                    url = "{}?process={}".format(url, process)
             r = requests.get(url, stream=tail)
         # Handle HTTP request errors
         except requests.exceptions.RequestException as e:

@@ -237,7 +237,8 @@ class AppViewSet(BaseDeisViewSet):
                 tail = True
             logs = app.logs(
                 log_lines=request.query_params.get('log_lines', str(settings.LOG_LINES)),
-                tail=tail
+                tail=tail,
+                process=request.query_params.get('process', None)
             )
             if tail:
                 return StreamingHttpResponse(logs, content_type='text/plain')

@@ -21,4 +21,4 @@ pyOpenSSL==17.2.0
 pytz==2017.2
 requests==2.18.4
 requests-toolbelt==0.8.0
-django-google-auth==0.3.2
+django-google-auth==0.4.0

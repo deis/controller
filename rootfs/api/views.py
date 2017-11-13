@@ -289,6 +289,8 @@ class ConfigViewSet(ReleasableViewSet):
             if hasattr(self, 'release'):
                 self.release.failed = True
                 self.release.summary = "{} deployed a config that failed".format(self.request.user)  # noqa
+                # Get the exception that has occured
+                self.release.exception = "error: {}".format(str(e))
                 self.release.save()
             else:
                 config.delete()

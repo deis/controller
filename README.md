@@ -1,3 +1,4 @@
+
 # Deis Controller
 
 [![Build Status](https://ci.deis.io/job/controller/badge/icon)](https://ci.deis.io/job/controller)
@@ -7,7 +8,7 @@
 
 Deis (pronounced DAY-iss) Workflow is an open source Platform as a Service (PaaS) that adds a developer-friendly layer to any [Kubernetes](http://kubernetes.io) cluster, making it easy to deploy and manage applications on your own servers.
 
-For more information about the Deis Workflow, please visit the main project page at https://github.com/deis/workflow.
+For more information about the Deis Workflow, please visit the main project page at https://github.com/deisthree/workflow.
 
 We welcome your input! If you have feedback, please [submit an issue][issues]. If you'd like to participate in development, please read the "Development" section below and [submit a pull request][prs].
 
@@ -75,17 +76,9 @@ After the `make deploy` finishes, a new pod will be launched but may not be runn
 kubectl get pod --namespace=deis -w | grep deis-controller
 ```
 
-## License
-
-Copyright 2013, 2014, 2015, 2016 Engine Yard, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at <http://www.apache.org/licenses/LICENSE-2.0>
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-
 [install-k8s]: https://kubernetes.io/docs/setup/pick-right-solution
-[issues]: https://github.com/deis/controller/issues
-[prs]: https://github.com/deis/controller/pulls
-[workflow]: https://github.com/deis/workflow
+[issues]: https://github.com/deisthree/controller/issues
+[prs]: https://github.com/deisthree/controller/pulls
+[workflow]: https://github.com/deisthree/workflow
 [Docker]: https://www.docker.com/
+[v2.18]: https://github.com/deisthree/workflow/releases/tag/v2.18.0

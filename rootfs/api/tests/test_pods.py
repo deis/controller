@@ -325,7 +325,7 @@ class PodTest(DeisTransactionTestCase):
             self.assertRegex(pod['name'], app_id + '-(worker|web)-[0-9]{8,10}-[a-z0-9]{5}')
 
     def test_pod_command_format(self, mock_requests):
-        # regression test for https://github.com/deis/deis/pull/1285
+        # regression test for https://github.com/deisthree/deis/pull/1285
         app_id = self.create_app()
 
         # post a new build
@@ -580,7 +580,7 @@ class PodTest(DeisTransactionTestCase):
 
     def test_run_not_fail_on_debug(self, mock_requests):
         """
-        do a run with DEIS_DEBUG on - https://github.com/deis/controller/issues/583
+        do a run with DEIS_DEBUG on - https://github.com/deisthree/controller/issues/583
         """
         env = EnvironmentVarGuard()
         env['DEIS_DEBUG'] = 'true'

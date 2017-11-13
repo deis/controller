@@ -246,7 +246,7 @@ class ConfigSerializer(serializers.ModelSerializer):
             if key == 'HEALTHCHECK_URL':
                 # Only Path information is supported, not query / anchor or anything else
                 # Path is the only thing Kubernetes supports right now
-                # See https://github.com/deis/controller/issues/774
+                # See https://github.com/deisthree/controller/issues/774
                 uri = urlparse(value)
 
                 if not uri.path:

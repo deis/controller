@@ -378,5 +378,6 @@ class AuthTest(DeisTestCase):
     def test_auth_no_ldap_by_default(self, mock_logger):
         """Ensure that LDAP authentication is disabled by default."""
         self.test_auth()
-        # NOTE(bacongobbler): Using https://github.com/deis/controller/issues/1189 as a test case
+        # NOTE(bacongobbler): Using https://github.com/deisthree/controller/issues/1189
+        # as a test case
         mock_logger.warning.assert_not_called()

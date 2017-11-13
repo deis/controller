@@ -64,7 +64,7 @@ class TestLimits(DeisTransactionTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('memory', response.data)
         self.assertEqual(response.data['memory'], {})
-        # regression test for https://github.com/deis/deis/issues/1563
+        # regression test for https://github.com/deisthree/deis/issues/1563
         self.assertNotIn('"', response.data['memory'])
 
         # set an initial limit
@@ -105,7 +105,7 @@ class TestLimits(DeisTransactionTestCase):
         self.assertIn('web', memory)
         self.assertEqual(memory['web'], '1G')
 
-        # regression test for https://github.com/deis/deis/issues/1613
+        # regression test for https://github.com/deisthree/deis/issues/1613
         # ensure that config:set doesn't wipe out previous limits
         body = {'values': json.dumps({'NEW_URL2': 'http://localhost:8080/'})}
         response = self.client.post(url, body)
@@ -193,7 +193,7 @@ class TestLimits(DeisTransactionTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertIn('cpu', response.data)
         self.assertEqual(response.data['cpu'], {})
-        # regression test for https://github.com/deis/deis/issues/1563
+        # regression test for https://github.com/deisthree/deis/issues/1563
         self.assertNotIn('"', response.data['cpu'])
 
         # set an initial limit

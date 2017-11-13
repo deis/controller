@@ -66,7 +66,7 @@ class TestTLS(DeisTransactionTestCase):
         """
         Ensure that a TLS object is created for an App with default values.
 
-        See https://github.com/deis/controller/issues/1042
+        See https://github.com/deisthree/controller/issues/1042
         """
         app_id = self.create_app()
         response = self.client.get('/v2/apps/{}/tls'.format(app_id))

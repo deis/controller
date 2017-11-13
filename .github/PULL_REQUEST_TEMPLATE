@@ -4,5 +4,5 @@ requires deis/workflow#1234
 requires deis/workflow-e2e#5678
 
 
-[docs]: https://github.com/deis/workflow
-[e2e]: https://github.com/deis/workflow-e2e
+[docs]: https://github.com/deisthree/workflow
+[e2e]: https://github.com/deisthree/workflow-e2e

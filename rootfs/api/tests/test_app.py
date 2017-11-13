@@ -90,7 +90,8 @@ class AppTest(DeisTestCase):
         body = {'id': 'app-{}'.format(random.randrange(1000, 10000))}
         response = self.client.post('/v2/apps', body)
         for key in response.data:
-            self.assertIn(key, ['uuid', 'created', 'updated', 'id', 'owner', 'structure'])
+            self.assertIn(key, ['uuid', 'created', 'updated', 'id', 'owner', 'structure',
+                                'procfile_structure'])
         expected = {
             'id': body['id'],
             'owner': self.user.username,

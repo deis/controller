@@ -1,8 +1,8 @@
 sudo: required
 language: go
-
 services:
-  - docker
-
-script:
-  make test
+- docker
+script: make test
+notifications:
+  slack:
+    secure: pWDCV3od8gxvzxh9DrOTvBL54XoCfWYhZZlwd2ZbyyOz6SS12Psg/ZuCT2253p4yMfF/LPlsz76mr7NgcCrMI0ReveTa/rnt3XBZtyY+1rlsQsy2oxgdAzbO587ENCQeMw2F/OWHaixMT8NDqxEqQd6xafK9Zmg6BeBjwgs7XfXKcR3WzNIuCO0ZG05+Yd0FIxmd/8Xm5tGiFEYr05+Ix6MLdF9MSCXZUPeu1EsYXhDljokLq49w63W1UMU10tm4t7VCEdaO+X9w6EJ5Ov8HDxb6L6IviUYY6+IGTZ01nwIoM6OrGQqfEAytYqgTKdehgQzQnAbLI6TW2wJ0twqEsLrlbTa4NW4j0KkazQJkN5kqcKYQvaeKJJhvJIG44Gi/u78pW3S6W7NU5DhrlE6bbxdIBHJW1vJBimkqu2oBNrO5ZoBB9MS9zflBsU5g/pQpVeHWMnWE8fcYDGa1PqAcr7q6wtdPsrVZhnHmmARN3PwZzIVVVsXbaIQG8VLC5grLGnwMf1Y1fz2nK3sVpCftvrYZT3G6CNAASo+eLOwYdZdiJ9jIS7WNLN1GtpIEvjeDt3QRqsDyH8YoAKUvY5h/v8IWPP/BaSwQbJwep4+Dj7xkpXX5/4wm4jEnVFV1p4xE0lD1AXvEMAVHtPhhggvscNhF9j6oeoPju6eTPcxG+5o=

@@ -34,7 +34,7 @@ rules:
   verbs: ["get"]
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get", "list", "delete"]
+  verbs: ["get", "list", "create", "delete"]
 - apiGroups: [""]
   resources: ["resourcequotas"]
   verbs: ["get", "create"]

@@ -169,6 +169,10 @@ class Pod(Resource):
 
         spec['containers'] = [container]
 
+        # sidecars (fully specified with env vars and command)
+        sidecars = kwargs.get('sidecars')
+        if sidecars:
+            spec['containers'].extend(sidecars)
         return manifest
 
     def _set_container(self, namespace, container_name, data, **kwargs):

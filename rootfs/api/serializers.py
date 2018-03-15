@@ -185,17 +185,28 @@ class BuildSerializer(serializers.ModelSerializer):
     app = serializers.SlugRelatedField(slug_field='id', queryset=models.App.objects.all())
     owner = serializers.ReadOnlyField(source='owner.username')
     procfile = serializers.JSONField(required=False)
+    sidecarfile = serializers.JSONField(required=False)
 
     class Meta:
         """Metadata options for a :class:`BuildSerializer`."""
         model = models.Build
-        fields = ['owner', 'app', 'image', 'sha', 'procfile', 'dockerfile', 'created',
-                  'updated', 'uuid']
+        fields = ['owner', 'app', 'image', 'sha', 'procfile', 'dockerfile', 'sidecarfile',
+                  'created', 'updated', 'uuid']
 
     def validate_procfile(self, data):
         for key, value in data.items():
             if value is None or value == "":
                 raise serializers.ValidationError("Command can't be empty for process type")
+
+            if not re.match(PROCTYPE_MATCH, key):
+                raise serializers.ValidationError(PROCTYPE_MISMATCH_MSG)
+
+        return data
+
+    def validate_sidecarfile(self, data):
+        for key, value in data.items():
+            if value is None or value == "":
+                raise serializers.ValidationError("Sidecar config can't be empty for process type")
 
             if not re.match(PROCTYPE_MATCH, key):
                 raise serializers.ValidationError(PROCTYPE_MISMATCH_MSG)

@@ -30,7 +30,7 @@ class Deployment(Resource):
 
         return response
 
-    def manifest(self, namespace, name, image, entrypoint, command, **kwargs):
+    def manifest(self, namespace, name, image, entrypoint, command, sidecars, **kwargs):
         replicas = kwargs.get('replicas', 0)
         batches = kwargs.get('deploy_batches', None)
         tags = kwargs.get('tags', {})
@@ -101,14 +101,17 @@ class Deployment(Resource):
         kwargs['command'] = entrypoint
         kwargs['args'] = command
 
+        # include sidecars if any
+        if sidecars:
+            kwargs['sidecars'] = sidecars
         # pod manifest spec
         manifest['spec']['template'] = self.pod.manifest(namespace, name, image, **kwargs)
 
         return manifest
 
-    def create(self, namespace, name, image, entrypoint, command, **kwargs):
+    def create(self, namespace, name, image, entrypoint, command, sidecars, **kwargs):
         manifest = self.manifest(namespace, name, image,
-                                 entrypoint, command, **kwargs)
+                                 entrypoint, command, sidecars, **kwargs)
 
         url = self.api("/namespaces/{}/deployments", namespace)
         response = self.http_post(url, json=manifest)
@@ -124,9 +127,9 @@ class Deployment(Resource):
 
         return response
 
-    def update(self, namespace, name, image, entrypoint, command, **kwargs):
+    def update(self, namespace, name, image, entrypoint, command, sidecars, **kwargs):
         manifest = self.manifest(namespace, name, image,
-                                 entrypoint, command, **kwargs)
+                                 entrypoint, command, sidecars, **kwargs)
 
         url = self.api("/namespaces/{}/deployments/{}", namespace, name)
         response = self.http_put(url, json=manifest)

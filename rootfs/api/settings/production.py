@@ -294,6 +294,29 @@ DEIS_DEPLOY_PROCFILE_MISSING_REMOVE = bool(strtobool(os.environ.get('DEIS_DEPLOY
 # Has priority over DEIS_DEPLOY_PROCFILE_MISSING_REMOVE
 DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING = bool(strtobool(os.environ.get('DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING', 'false')))  # noqa
 
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a user deploys one build with a Sidecarfile but then forgets to in the next one
+# then let that go through without removing the sidecars for the processes
+#
+# If the user has a Sidecarfile in both deploys then sidecars are added / removed as per usual
+#
+# By default the sidecar pods are not removed unless this setting is turned on
+DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE = bool(strtobool(os.environ.get('DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE', 'false')))  # noqa
+
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a previous deploy had a Sidecarfile but then the following deploy has no Sidecarfile then it
+# will result in a 406 - Not Acceptable
+# Has priority over DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE
+DEIS_DEPLOY_REJECT_IF_SIDECARFILE_MISSING = bool(strtobool(os.environ.get('DEIS_DEPLOY_REJECT_IF_SIDECARFILE_MISSING', 'false')))  # noqa
+
 # Define a global default on how many pods to bring up and then
 # take down sequentially during a deploy
 # Defaults to None, the default is to deploy to as many nodes as

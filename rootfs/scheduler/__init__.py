@@ -228,7 +228,7 @@ class KubeHTTPClient(object):
 
         return response
 
-    def deploy(self, namespace, name, image, entrypoint, command, **kwargs):  # noqa
+    def deploy(self, namespace, name, image, entrypoint, command, sidecars, **kwargs):  # noqa
         """Deploy Deployment depending on what's requested"""
         app_type = kwargs.get('app_type')
         version = kwargs.get('version')
@@ -261,13 +261,13 @@ class KubeHTTPClient(object):
         except KubeException:
             # create the initial deployment object (and the first revision)
             self.deployment.create(
-                namespace, name, image, entrypoint, command, **kwargs
+                namespace, name, image, entrypoint, command, sidecars, **kwargs
             )
         else:
             try:
                 # kick off a new revision of the deployment
                 self.deployment.update(
-                    namespace, name, image, entrypoint, command, **kwargs
+                    namespace, name, image, entrypoint, command, sidecars, **kwargs
                 )
             except KubeException as e:
                 raise KubeException(
@@ -275,7 +275,7 @@ class KubeHTTPClient(object):
                     "Additional information:\n{}".format(version, namespace, app_type, str(e))
                 ) from e
 
-    def scale(self, namespace, name, image, entrypoint, command, **kwargs):
+    def scale(self, namespace, name, image, entrypoint, command, sidecars, **kwargs):
         """Scale Deployment"""
         try:
             self.deployment.get(namespace, name)
@@ -283,7 +283,8 @@ class KubeHTTPClient(object):
             if e.response.status_code == 404:
                 # create missing deployment - deleted if it fails
                 try:
-                    self.deployment.create(namespace, name, image, entrypoint, command, **kwargs)
+                    self.deployment.create(
+                        namespace, name, image, entrypoint, command, sidecars, **kwargs)
                 except KubeException:
                     # see if the deployment got created
                     try:

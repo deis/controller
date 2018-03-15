@@ -247,6 +247,55 @@ class HookTest(DeisTransactionTestCase):
         response = self.client.post(url, body)
         self.assertEqual(response.status_code, 401, response.data)
 
+    def test_build_hook_sidecarfile(self, mock_requests):
+        """Test creating a Sidecarfile build via an API Hook"""
+        app_id = self.create_app()
+
+        build = {'username': 'autotest', 'app': app_id}
+        url = '/v2/hooks/build'.format(**locals())
+        PROCFILE = {'web': 'node server.js', 'worker': 'node worker.js'}
+        SIDECARFILE = {'web': [{'name': 'busybox', 'image': 'busybox:latest'}]}
+        SHA = 'ecdff91c57a0b9ab82e89634df87e293d259a3aa'
+        body = {'receive_user': 'autotest',
+                'receive_repo': app_id,
+                'image': '{app_id}:v2'.format(**locals()),
+                'sha': SHA,
+                'procfile': PROCFILE,
+                'sidecarfile': SIDECARFILE}
+
+        # post the build with the builder auth key
+        response = self.client.post(url, body,
+                                    HTTP_X_DEIS_BUILDER_AUTH=settings.BUILDER_KEY)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn('release', response.data)
+        self.assertIn('version', response.data['release'])
+
+        # make sure build fields were populated
+        url = '/v2/apps/{app_id}/builds'.format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn('results', response.data)
+        build = response.data['results'][0]
+        self.assertEqual(build['sha'], SHA)
+        self.assertEqual(build['procfile'], PROCFILE)
+        self.assertEqual(build['sidecarfile'], SIDECARFILE)
+
+        # test listing/retrieving container info
+        url = "/v2/apps/{app_id}/pods/web".format(**locals())
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+        container = response.data['results'][0]
+        self.assertEqual(container['type'], 'web')
+        self.assertEqual(container['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(container['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # post the build without an auth token
+        self.client.credentials()
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 401, response.data)
+
     def test_build_hook_dockerfile(self, mock_requests):
         """Test creating a Dockerfile build via an API Hook"""
         app_id = self.create_app()

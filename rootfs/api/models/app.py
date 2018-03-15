@@ -84,7 +84,7 @@ class App(UuidAuditedModel):
                 self.id = generate_app_name()
 
         # verify the application name doesn't exist as a k8s namespace
-        # only check for it if there have been on releases
+        # only check for it if there have been no releases
         try:
             self.release_set.latest()
         except Release.DoesNotExist:
@@ -157,6 +157,18 @@ class App(UuidAuditedModel):
             entrypoint = ['/bin/bash', '-c']
 
         return entrypoint
+
+    def _get_sidecars(self, container_type):
+        """
+        Return the sidecars to be deployed alongside the proccess.
+        """
+        try:
+            release = self.release_set.filter(failed=False).latest()
+            if release.build.sidecarfile:
+                return release.build.sidecarfile[container_type]
+            return []
+        except (KeyError, TypeError, AttributeError):
+            return []
 
     def log(self, message, level=logging.INFO):
         """Logs a message in the context of this application.
@@ -445,6 +457,7 @@ class App(UuidAuditedModel):
                     image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
+                    sidecars=self._get_sidecars(scale_type),
                     **data
                 )
             )
@@ -522,6 +535,7 @@ class App(UuidAuditedModel):
                     image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
+                    sidecars=self._get_sidecars(scale_type),
                     **kwargs
                 ) for scale_type, kwargs in deploys.items()
             ]

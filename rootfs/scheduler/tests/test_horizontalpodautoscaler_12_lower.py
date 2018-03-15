@@ -31,6 +31,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
             'command': 'start',
+            'sidecars': [],
         }
 
         # create a Deployment to test HPA with
@@ -79,6 +80,7 @@ class HorizontalPodAutoscalersTest(TestCase):
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
             'command': 'start',
+            'sidecars': [],
         }
 
         deployment = self.scheduler.deployment.update(namespace, name, **kwargs)

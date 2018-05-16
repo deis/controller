@@ -19,6 +19,12 @@ class HorizontalPodAutoscaler(Resource):
         # 1.2 and older
         return 'extensions/v1beta1'
 
+    def is_deployment(self, target):
+        return target['kind'].lower() == 'deployment'
+
+    def is_replica_set(self, target):
+        return target['kind'].lower() == 'replicaset'
+
     def get(self, namespace, name=None, **kwargs):
         """
         Fetch a single HorizontalPodAutoscaler or a list
@@ -79,6 +85,11 @@ class HorizontalPodAutoscaler(Resource):
                 'kind': target['kind'],
                 'name': target['metadata']['name'],
             }
+
+            if self.is_deployment(target) or self.is_replica_set(target):
+                # only deployments and replicasets have `extensions/v1beta1`
+                manifest['spec']['scaleTargetRef']['apiVersion'] = 'extensions/v1beta1'
+
         elif self.version() <= parse("1.2.0"):
             # api changed between version
             manifest['spec']['cpuUtilization'] = {

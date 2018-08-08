@@ -1,11 +1,11 @@
 {{/*
-Set apiVersion based on Kubernetes version
+Set apiVersion based on .Capabilities.APIVersions
 */}}
 {{- define "rbacAPIVersion" -}}
-{{- if (lt (int (.Capabilities.KubeVersion.Minor)) 6) -}}
-rbac.authorization.k8s.io/v1alpha1
-{{- else if (and (ge (int (.Capabilities.KubeVersion.Minor)) 6) (le (int (.Capabilities.KubeVersion.Minor)) 7)) -}}
+{{- if .Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1beta1" -}}
 rbac.authorization.k8s.io/v1beta1
+{{- else if .Capabilities.APIVersions.Has "rbac.authorization.k8s.io/v1alpha1" -}}
+rbac.authorization.k8s.io/v1alpha1
 {{- else -}}
 rbac.authorization.k8s.io/v1
 {{- end -}}

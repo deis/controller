@@ -105,7 +105,9 @@ INSTALLED_APPS = (
     'rest_framework',
     'rest_framework.authtoken',
     # Deis apps
-    'api'
+    'api',
+    # Google Auth
+    'google_auth'
 )
 
 AUTHENTICATION_BACKENDS = (
@@ -292,6 +294,29 @@ DEIS_DEPLOY_PROCFILE_MISSING_REMOVE = bool(strtobool(os.environ.get('DEIS_DEPLOY
 # Has priority over DEIS_DEPLOY_PROCFILE_MISSING_REMOVE
 DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING = bool(strtobool(os.environ.get('DEIS_DEPLOY_REJECT_IF_PROCFILE_MISSING', 'false')))  # noqa
 
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a user deploys one build with a Sidecarfile but then forgets to in the next one
+# then let that go through without removing the sidecars for the processes
+#
+# If the user has a Sidecarfile in both deploys then sidecars are added / removed as per usual
+#
+# By default the sidecar pods are not removed unless this setting is turned on
+DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE = bool(strtobool(os.environ.get('DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE', 'false')))  # noqa
+
+# True, true, yes, y and more evaluate to True
+# False, false, no, n and more evaluate to False
+# https://docs.python.org/3/distutils/apiref.html?highlight=distutils.util#distutils.util.strtobool
+# see the above for all available options
+#
+# If a previous deploy had a Sidecarfile but then the following deploy has no Sidecarfile then it
+# will result in a 406 - Not Acceptable
+# Has priority over DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE
+DEIS_DEPLOY_REJECT_IF_SIDECARFILE_MISSING = bool(strtobool(os.environ.get('DEIS_DEPLOY_REJECT_IF_SIDECARFILE_MISSING', 'false')))  # noqa
+
 # Define a global default on how many pods to bring up and then
 # take down sequentially during a deploy
 # Defaults to None, the default is to deploy to as many nodes as
@@ -313,6 +338,8 @@ except KeyError:
 DEIS_DEPLOY_HOOK_SECRET_KEY = os.environ.get('DEIS_DEPLOY_HOOK_SECRET_KEY', None)
 
 KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT = os.environ.get('KUBERNETES_DEPLOYMENTS_REVISION_HISTORY_LIMIT', None)  # noqa
+
+KUBERNETES_PODS_TOLERATIONS = os.environ.get('KUBERNETES_PODS_TOLERATIONS', '{}')
 
 DEIS_DEFAULT_CONFIG_TAGS = os.environ.get('DEIS_DEFAULT_CONFIG_TAGS', '')
 
@@ -359,6 +386,21 @@ DATABASES = {
 }
 
 APP_URL_REGEX = '[a-z0-9-]+'
+
+# OAuth
+GOOGLE_AUTH_CLIENT_ID = os.environ.get('GOOGLE_AUTH_CLIENT_ID', '')
+GOOGLE_AUTH_CLIENT_SECRET = os.environ.get('GOOGLE_AUTH_CLIENT_SECRET', '')
+GOOGLE_AUTH_AUTHORIZED_DOMAINS = os.environ.get('GOOGLE_AUTH_AUTHORIZED_DOMAINS', '')
+GOOGLE_AUTH_SCOPE = os.environ.get('GOOGLE_AUTH_SCOPE', '')
+GOOGLE_AUTH_REDIRECT_URL = os.environ.get('GOOGLE_AUTH_REDIRECT_URL', '')
+
+if GOOGLE_AUTH_CLIENT_ID:
+    REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = (
+        "google_auth.authentication.GoogleAuthAuthentication",
+    ) + REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES']
+    AUTHENTICATION_BACKENDS = (
+        "google_auth.authentication.GoogleAuthBackend",
+    ) + AUTHENTICATION_BACKENDS
 
 # LDAP settings taken from environment variables.
 LDAP_ENDPOINT = os.environ.get('LDAP_ENDPOINT', '')

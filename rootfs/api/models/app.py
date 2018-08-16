@@ -84,7 +84,7 @@ class App(UuidAuditedModel):
                 self.id = generate_app_name()
 
         # verify the application name doesn't exist as a k8s namespace
-        # only check for it if there have been on releases
+        # only check for it if there have been no releases
         try:
             self.release_set.latest()
         except Release.DoesNotExist:
@@ -157,6 +157,18 @@ class App(UuidAuditedModel):
             entrypoint = ['/bin/bash', '-c']
 
         return entrypoint
+
+    def _get_sidecars(self, container_type):
+        """
+        Return the sidecars to be deployed alongside the proccess.
+        """
+        try:
+            release = self.release_set.filter(failed=False).latest()
+            if release.build.sidecarfile:
+                return release.build.sidecarfile[container_type]
+            return []
+        except (KeyError, TypeError, AttributeError):
+            return []
 
     def log(self, message, level=logging.INFO):
         """Logs a message in the context of this application.
@@ -445,6 +457,7 @@ class App(UuidAuditedModel):
                     image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
+                    sidecars=self._get_sidecars(scale_type),
                     **data
                 )
             )
@@ -522,6 +535,7 @@ class App(UuidAuditedModel):
                     image=image,
                     entrypoint=self._get_entrypoint(scale_type),
                     command=self._get_command(scale_type),
+                    sidecars=self._get_sidecars(scale_type),
                     **kwargs
                 ) for scale_type, kwargs in deploys.items()
             ]
@@ -694,13 +708,19 @@ class App(UuidAuditedModel):
         )
 
     @backoff.on_exception(backoff.expo, ServiceUnavailable, max_tries=3)
-    def logs(self, log_lines=str(settings.LOG_LINES)):
+    def logs(self, log_lines=str(settings.LOG_LINES), tail=False, process=None):
         """Return aggregated log data for this application."""
         try:
             url = "http://{}:{}/logs/{}?log_lines={}".format(settings.LOGGER_HOST,
                                                              settings.LOGGER_PORT,
                                                              self.id, log_lines)
-            r = requests.get(url)
+            if tail:
+                url = "http://{}:{}/logs/{}/tail".format(settings.LOGGER_HOST,
+                                                         settings.LOGGER_PORT,
+                                                         self.id)
+                if process:
+                    url = "{}?process={}".format(url, process)
+            r = requests.get(url, stream=tail)
         # Handle HTTP request errors
         except requests.exceptions.RequestException as e:
             msg = "Error accessing deis-logger using url '{}': {}".format(url, e)
@@ -719,6 +739,16 @@ class App(UuidAuditedModel):
             raise ServiceUnavailable('Error accessing deis-logger')
 
         # cast content to string since it comes as bytes via the requests object
+
+        if tail:
+            def stream_reponse():
+                if r.encoding is None:
+                    r.encoding = 'utf-8'
+                for line in r.iter_lines(decode_unicode=True):
+                    if line:
+                        yield line
+                        yield '\n'
+            return stream_reponse()
         return str(r.content.decode('utf-8'))
 
     def run(self, user, command):
@@ -1067,6 +1097,15 @@ class App(UuidAuditedModel):
         # create image pull secret if needed
         image_pull_secret_name = self.image_pull_secret(self.id, config.registry, release.image)
 
+        tolerations = config.values.get('KUBERNETES_PODS_TOLERATIONS', settings.KUBERNETES_PODS_TOLERATIONS)  # noqa
+        if tolerations:
+            try:
+                tolerations = json.loads(tolerations)
+            except:
+                err = '(tolerations.json error): {}'.format(tolerations)
+                self.log(err, logging.ERROR)
+                tolerations = {}
+
         # only web / cmd are routable
         # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
         routable = True if process_type in ['web', 'cmd'] and app_settings.routable else False
@@ -1093,7 +1132,8 @@ class App(UuidAuditedModel):
             'release_summary': release.summary,
             'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
             'image_pull_secret_name': image_pull_secret_name,
-            'image_pull_policy': image_pull_policy
+            'image_pull_policy': image_pull_policy,
+            'tolerations': tolerations
         }
 
     def set_application_config(self, release):

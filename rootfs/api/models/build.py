@@ -22,6 +22,7 @@ class Build(UuidAuditedModel):
     sha = models.CharField(max_length=40, blank=True)
     procfile = JSONField(default={}, blank=True)
     dockerfile = models.TextField(blank=True)
+    sidecarfile = JSONField(default={}, blank=True)
 
     class Meta:
         get_latest_by = 'created'
@@ -78,6 +79,32 @@ class Build(UuidAuditedModel):
 
             raise DeisException(str(e)) from e
 
+    def _validate_sidecars(self, previous_release):
+        if (
+            settings.DEIS_DEPLOY_REJECT_IF_SIDECARFILE_MISSING is True and
+            # previous release had a Sidecarfile and the current one does not
+            (
+                previous_release.build is not None and
+                len(previous_release.build.sidecarfile) > 0 and
+                len(self.sidecarfile) == 0
+            )
+        ):
+            # Reject deployment
+            raise Conflict(
+                'Last deployment had a Sidecarfile but is missing in this deploy. '
+                'For a successful deployment provide a Sidecarfile.'
+            )
+
+        # make sure the latest build has sidecarfile if the intent is to
+        # allow empty Sidecarfile without removals
+        if (
+            settings.DEIS_DEPLOY_SIDECARFILE_MISSING_REMOVE is False and
+            previous_release.build is not None and
+            len(previous_release.build.sidecarfile) > 0 and
+            len(self.sidecarfile) == 0
+        ):
+            self.sidecarfile = previous_release.build.sidecarfile
+
     def save(self, **kwargs):
         previous_release = self.app.release_set.filter(failed=False).latest()
 
@@ -128,6 +155,7 @@ class Build(UuidAuditedModel):
         ):
             self.procfile = previous_release.build.procfile
 
+        self._validate_sidecars(previous_release)
         return super(Build, self).save(**kwargs)
 
     def __str__(self):

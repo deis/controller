@@ -363,6 +363,49 @@ class PodTest(DeisTransactionTestCase):
         data = App.objects.get(id=app_id)
         self.assertNotIn('{c_type}', data._get_command('web'))
 
+    def test_pod_sidecar_format(self, mock_requests):
+        app_id = self.create_app()
+
+        # post a new build
+        url = "/v2/apps/{app_id}/builds".format(**locals())
+        body = {
+            'image': 'autotest/example',
+            'sha': 'a'*40,
+            'procfile': {
+                'web': 'node server.js',
+                'worker': 'node worker.js'
+            },
+            'sidecarfile': {
+                'web': [{'name': 'busybox', 'image': 'busybox:latest'}],
+                'worker': [{'name': 'busybox', 'image': 'busybox:latest'}]
+            }
+        }
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 201, response.data)
+
+        # scale up
+        url = "/v2/apps/{app_id}/scale".format(**locals())
+        body = {'web': 1}
+        response = self.client.post(url, body)
+        self.assertEqual(response.status_code, 204, response.data)
+        url = "/v2/apps/{app_id}/pods".format(**locals())
+        response = self.client.get(url)
+
+        # verify that the app._get_sidecar property got formatted
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data['results']), 1)
+
+        pod = response.data['results'][0]
+        self.assertEqual(pod['type'], 'web')
+        self.assertEqual(pod['release'], 'v2')
+        # pod name is auto generated so use regex
+        self.assertRegex(pod['name'], app_id + '-web-[0-9]{8,10}-[a-z0-9]{5}')
+
+        # verify sidecars
+        data = App.objects.get(id=app_id)
+        self.assertEqual([{'name': 'busybox', 'image': 'busybox:latest'}],
+                         data._get_sidecars('web'))
+
     def test_scale_errors(self, mock_requests):
         app_id = self.create_app()
 

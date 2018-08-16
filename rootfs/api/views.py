@@ -1,7 +1,7 @@
 """
 RESTful view classes for presenting Deis API objects.
 """
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.authtoken.models import Token
+from google_auth.models import regenerate_app_token, get_google_auth_user_by_email
 
 from api import authentication, models, permissions, serializers, viewsets
 from api.models import AlreadyExists, ServiceUnavailable, DeisException, UnprocessableEntity
@@ -137,9 +138,7 @@ class TokenManagementViewSet(GenericViewSet,
         if 'all' in request.data:
             for user in User.objects.all():
                 if not user.is_anonymous:
-                    token = Token.objects.get(user=user)
-                    token.delete()
-                    Token.objects.create(user=user)
+                    refresh_token(user)
             return Response("")
 
         if 'username' in request.data:
@@ -147,10 +146,19 @@ class TokenManagementViewSet(GenericViewSet,
                                     username=request.data['username'])
             self.check_object_permissions(self.request, obj)
 
-        token = Token.objects.get(user=obj)
-        token.delete()
-        token = Token.objects.create(user=obj)
-        return Response({'token': token.key})
+        token = refresh_token(obj)
+        return Response({'token': token})
+
+
+def refresh_token(user):
+    if settings.GOOGLE_AUTH_CLIENT_ID:
+        google_auth_user = get_google_auth_user_by_email(user.email)
+        new_token = regenerate_app_token(google_auth_user.app_token)
+        return new_token
+    token = Token.objects.get(user=user)
+    token.delete()
+    t = Token.objects.create(user=user)
+    return t.key
 
 
 class BaseDeisViewSet(viewsets.OwnerViewSet):
@@ -224,7 +232,16 @@ class AppViewSet(BaseDeisViewSet):
     def logs(self, request, **kwargs):
         app = self.get_object()
         try:
-            logs = app.logs(request.query_params.get('log_lines', str(settings.LOG_LINES)))
+            tail = False
+            if request.query_params.get('tail', 'false') == 'true':
+                tail = True
+            logs = app.logs(
+                log_lines=request.query_params.get('log_lines', str(settings.LOG_LINES)),
+                tail=tail,
+                process=request.query_params.get('process', None)
+            )
+            if tail:
+                return StreamingHttpResponse(logs, content_type='text/plain')
             return HttpResponse(logs, status=status.HTTP_200_OK, content_type='text/plain')
         except NotFound:
             return HttpResponse(status=status.HTTP_204_NO_CONTENT)

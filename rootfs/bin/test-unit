@@ -9,4 +9,5 @@ set -eou pipefail
 sudo -u postgres "$PGBIN"/pg_ctl -D "$PGDATA" -l /tmp/logfile start
 python3 manage.py check
 coverage run manage.py test --settings=api.settings.testing --noinput registry api scheduler.tests
-coverage report -m
+# uncomment below to run a single test
+# python3 manage.py test --settings=api.settings.testing --noinput scheduler.tests.test_deployments.DeploymentsTest.test_get_deployment

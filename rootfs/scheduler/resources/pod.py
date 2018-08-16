@@ -173,7 +173,22 @@ class Pod(Resource):
         sidecars = kwargs.get('sidecars')
         if sidecars:
             spec['containers'].extend(sidecars)
+
+        # tolerations
+        tolerations = self._get_tolerations(**kwargs)
+        if tolerations:
+            spec['tolerations'] = tolerations
+
         return manifest
+
+    def _get_tolerations(self, **kwargs):
+        """Get app tolerations"""
+        try:
+            app_type = kwargs.get('app_type')
+            tolerations = kwargs.get('tolerations', {})
+            return tolerations.get(app_type)
+        except:
+            return None
 
     def _set_container(self, namespace, container_name, data, **kwargs):
         """Set app container information (env, healthcheck, etc) on a Pod"""

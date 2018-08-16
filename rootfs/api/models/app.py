@@ -1097,6 +1097,15 @@ class App(UuidAuditedModel):
         # create image pull secret if needed
         image_pull_secret_name = self.image_pull_secret(self.id, config.registry, release.image)
 
+        tolerations = config.values.get('KUBERNETES_PODS_TOLERATIONS', settings.KUBERNETES_PODS_TOLERATIONS)  # noqa
+        if tolerations:
+            try:
+                tolerations = json.loads(tolerations)
+            except:
+                err = '(tolerations.json error): {}'.format(tolerations)
+                self.log(err, logging.ERROR)
+                tolerations = {}
+
         # only web / cmd are routable
         # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
         routable = True if process_type in ['web', 'cmd'] and app_settings.routable else False
@@ -1123,7 +1132,8 @@ class App(UuidAuditedModel):
             'release_summary': release.summary,
             'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
             'image_pull_secret_name': image_pull_secret_name,
-            'image_pull_policy': image_pull_policy
+            'image_pull_policy': image_pull_policy,
+            'tolerations': tolerations
         }
 
     def set_application_config(self, release):

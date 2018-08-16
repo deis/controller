@@ -8,6 +8,17 @@ from scheduler.tests import TestCase
 from scheduler.utils import generate_random_name
 
 
+toleration = {
+    'key': 'some_key',
+    'value': 'some_value',
+    'operator': 'Equal',
+    'effect': 'NoSchedule'
+}
+tolerations = {
+    'web': [toleration]
+}
+
+
 class DeploymentsTest(TestCase):
     """Tests scheduler deployment calls"""
 
@@ -22,6 +33,7 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
+            'tolerations': tolerations,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
             'command': 'start',
@@ -42,6 +54,7 @@ class DeploymentsTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'tolerations': tolerations,
             'pod_termination_grace_period_seconds': 2,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
@@ -64,6 +77,7 @@ class DeploymentsTest(TestCase):
             'app_type': kwargs.get('app_type', 'web'),
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
+            'tolerations': tolerations,
             'pod_termination_grace_period_seconds': 2,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
@@ -166,6 +180,12 @@ class DeploymentsTest(TestCase):
                 'heritage': 'deis'
             },
             data['metadata']['labels']
+        )
+        self.assertDictContainsSubset(
+            {
+                'tolerations': [toleration]
+            },
+            data['spec']['template']['spec']
         )
 
     def test_scale(self):

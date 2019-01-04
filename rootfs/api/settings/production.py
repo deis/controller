@@ -239,6 +239,7 @@ TEST_RUNNER = 'api.tests.SilentDjangoTestSuiteRunner'
 # default deis settings
 LOG_LINES = 100
 TEMPDIR = tempfile.mkdtemp(prefix='deis')
+ENSURE_LIMITS = bool(strtobool(os.environ.get('ENSURE_LIMITS', 'false')))
 
 # names which apps cannot reserve for routing
 DEIS_RESERVED_NAMES = os.environ.get('RESERVED_NAMES', '').replace(' ', '').split(',')

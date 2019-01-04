@@ -57,6 +57,10 @@ def validate_reserved_names(value):
         raise ValidationError('{} is a reserved name.'.format(value))
 
 
+def should_ensure_limits():
+    return settings.ENSURE_LIMITS
+
+
 class Pod(dict):
     pass
 
@@ -503,6 +507,9 @@ class App(UuidAuditedModel):
                     structure.update(self._default_structure(release))
                     self.structure = structure
                     self.save()
+
+        if (should_ensure_limits() and release.version > 1 and not release.has_limits()):
+            raise DeisException('No cpu or memory limits set, please set both')
 
         # deploy application to k8s. Also handles initial scaling
         app_settings = self.appsettings_set.latest()

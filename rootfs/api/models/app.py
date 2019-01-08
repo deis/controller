@@ -57,10 +57,6 @@ def validate_reserved_names(value):
         raise ValidationError('{} is a reserved name.'.format(value))
 
 
-def should_ensure_limits():
-    return settings.ENSURE_LIMITS
-
-
 class Pod(dict):
     pass
 
@@ -507,9 +503,9 @@ class App(UuidAuditedModel):
                     structure.update(self._default_structure(release))
                     self.structure = structure
                     self.save()
-
-        if (should_ensure_limits() and release.version > 1 and not release.has_limits()):
-            raise DeisException('No cpu or memory limits set, please set both')
+            should_ensure_limits = self._should_ensure_limits(prev_release, release)
+            if should_ensure_limits and not self._app_has_limits(release):
+                raise DeisException('No cpu or memory limits set, please set both')
 
         # deploy application to k8s. Also handles initial scaling
         app_settings = self.appsettings_set.latest()
@@ -1142,6 +1138,27 @@ class App(UuidAuditedModel):
             'image_pull_policy': image_pull_policy,
             'tolerations': tolerations
         }
+
+    def _should_ensure_limits(self, prev_release, release):
+        return (
+            settings.ENSURE_LIMITS and
+            release.version > 1 and
+            not self._changed_resources(prev_release.config, release.config)
+        )
+
+    def _changed_resources(self, prev_config, config):
+        return prev_config.memory != config.memory or prev_config.cpu != config.cpu
+
+    def _app_has_limits(self, release):
+        """
+        Returns true if all process types on app have limits set
+        for cpu and memory
+        """
+        config = release.config
+        for scale_type in self.structure:
+            if not (scale_type in config.memory and scale_type in config.cpu):
+                return False
+        return True
 
     def set_application_config(self, release):
         """

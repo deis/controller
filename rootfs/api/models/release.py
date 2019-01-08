@@ -483,10 +483,3 @@ class Release(UuidAuditedModel):
                     raise AlreadyExists("{} changed nothing - release stopped".format(self.owner))
 
         super(Release, self).save(*args, **kwargs)
-
-    def has_limits(self):
-        return (
-            self.config is not None and
-            self.config.cpu is not None and
-            self.config.memory is not None
-        )

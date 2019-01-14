@@ -505,7 +505,9 @@ class App(UuidAuditedModel):
                     self.save()
             should_ensure_limits = self._should_ensure_limits(prev_release, release)
             if should_ensure_limits and not self._app_has_limits(release):
-                raise DeisException('No cpu or memory limits set, please set both')
+                msg = 'No cpu or memory limits set in your app, '
+                msg += 'please set both to continue'
+                raise DeisException(msg)
 
         # deploy application to k8s. Also handles initial scaling
         app_settings = self.appsettings_set.latest()

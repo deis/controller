@@ -1158,7 +1158,8 @@ class App(UuidAuditedModel):
         """
         config = release.config
         for scale_type in self.structure:
-            if not (scale_type in config.memory and scale_type in config.cpu):
+            qnt = self.structure[scale_type]
+            if qnt > 0 and not (scale_type in config.memory and scale_type in config.cpu):
                 return False
         return True
 

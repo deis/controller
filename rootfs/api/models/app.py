@@ -1111,6 +1111,14 @@ class App(UuidAuditedModel):
                 self.log(err, logging.ERROR)
                 tolerations = {}
 
+        # set pod annotations
+        annotations = config.values.get('KUBERNETES_PODS_ANNOTATIONS', settings.KUBERNETES_PODS_ANNOTATIONS) # noqa
+        if annotations:
+            try:
+                annotations = json.loads(annotations)
+            except:
+                annotations = {}
+
         # only web / cmd are routable
         # http://docs.deis.io/en/latest/using_deis/process-types/#web-vs-cmd-process-types
         routable = True if process_type in ['web', 'cmd'] and app_settings.routable else False
@@ -1136,6 +1144,7 @@ class App(UuidAuditedModel):
             'deployment_revision_history_limit': deployment_history,
             'release_summary': release.summary,
             'pod_termination_grace_period_seconds': pod_termination_grace_period_seconds,
+            'pod_annotations': annotations,
             'image_pull_secret_name': image_pull_secret_name,
             'image_pull_policy': image_pull_policy,
             'tolerations': tolerations

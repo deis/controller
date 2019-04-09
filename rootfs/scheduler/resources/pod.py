@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
+import logging
 import operator
 import os
 import time
@@ -120,6 +121,11 @@ class Pod(Resource):
             'spec': {}
         }
 
+        # pod annotations
+        annotations = self._get_json_from_app('pod_annotations', **kwargs)
+        if annotations:
+            manifest['metadata']['annotations'] = annotations
+
         # pod manifest spec
         spec = manifest['spec']
 
@@ -175,20 +181,20 @@ class Pod(Resource):
             spec['containers'].extend(sidecars)
 
         # tolerations
-        tolerations = self._get_tolerations(**kwargs)
+        tolerations = self._get_json_from_app('tolerations', **kwargs)
         if tolerations:
             spec['tolerations'] = tolerations
 
         return manifest
 
-    def _get_tolerations(self, **kwargs):
-        """Get app tolerations"""
+    def _get_json_from_app(self, json_name, **kwargs):
         try:
-            app_type = kwargs.get('app_type')
-            tolerations = kwargs.get('tolerations', {})
-            return tolerations.get(app_type)
+            app_name = kwargs.get('app_type')
+            json = kwargs.get(json_name, {})
+            return json.get(app_name)
         except:
             return None
+        return ""
 
     def _set_container(self, namespace, container_name, data, **kwargs):
         """Set app container information (env, healthcheck, etc) on a Pod"""

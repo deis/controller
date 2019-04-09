@@ -18,6 +18,13 @@ tolerations = {
     'web': [toleration]
 }
 
+annotations = {
+    'web': {
+        'k8s.annotation/sample': 'value',
+        'k8s.annotation/another': 'other value',
+    }
+}
+
 
 class DeploymentsTest(TestCase):
     """Tests scheduler deployment calls"""
@@ -34,6 +41,7 @@ class DeploymentsTest(TestCase):
             'replicas': kwargs.get('replicas', 4),
             'pod_termination_grace_period_seconds': 2,
             'tolerations': tolerations,
+            'pod_annotations': annotations,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
             'command': 'start',
@@ -55,6 +63,7 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'tolerations': tolerations,
+            'pod_annotations': annotations,
             'pod_termination_grace_period_seconds': 2,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
@@ -78,6 +87,7 @@ class DeploymentsTest(TestCase):
             'version': kwargs.get('version', 'v99'),
             'replicas': kwargs.get('replicas', 4),
             'tolerations': tolerations,
+            'pod_annotations': annotations,
             'pod_termination_grace_period_seconds': 2,
             'image': 'quay.io/fake/image',
             'entrypoint': 'sh',
@@ -186,6 +196,12 @@ class DeploymentsTest(TestCase):
                 'tolerations': [toleration]
             },
             data['spec']['template']['spec']
+        )
+        self.assertDictContainsSubset(
+            {
+                'annotations': annotations['web']
+            },
+            data['spec']['template']['metadata']
         )
 
     def test_scale(self):

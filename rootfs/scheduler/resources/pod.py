@@ -1,6 +1,5 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
-import logging
 import operator
 import os
 import time
